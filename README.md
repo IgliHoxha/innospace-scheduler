@@ -116,8 +116,12 @@ fly deploy
 Pushing to `master` also deploys via GitHub Actions, which needs a `FLY_API_TOKEN`
 repository secret.
 
-The SQLite schema is created on first run. There are no migrations: a schema
-change means rebuilding the table or clearing the DB file.
+The SQLite schema is versioned with `PRAGMA user_version` and applied by an
+ordered list of migrations in `src/lib/db.ts` (`MIGRATIONS`). On first query the
+DB runs every migration newer than its current version, each in a transaction, so
+a fresh DB is built and an existing one is upgraded in place — no manual step, no
+data loss. To change the schema, **append** a new `{ version, up }` entry with the
+`ALTER`/`CREATE` statements; never edit one that has already shipped.
 
 ## Project layout
 

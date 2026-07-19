@@ -58,6 +58,55 @@ export class SlotUnavailableError extends Error {
   }
 }
 
+// Ordered schema migrations, keyed by target `PRAGMA user_version`. Each step
+// runs exactly once, in a transaction, on any DB whose version is below it, then
+// the version is bumped. A fresh DB starts at version 0 and runs them all.
+//
+// To change the schema: append a new { version: N+1, up } entry with the
+// ALTER/CREATE statements — never edit an existing one (it has already run on
+// live DBs). Migration 1 is the baseline and uses IF NOT EXISTS so it's a no-op
+// on a DB that was created before migrations existed.
+type Migration = { version: number; up: (db: Database.Database) => void };
+
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    up: (db) => {
+      db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
+      db.exec(`CREATE TABLE IF NOT EXISTS users ${USERS_TABLE_BODY};`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_reservations_createdAt ON reservations(createdAt);`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_reservations_userId ON reservations(userId);`,
+      );
+    },
+  },
+];
+
+/** The schema version this build expects — the highest migration defined. */
+export const SCHEMA_VERSION = MIGRATIONS.reduce(
+  (max, m) => Math.max(max, m.version),
+  0,
+);
+
+/** Apply any migrations newer than the DB's current `user_version`. */
+function migrate(db: Database.Database): void {
+  const current = db.pragma("user_version", { simple: true }) as number;
+  for (const m of MIGRATIONS) {
+    if (m.version <= current) continue;
+    // DDL + the version bump in one transaction: a failed migration rolls back
+    // wholesale, so we never leave the DB half-migrated.
+    db.transaction(() => {
+      m.up(db);
+      db.pragma(`user_version = ${m.version}`);
+    })();
+  }
+}
+
 // Lazy singleton: open on first query, not at import time (avoids running during build).
 let _db: Database.Database | null = null;
 function getDb(): Database.Database {
@@ -66,11 +115,7 @@ function getDb(): Database.Database {
   const db = new Database(DB_FILE);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
-  db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};
-CREATE TABLE IF NOT EXISTS users ${USERS_TABLE_BODY};`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_reservations_createdAt ON reservations(createdAt);
-CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);
-CREATE INDEX IF NOT EXISTS idx_reservations_userId ON reservations(userId);`);
+  migrate(db);
   _db = db;
   return db;
 }
