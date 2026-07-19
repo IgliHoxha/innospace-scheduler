@@ -1,0 +1,220 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  createReservation,
+  queryReservations,
+  deleteReservations,
+  SlotUnavailableError,
+} from "@/lib/db";
+import { RESERVATION_STATUSES, MAX_NOTE } from "@/lib/types";
+import type { ReservationStatus } from "@/lib/types";
+import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { boothName, isBoothId } from "@/lib/booths";
+import {
+  isBookableDate,
+  needsApproval,
+  noteRequired,
+  autoApproveMaxHours,
+  isValidTimeOfDay,
+  minBookingMinutes,
+  minutesOfDay,
+  durationMinutes,
+  toDateTime,
+  nowDateTime,
+  stepMinutes,
+} from "@/lib/schedule";
+import { sendReservationEmail } from "@/lib/email";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** Members book a booth slot. Identity comes from the session, not the body. */
+export async function POST(req: NextRequest) {
+  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, error: "Please sign in to book." },
+      { status: 401 },
+    );
+  }
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const boothId = typeof body.boothId === "string" ? body.boothId : "";
+  const date = typeof body.date === "string" ? body.date : "";
+  const start = typeof body.start === "string" ? body.start : "";
+  const end = typeof body.end === "string" ? body.end : "";
+  const note =
+    typeof body.note === "string" ? body.note.trim() || undefined : undefined;
+
+  if (!isBoothId(boothId)) {
+    return NextResponse.json(
+      { ok: false, error: "Please choose a booth." },
+      { status: 400 },
+    );
+  }
+  if (!isBookableDate(date)) {
+    return NextResponse.json(
+      { ok: false, error: "That date can't be booked." },
+      { status: 400 },
+    );
+  }
+
+  const startsAt = toDateTime(date, start);
+  const endsAt = toDateTime(date, end);
+  const startMin = minutesOfDay(startsAt);
+  const endMin = minutesOfDay(endsAt);
+
+  // Both ends must be real times on the step grid, inside the open window.
+  if (
+    !/^\d{2}:\d{2}$/.test(start) ||
+    !/^\d{2}:\d{2}$/.test(end) ||
+    !isValidTimeOfDay(startMin) ||
+    !isValidTimeOfDay(endMin)
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Please choose times within opening hours, in ${stepMinutes()}-minute steps.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (endMin <= startMin) {
+    return NextResponse.json(
+      { ok: false, error: "The end time must be after the start time." },
+      { status: 400 },
+    );
+  }
+  if (durationMinutes(startsAt, endsAt) < minBookingMinutes()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Bookings must be at least ${minBookingMinutes()} minutes long.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (startsAt <= nowDateTime()) {
+    return NextResponse.json(
+      { ok: false, error: "That time has already passed." },
+      { status: 400 },
+    );
+  }
+  if (noteRequired(startsAt, endsAt) && !note) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Please add a note saying what the booking is for - it's required for bookings of ${autoApproveMaxHours()} hours or more.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (note && note.length > MAX_NOTE) {
+    return NextResponse.json(
+      { ok: false, error: `The note must be ${MAX_NOTE} characters or fewer.` },
+      { status: 400 },
+    );
+  }
+
+  // Bookings over the limit need admin approval; shorter ones confirm instantly.
+  const status = needsApproval(startsAt, endsAt) ? "pending" : "confirmed";
+
+  try {
+    const reservation = await createReservation(
+      {
+        boothId,
+        startsAt,
+        endsAt,
+        note,
+        fullName: session.name,
+        email: session.email,
+        userId: session.sub,
+      },
+      status,
+    );
+
+    // Email the member: confirmation, or a "request received" note if pending.
+    // Never block the response on email.
+    if (reservation.email) {
+      try {
+        await sendReservationEmail(reservation, status);
+      } catch (err) {
+        console.error("[reservations] confirmation email failed:", err);
+      }
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        id: reservation.id,
+        reservation,
+        booth: boothName(boothId),
+      },
+      { status: 201 },
+    );
+  } catch (err) {
+    if (err instanceof SlotUnavailableError) {
+      return NextResponse.json(
+        { ok: false, error: err.message },
+        { status: 409 },
+      );
+    }
+    console.error("[reservations] POST failed:", err);
+    return NextResponse.json(
+      { ok: false, error: "Could not create the booking." },
+      { status: 400 },
+    );
+  }
+}
+
+const VALID_FILTERS: readonly string[] = ["all", ...RESERVATION_STATUSES];
+
+/**
+ * List reservations. Admin sees everything; a member is scoped to their own
+ * bookings (their "my bookings" list).
+ */
+export async function GET(req: NextRequest) {
+  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
+  const sp = req.nextUrl.searchParams;
+  const filterParam = sp.get("status") ?? "all";
+  const filter = (VALID_FILTERS.includes(filterParam) ? filterParam : "all") as
+    "all" | ReservationStatus;
+
+  const page = await queryReservations({
+    filter,
+    search: sp.get("q") ?? "",
+    page: Number(sp.get("page")) || 1,
+    pageSize: Number(sp.get("pageSize")) || 25,
+    userId: session.role === "admin" ? undefined : session.sub,
+  });
+
+  return NextResponse.json({ ok: true, ...page });
+}
+
+/** Admin-only: permanently remove soft-deleted reservations. */
+export async function DELETE(req: NextRequest) {
+  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!session || session.role !== "admin") {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
+  const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+    return NextResponse.json(
+      { ok: false, error: "Expected { ids: string[] }." },
+      { status: 400 },
+    );
+  }
+
+  const removed = await deleteReservations(ids as string[]);
+  return NextResponse.json({ ok: true, removed });
+}

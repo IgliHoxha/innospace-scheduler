@@ -1,0 +1,31 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# test coverage
+/coverage/
+
+# production
+/build
+
+# env
+.env
+.env*.local
+
+# data: real booking submissions, keep out of git
+/data/bookings.json
+/data/bookings.json.imported
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
+
+# misc
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# local agent instructions, kept on the machine and out of the repo
+CLAUDE.md

@@ -1,0 +1,12 @@
+# ggshield config for pre-commit / CI secret scanning.
+#
+# NOTE: the hosted GitGuardian monitor does NOT read this file. Dismiss existing
+# dashboard incidents there (mark "false positive" / test credential). This only
+# affects local ggshield / CI runs.
+#
+# Everything under tests/ is fixture data: throwaway passwords that unlock nothing
+# but a per-test temp SQLite DB, so it is ignored for secret scanning.
+version: 2
+secret:
+  ignored-paths:
+    - tests/

@@ -1,0 +1,47 @@
+{
+  "name": "innospace-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Meeting-booth scheduler for Innospace Tirana: members log in, book booth time slots (arbitrary start/end, no double-booking), get an email confirmation, and an admin manages users and reservations from a dashboard.",
+  "scripts": {
+    "dev": "next dev -p 4001",
+    "build": "next build",
+    "start": "next start -p 4001",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.24.0",
+    "next": "^15.5.19",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "resend": "4.1.2",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "22.10.7",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "@vitest/coverage-v8": "^4.1.10",
+    "autoprefixer": "^10.5.4",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.5.19",
+    "eslint-config-prettier": "^9.1.2",
+    "postcss": "^8.5.19",
+    "prettier": "^3.9.3",
+    "tailwindcss": "^3.4.19",
+    "typescript": "5.7.3",
+    "vitest": "^4.1.10"
+  }
+}

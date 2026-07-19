@@ -1,0 +1,17 @@
+services:
+  scheduler:
+    build: .
+    image: innospace-scheduler
+    container_name: innospace-scheduler
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    # Reads RESEND_API_KEY, DASHBOARD_PASSWORD, AUTH_SECRET, etc. from .env
+    env_file:
+      - .env
+    volumes:
+      # Persist the SQLite database outside the container.
+      - scheduler-data:/app/data
+
+volumes:
+  scheduler-data:

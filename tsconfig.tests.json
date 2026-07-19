@@ -1,0 +1,7 @@
+// Type-checks the Vitest suite on its own, so tests stay out of `next build`
+// (see tsconfig.json's exclude) while still being verified by `make check`.
+{
+  "extends": "./tsconfig.json",
+  "include": ["tests/**/*.ts", "vitest.config.ts"],
+  "exclude": ["node_modules"]
+}
