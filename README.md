@@ -123,15 +123,37 @@ a fresh DB is built and an existing one is upgraded in place — no manual step,
 data loss. To change the schema, **append** a new `{ version, up }` entry with the
 `ALTER`/`CREATE` statements; never edit one that has already shipped.
 
+## Integrations (Kafka + gRPC) — optional skeleton
+
+Both are **off by default** and safe to ignore; they exist as ready-to-extend
+scaffolding.
+
+- **Kafka domain events** (`src/lib/events.ts`, `src/lib/kafka.ts`). Booking
+  actions publish events (`reservation.created`, …) to Kafka. Publishing is a
+  no-op until `KAFKA_BROKERS` is set, and is always best-effort — a broker
+  problem can never delay or fail a booking. The topic is
+  `${KAFKA_TOPIC_PREFIX}${event}`. An example emit is wired into
+  `POST /api/reservations`; add more with `publishReservationEvent(...)`.
+- **gRPC read API** (`proto/scheduler.proto`, `src/server/grpc.ts`). A standalone
+  `SchedulerService` (ListBooths, GetAvailability, GetReservation) over the same
+  db layer, for other internal services. It is **not** part of the web server —
+  run it on its own with `npm run grpc` (binds `GRPC_HOST:GRPC_PORT`, default
+  `0.0.0.0:50051`).
+
+See `.env.example` for every `KAFKA_*` / `GRPC_*` variable.
+
 ## Project layout
 
 ```
 src/lib/           booths, schedule window, types, db (reservations + users),
-                   auth (roles + scrypt), email, templates, turnstile, cors
+                   auth (roles + scrypt), email, templates, turnstile, cors,
+                   events + kafka (domain-event skeleton)
 src/app/           / (member booking), /login, /dashboard and /users (admin),
                    /activate (member setup), /api/{login,availability,
                    reservations,users,activate}
+src/server/        gRPC server + standalone entrypoint (`npm run grpc`)
 src/components/ui/ shadcn Input + the typed time-picker field
+proto/             scheduler.proto (gRPC service definition)
 tests/             unit / integration / functional (Vitest)
 ```
 
@@ -164,3 +186,13 @@ and are type-checked on their own (`tsconfig.tests.json`), so they stay out of
 
 `make check` runs the whole gate (format, lint, types, and the test suite);
 `make fmt` auto-fixes formatting and lint.
+
+## License
+
+The code is open source under the [Apache License 2.0](LICENSE). You may use,
+modify, self-host, and redistribute it, including commercially.
+
+The **name and branding are reserved.** "Innospace Scheduler", the "InnoSpace"
+name, and the InnoSpace Tirana logos are trademarks of InnoSpace Tirana and are
+not covered by the code license. No white-labeling: a public fork must ship
+under a different name. See [TRADEMARK.md](TRADEMARK.md) for details.

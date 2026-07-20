@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package scheduler;
+
+// A read-only gRPC surface over the scheduler, intended for other internal
+// services (dashboards, room displays, bots) that need booth/availability data
+// without going through the web UI. This is a skeleton: extend as needed.
+service SchedulerService {
+  rpc ListBooths (Empty) returns (BoothList);
+  rpc GetAvailability (AvailabilityRequest) returns (AvailabilityResponse);
+  rpc GetReservation (GetReservationRequest) returns (ReservationResponse);
+}
+
+message Empty {}
+
+message Booth {
+  string id = 1;
+  string name = 2;
+  int32 capacity = 3;
+}
+
+message BoothList {
+  repeated Booth booths = 1;
+}
+
+message AvailabilityRequest {
+  string booth_id = 1;
+  string date = 2; // YYYY-MM-DD
+}
+
+message BookedRange {
+  string starts_at = 1; // YYYY-MM-DDTHH:MM
+  string ends_at = 2;
+  string booked_by = 3;
+}
+
+message AvailabilityResponse {
+  string booth_id = 1;
+  string date = 2;
+  repeated BookedRange booked = 3;
+}
+
+message GetReservationRequest {
+  string id = 1;
+}
+
+message Reservation {
+  string id = 1;
+  string status = 2;
+  string booth_id = 3;
+  string starts_at = 4;
+  string ends_at = 5;
+  string full_name = 6;
+}
+
+message ReservationResponse {
+  bool found = 1;
+  Reservation reservation = 2;
+}

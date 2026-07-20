@@ -25,6 +25,9 @@ for (const key of [
   "TURNSTILE_SECRET_KEY",
   "ALLOWED_ORIGINS",
   "DATA_FILE",
+  // Keep the events skeleton dormant in tests: no broker → publish is a no-op,
+  // so route handlers never try to open a Kafka connection.
+  "KAFKA_BROKERS",
 ]) {
   delete process.env[key];
 }
