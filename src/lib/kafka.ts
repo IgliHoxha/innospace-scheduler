@@ -1,6 +1,6 @@
 // Kafka producer skeleton. Feature-flagged by KAFKA_BROKERS: while it's unset,
 // publishing is a no-op (returns immediately), so the app runs unchanged until a
-// broker is configured — the same pattern as the Resend mailer and Turnstile.
+// broker is configured - the same pattern as the Resend mailer and Turnstile.
 //
 // Publishing is best-effort and must never block or fail a request: callers wrap
 // it in the fire-and-forget `publishEvent`, which swallows errors after logging.
@@ -21,7 +21,7 @@ function brokers(): string[] {
     .filter(Boolean);
 }
 
-/** True once KAFKA_BROKERS is set — otherwise every publish is a no-op. */
+/** True once KAFKA_BROKERS is set - otherwise every publish is a no-op. */
 export function isKafkaEnabled(): boolean {
   return brokers().length > 0;
 }
@@ -62,7 +62,7 @@ async function getProducer(): Promise<Producer> {
 }
 
 /**
- * Publish an event. No-op when Kafka is disabled; otherwise best-effort — errors
+ * Publish an event. No-op when Kafka is disabled; otherwise best-effort - errors
  * are logged, never thrown, so a broker hiccup can't break a booking. `key`
  * (e.g. the reservation id) keeps a stream of events for one entity ordered.
  */

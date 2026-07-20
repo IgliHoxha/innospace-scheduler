@@ -1,7 +1,7 @@
 // Auth guards for API route handlers. Kept separate from auth.ts (which is pure
 // crypto, no Next dependency) because these pull in NextRequest/NextResponse.
 //
-// Usage — the guard returns the Session, or a ready-made 401/403 response to
+// Usage - the guard returns the Session, or a ready-made 401/403 response to
 // return as-is:
 //
 //   const session = requireSession(req);

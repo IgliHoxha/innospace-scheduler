@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Reservation, ReservationStatus } from "@/lib/types";
 import type { ReservationPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
+import { SiteFooter } from "@/components/SiteFooter";
 import {
   boothLabel,
   emailBodyText,
@@ -226,7 +227,10 @@ export default function DashboardClient({
 
       <div className="container">
         <div className="page-head">
-          <h1 className="page-title">Bookings</h1>
+          <div>
+            <span className="eyebrow">Innospace Tirana</span>
+            <h1 className="page-title">Bookings</h1>
+          </div>
           <a className="btn" href="/users">
             + Add / manage members
           </a>
@@ -569,6 +573,7 @@ export default function DashboardClient({
           </div>
         </div>
       )}
+      <SiteFooter />
     </>
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import TimeRangePicker from "./TimeRangePicker";
+import { SiteFooter } from "@/components/SiteFooter";
 import type { Booth } from "@/lib/booths";
 import type { Reservation } from "@/lib/types";
 import { MAX_NOTE } from "@/lib/types";
@@ -507,6 +508,7 @@ export default function BookingClient({
           </div>
         </div>
       )}
+      <SiteFooter />
     </>
   );
 }

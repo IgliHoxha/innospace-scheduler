@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_EMAIL } from "@/lib/types";
+import { SiteFooter } from "@/components/SiteFooter";
 import type { User } from "@/lib/types";
 
 export default function UsersClient({
@@ -274,6 +275,7 @@ export default function UsersClient({
           </div>
         </div>
       )}
+      <SiteFooter />
     </>
   );
 }

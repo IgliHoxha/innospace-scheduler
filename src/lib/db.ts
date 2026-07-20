@@ -63,7 +63,7 @@ export class SlotUnavailableError extends Error {
 // the version is bumped. A fresh DB starts at version 0 and runs them all.
 //
 // To change the schema: append a new { version: N+1, up } entry with the
-// ALTER/CREATE statements — never edit an existing one (it has already run on
+// ALTER/CREATE statements - never edit an existing one (it has already run on
 // live DBs). Migration 1 is the baseline and uses IF NOT EXISTS so it's a no-op
 // on a DB that was created before migrations existed.
 type Migration = { version: number; up: (db: Database.Database) => void };
@@ -87,7 +87,7 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
-/** The schema version this build expects — the highest migration defined. */
+/** The schema version this build expects - the highest migration defined. */
 export const SCHEMA_VERSION = MIGRATIONS.reduce(
   (max, m) => Math.max(max, m.version),
   0,
