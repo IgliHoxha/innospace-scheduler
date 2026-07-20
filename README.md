@@ -99,22 +99,49 @@ Scheduling knobs (all optional, with sensible defaults): `OPEN_HOUR`,
 `AUTO_APPROVE_MAX_HOURS`, `INVITE_TTL_DAYS`. Booths come from `SCHEDULER_BOOTHS`
 (`id:Name:capacity`, comma-separated); omit it for the built-in defaults.
 
+**Login brute-force protection** (see `src/lib/rate-limit.ts`) uses two buckets,
+because the whole coworking space shares one public IP:
+
+| Var | Purpose |
+| --- | --- |
+| `LOGIN_MAX_ATTEMPTS` | Per-account failures before an escalating lockout (default `5`). The account is **never** permanently banned, so an attacker can't lock a member out for good. |
+| `LOGIN_BLOCK_SECONDS` | Base lockout seconds; escalates ×N per lockout (default `60`). |
+| `LOGIN_IP_MAX_ATTEMPTS` | Per-IP failures (across any accounts) before an IP lockout (default `20`, tolerant of the shared office IP). |
+| `LOGIN_IP_BLOCK_SECONDS` | Per-IP base lockout seconds (default `60`). |
+| `LOGIN_MAX_LOCKOUTS` | Per-IP lockouts before the IP is banned outright until restart (default `10`). |
+
+State is in-memory per-process — not shared across machines or persisted across
+restarts, which is fine for a single Fly machine.
+
 Secrets live only in `.env` (gitignored) locally and in `fly secrets` in
 production. They are never committed.
 
 ## Deploy (Fly.io)
 
 `fly.toml` targets the `innospace-scheduler` app in region `fra`, with a 1 GB
-volume (`scheduler_data`) mounted at `/app/data` for the SQLite file. Non-secret
-config lives in `fly.toml`; secrets are set separately:
+volume (`scheduler_data`) mounted at `/app/data` for the SQLite file. It holds
+**only non-sensitive infrastructure** — there is **no `[env]` block**: every
+runtime variable (paths, sender, base URL, scheduling window, booths, login
+throttling, credentials, API keys) is stored as an **encrypted Fly secret**, so
+nothing environment-specific or sensitive is committed. `.env.example` is the
+human-readable catalogue of every var.
 
 ```bash
-fly secrets set AUTH_SECRET=... DASHBOARD_PASSWORD=... RESEND_API_KEY=...
+# All runtime config is a secret. Set each var from .env.example, e.g.:
+fly secrets set \
+  AUTH_SECRET="$(openssl rand -hex 32)" DASHBOARD_USERNAME=admin DASHBOARD_PASSWORD='…' \
+  RESEND_API_KEY=re_xxx EMAIL_FROM='scheduler@innospacetirana.com' \
+  APP_BASE_URL='https://scheduler.innospacetirana.com' NODE_ENV=production PORT=4001 \
+  HOSTNAME=0.0.0.0 TZ=Europe/Tirane DATA_FILE=/app/data/scheduler.db \
+  LOGIN_MAX_ATTEMPTS=5 LOGIN_BLOCK_SECONDS=60 \
+  LOGIN_IP_MAX_ATTEMPTS=20 LOGIN_IP_BLOCK_SECONDS=60 LOGIN_MAX_LOCKOUTS=10
 fly deploy
 ```
 
-Pushing to `master` also deploys via GitHub Actions, which needs a `FLY_API_TOKEN`
-repository secret.
+To read or change a value later, use `fly secrets list` (names only) and
+`fly secrets set KEY=value` (triggers a rolling restart) — there is no plaintext
+`[env]` to edit. Pushing to `master` also deploys via GitHub Actions, which needs
+a `FLY_API_TOKEN` repository secret.
 
 The SQLite schema is versioned with `PRAGMA user_version` and applied by an
 ordered list of migrations in `src/lib/db.ts` (`MIGRATIONS`). On first query the
