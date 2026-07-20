@@ -14,6 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only --ha=false
+        # fly.toml is gitignored (config lives in `fly secrets`); the committed
+        # fly.toml.example carries the non-secret app config CI deploys with.
+      - run: flyctl deploy --remote-only --ha=false --config fly.toml.example
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

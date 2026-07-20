@@ -1,0 +1,31 @@
+# Template for fly.toml — copy to `fly.toml` (which is gitignored) before deploying:
+#   cp fly.toml.example fly.toml
+#
+# There is intentionally NO [env] block: every runtime variable (paths, sender,
+# base URL, scheduling window, booths, login throttling, credentials, API keys) is
+# stored as an encrypted Fly secret via `fly secrets set`, so nothing
+# environment-specific or sensitive is committed. See .env.example for the full
+# list of vars.
+
+app = 'innospace-scheduler'
+primary_region = 'fra'
+
+[build]
+
+[[mounts]]
+  source = 'scheduler_data'
+  destination = '/app/data'
+
+[http_service]
+  internal_port = 4001
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256

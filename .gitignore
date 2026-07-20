@@ -29,3 +29,7 @@ next-env.d.ts
 
 # local agent instructions, kept on the machine and out of the repo
 CLAUDE.md
+
+# Deploy config (env-specific; use fly.toml.example as the template).
+# Not committed - configuration lives in `fly secrets`.
+fly.toml
