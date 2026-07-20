@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getReservation, updateReservationStatus } from "@/lib/db";
 import { sendReservationEmail } from "@/lib/email";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { RESERVATION_STATUSES, MAX_EMAIL_BODY } from "@/lib/types";
 import type { ReservationStatus } from "@/lib/types";
 
@@ -15,13 +15,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const session = requireSession(req);
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
   const { status, emailBody } = (await req.json().catch(() => ({}))) as {

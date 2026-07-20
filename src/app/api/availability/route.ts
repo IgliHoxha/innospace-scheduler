@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { bookedRanges } from "@/lib/db";
 import { isBoothId } from "@/lib/booths";
 import {
@@ -22,13 +22,8 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
  * and pre-empt a clash. `earliest` is the first time still bookable that day.
  */
 export async function GET(req: NextRequest) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const session = requireSession(req);
+  if (session instanceof NextResponse) return session;
 
   const sp = req.nextUrl.searchParams;
   const boothId = sp.get("booth") ?? "";

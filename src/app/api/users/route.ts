@@ -1,31 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listUsers, inviteUser, DuplicateEmailError } from "@/lib/db";
-import {
-  verifySessionToken,
-  createInviteToken,
-  SESSION_COOKIE,
-} from "@/lib/auth";
+import { createInviteToken } from "@/lib/auth";
+import { requireAdmin } from "@/lib/api-auth";
 import { sendInviteEmail } from "@/lib/email";
 import { MAX_EMAIL } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function requireAdmin(req: NextRequest) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  return session?.role === "admin" ? session : null;
-}
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Admin-only: list all members. */
 export async function GET(req: NextRequest) {
-  if (!requireAdmin(req)) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const admin = requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
   return NextResponse.json({ ok: true, users: await listUsers() });
 }
 
@@ -35,12 +23,8 @@ export async function GET(req: NextRequest) {
  * pending email resends the invite.
  */
 export async function POST(req: NextRequest) {
-  if (!requireAdmin(req)) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const admin = requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const email = typeof body.email === "string" ? body.email.trim() : "";

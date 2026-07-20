@@ -7,6 +7,12 @@ import type { Booth } from "@/lib/booths";
 import type { Reservation } from "@/lib/types";
 import { MAX_NOTE } from "@/lib/types";
 import {
+  approvalRequiredFor,
+  findOverlap,
+  meetsMinDuration,
+  noteRequiredFor,
+} from "@/lib/booking-rules";
+import {
   boothLabel,
   formatDateLong,
   timeText,
@@ -121,8 +127,8 @@ export default function BookingClient({
   const startMin = start ? toMinutes(start) : null;
   const endMin = end ? toMinutes(end) : null;
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
-  const mustNote = duration >= autoApproveMaxHours * 60;
-  const willNeedApproval = duration > autoApproveMaxHours * 60;
+  const mustNote = noteRequiredFor(duration, autoApproveMaxHours);
+  const willNeedApproval = approvalRequiredFor(duration, autoApproveMaxHours);
 
   // Bookable free stretches. If none (day over or fully taken) we hide the picker
   // and say why instead.
@@ -151,10 +157,16 @@ export default function BookingClient({
     if (!avail || !start || !end || startMin == null || endMin == null)
       return "";
     if (endMin <= startMin) return "The end time must be after the start time.";
-    if (duration < minBookingMinutes)
+    if (!meetsMinDuration(duration, minBookingMinutes))
       return `Bookings must be at least ${minBookingMinutes} minutes long.`;
-    const clash = avail.booked.find(
-      (b) => toMinutes(b.start) < endMin && toMinutes(b.end) > startMin,
+    const clash = findOverlap(
+      startMin,
+      endMin,
+      avail.booked.map((b) => ({
+        start: toMinutes(b.start),
+        end: toMinutes(b.end),
+        label: b.label,
+      })),
     );
     if (clash) return `That overlaps an existing booking (${clash.label}).`;
     if (mustNote && !note.trim())

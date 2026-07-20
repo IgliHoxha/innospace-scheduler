@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteUser } from "@/lib/db";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { requireAdmin } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -9,13 +9,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (session?.role !== "admin") {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const admin = requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
 
   const { id } = await params;
   const removed = await deleteUser(id);

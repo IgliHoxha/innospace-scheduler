@@ -1,6 +1,7 @@
 // Time rules. A booking is a start/end local datetime "YYYY-MM-DDTHH:MM" (no TZ:
 // set TZ so the server matches the space). The format sorts as text, so SQLite
 // indexes it directly and the date is the first 10 chars.
+import { approvalRequiredFor, noteRequiredFor } from "./booking-rules";
 
 function intEnv(name: string, fallback: number): number {
   const v = Number(process.env[name]);
@@ -86,7 +87,10 @@ export function durationHours(startsAt: string, endsAt: string): number {
 
 /** Does this booking exceed the auto-approve limit (so needs admin approval)? */
 export function needsApproval(startsAt: string, endsAt: string): boolean {
-  return durationHours(startsAt, endsAt) > autoApproveMaxHours();
+  return approvalRequiredFor(
+    durationMinutes(startsAt, endsAt),
+    autoApproveMaxHours(),
+  );
 }
 
 /**
@@ -94,7 +98,10 @@ export function needsApproval(startsAt: string, endsAt: string): boolean {
  * >= needs a note, > also needs approval.
  */
 export function noteRequired(startsAt: string, endsAt: string): boolean {
-  return durationHours(startsAt, endsAt) >= autoApproveMaxHours();
+  return noteRequiredFor(
+    durationMinutes(startsAt, endsAt),
+    autoApproveMaxHours(),
+  );
 }
 
 /** Is this time-of-day on the step grid and inside the opening window? */

@@ -7,7 +7,7 @@ import {
 } from "@/lib/db";
 import { RESERVATION_STATUSES, MAX_NOTE } from "@/lib/types";
 import type { ReservationStatus } from "@/lib/types";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { requireSession, requireAdmin } from "@/lib/api-auth";
 import { boothName, isBoothId } from "@/lib/booths";
 import {
   isBookableDate,
@@ -24,19 +24,15 @@ import {
 } from "@/lib/schedule";
 import { sendReservationEmail } from "@/lib/email";
 import { publishReservationEvent } from "@/lib/kafka";
+import { meetsMinDuration } from "@/lib/booking-rules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Members book a booth slot. Identity comes from the session, not the body. */
 export async function POST(req: NextRequest) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, error: "Please sign in to book." },
-      { status: 401 },
-    );
-  }
+  const session = requireSession(req);
+  if (session instanceof NextResponse) return session;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const boothId = typeof body.boothId === "string" ? body.boothId : "";
@@ -85,7 +81,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (durationMinutes(startsAt, endsAt) < minBookingMinutes()) {
+  if (
+    !meetsMinDuration(durationMinutes(startsAt, endsAt), minBookingMinutes())
+  ) {
     return NextResponse.json(
       {
         ok: false,
@@ -178,13 +176,8 @@ const VALID_FILTERS: readonly string[] = ["all", ...RESERVATION_STATUSES];
  * bookings (their "my bookings" list).
  */
 export async function GET(req: NextRequest) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const session = requireSession(req);
+  if (session instanceof NextResponse) return session;
 
   const sp = req.nextUrl.searchParams;
   const filterParam = sp.get("status") ?? "all";
@@ -204,13 +197,8 @@ export async function GET(req: NextRequest) {
 
 /** Admin-only: permanently remove soft-deleted reservations. */
 export async function DELETE(req: NextRequest) {
-  const session = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session || session.role !== "admin") {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const admin = requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
 
   const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
   if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
