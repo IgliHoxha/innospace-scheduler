@@ -196,3 +196,8 @@ The **name and branding are reserved.** "Innospace Scheduler", the "InnoSpace"
 name, and the InnoSpace Tirana logos are trademarks of InnoSpace Tirana and are
 not covered by the code license. No white-labeling: a public fork must ship
 under a different name. See [TRADEMARK.md](TRADEMARK.md) for details.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up and submit changes, and
+[SECURITY.md](SECURITY.md) to report a vulnerability privately.
