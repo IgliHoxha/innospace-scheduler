@@ -37,14 +37,9 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
   process.env[key] = value;
 }
 
-// Optional feature-flags stay OFF for a deterministic suite (email skipped, no
-// captcha, CORS wildcard). DATA_FILE is set per-test by loadDb() to a temp file.
-for (const key of [
-  "RESEND_API_KEY",
-  "TURNSTILE_SECRET_KEY",
-  "ALLOWED_ORIGINS",
-  "DATA_FILE",
-]) {
+// Optional feature-flags stay OFF for a deterministic suite (email skipped,
+// CORS wildcard). DATA_FILE is set per-test by loadDb() to a temp file.
+for (const key of ["RESEND_API_KEY", "ALLOWED_ORIGINS", "DATA_FILE"]) {
   delete process.env[key];
 }
 

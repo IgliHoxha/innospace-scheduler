@@ -1,6 +1,6 @@
 // Central env access. Required vars throw at read time if unset/blank (no
-// defaults) and are read lazily so tests can vi.stubEnv them. Only the three
-// feature-flags (RESEND_API_KEY, TURNSTILE_SECRET_KEY, ALLOWED_ORIGINS) are optional.
+// defaults) and are read lazily so tests can vi.stubEnv them. Only the two
+// feature-flags (RESEND_API_KEY, ALLOWED_ORIGINS) are optional.
 import type { ContactInfo } from "./types";
 
 /** A required string env var. Throws if unset or blank. */

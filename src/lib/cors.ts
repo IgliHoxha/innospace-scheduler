@@ -12,7 +12,7 @@ function allowedOrigins(): string[] {
 /**
  * In-app origin gate (CORS headers are browser-enforced; this actually blocks).
  * "*" allows all; a disallowed Origin/Referer is rejected; a missing one can't
- * be enforced, so it's allowed and left to the honeypot / Turnstile layers.
+ * be enforced, so it's allowed and left to the session guard.
  */
 export function isOriginAllowed(origin: string | null): boolean {
   const allowed = allowedOrigins();

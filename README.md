@@ -32,7 +32,6 @@ deploy to Fly.io.
   remove members.
 - **Typed time picker** built on Tailwind CSS and shadcn/ui: type the digits,
   arrow up/down to step, arrow left/right to move between fields.
-- Optional **Cloudflare Turnstile** bot protection, feature-flagged by its secret.
 
 ## How reservations work
 
@@ -176,7 +175,7 @@ data loss. To change the schema, **append** a new `{ version, up }` entry with t
 
 ```
 src/lib/           booths, schedule window, types, db (reservations + users),
-                   auth (roles + scrypt), email, templates, turnstile, cors
+                   auth (roles + scrypt), email, templates, cors
 src/app/           / (member reservation), /login, /dashboard and /users (admin),
                    /activate (member setup), /api/{login,availability,
                    reservations,users,activate}
@@ -195,7 +194,7 @@ make coverage        # V8 coverage report
 ```
 
 - **Unit** cover the pure logic (schedule/time rules, auth tokens + scrypt,
-  templates, booths, the time-picker helpers, cors/turnstile).
+  templates, booths, the time-picker helpers, cors).
 - **Integration** exercise `db.ts` against a throwaway SQLite file per test
   (overlap atomicity, the member lifecycle).
 - **Functional** drive each API route handler end to end (validation, status
