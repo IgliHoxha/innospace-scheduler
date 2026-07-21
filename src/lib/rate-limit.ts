@@ -1,15 +1,7 @@
-// In-memory brute-force guard for the login route. The app runs as a single
-// long-lived Node process (one Fly machine), so a module-level Map is sufficient
-// - no external store needed. State resets on redeploy/restart, which is fine for
-// login throttling.
-//
-// The scheduler is members-only and the whole coworking space shares one public
-// IP, so a single IP bucket would let one attacker (or one confused member) lock
-// everyone out. We therefore track TWO independent buckets:
-//   • per-account - low threshold, escalating lockout, NEVER a permanent ban
-//     (an attacker must not be able to lock a member out forever).
-//   • per-IP      - high threshold (tolerates the shared office IP), escalating
-//     lockout, and a ban only after sustained abuse.
+// In-memory login brute-force guard (module-level Map; single long-lived Fly
+// machine, so state resets on restart). Two buckets so one attacker can't lock
+// everyone out: per-account (escalating, never a permanent ban) + per-IP
+// (lenient, tolerates the shared office IP).
 
 import { requireIntEnv } from "./env-app";
 

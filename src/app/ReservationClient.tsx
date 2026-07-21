@@ -184,7 +184,7 @@ export default function ReservationClient({
       };
       if (res.ok && json.ok) {
         const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
-        const when = `${booth} on ${formatDateLong(date)}, ${start} – ${end}`;
+        const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
         setSuccess(
           json.reservation?.status === "pending"
             ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. The slot is held for you meanwhile.`
@@ -313,7 +313,7 @@ export default function ReservationClient({
         <div className="field-label">
           Time{" "}
           <span className="hint">
-            {avail ? `· open ${avail.opens} – ${avail.closes}` : "·"}
+            {avail ? `· open ${avail.opens} - ${avail.closes}` : "·"}
           </span>
         </div>
         <div className="card time-card">
@@ -324,7 +324,7 @@ export default function ReservationClient({
           ) : noTimeLeft ? (
             <div className="empty">
               {dayIsOver
-                ? `We're closed for today (${avail.opens} – ${avail.closes}). Pick another date.`
+                ? `We're closed for today (${avail.opens} - ${avail.closes}). Pick another date.`
                 : "This booth is fully reserved on this day. Try another booth or date."}
             </div>
           ) : (
@@ -402,7 +402,7 @@ export default function ReservationClient({
             {start && end && !problem ? (
               <>
                 <strong>{selectedBooth?.name}</strong> ·{" "}
-                {dates.find((d) => d.value === date)?.label} · {start} – {end}
+                {dates.find((d) => d.value === date)?.label} · {start} - {end}
                 {willNeedApproval && (
                   <span className="hint"> · needs admin approval</span>
                 )}

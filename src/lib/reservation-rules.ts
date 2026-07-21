@@ -1,10 +1,6 @@
 // Pure reservation-rule predicates. Config is injected (not read from env) so the
-// same definitions back both sides that must agree:
-//   - the server, via schedule.ts (env-configured), and
-//   - the client reservation form, which receives the config as props.
-// Keeping the rule math here means the two can't drift apart.
-//
-// All durations are in minutes; times of day are minutes-since-midnight.
+// same math backs both the server (schedule.ts) and the client form (via props),
+// so they can't drift. Durations in minutes; times of day minutes-since-midnight.
 
 /** Is the reservation at least the minimum length? */
 export function meetsMinDuration(
@@ -35,7 +31,7 @@ export function approvalRequiredFor(
 
 /**
  * The first reserved range that overlaps [startMin, endMin), or null. Half-open,
- * so touching edges (10:00–11:00 and 11:00–12:00) don't clash. Generic over the
+ * so touching edges (10:00-11:00 and 11:00-12:00) don't clash. Generic over the
  * reserved item so callers keep whatever extra fields (label, etc.) they carry.
  */
 export function findOverlap<T extends { start: number; end: number }>(

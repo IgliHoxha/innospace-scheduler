@@ -24,7 +24,7 @@ const contact: ContactInfo = {
 
 describe("reservation display helpers", () => {
   it("timeText uses the product en dash, or a placeholder when unset", () => {
-    expect(t.timeText(base)).toBe("09:30 – 11:00");
+    expect(t.timeText(base)).toBe("09:30 - 11:00");
     expect(
       t.timeText({ ...base, startsAt: undefined, endsAt: undefined }),
     ).toBe("-");
@@ -37,7 +37,7 @@ describe("reservation display helpers", () => {
 
   it("reservationSummary joins booth, date and time", () => {
     expect(t.reservationSummary(base)).toBe(
-      "Booth 1 · Tuesday, 14 July 2026 · 09:30 – 11:00",
+      "Booth 1 · Tuesday, 14 July 2026 · 09:30 - 11:00",
     );
   });
 });
@@ -68,7 +68,7 @@ describe("email copy", () => {
     );
     expect(body).toContain("Hi Ada,");
     expect(body).toContain("Booth 1");
-    expect(body).toContain("09:30 – 11:00");
+    expect(body).toContain("09:30 - 11:00");
     expect(body).toContain("Note: Client call");
   });
 

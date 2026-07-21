@@ -1,4 +1,4 @@
-# Template for fly.toml — copy to `fly.toml` (which is gitignored) before deploying:
+# Template for fly.toml: copy to `fly.toml` (which is gitignored) before deploying:
 #   cp fly.toml.example fly.toml
 #
 # There is intentionally NO [env] block: every runtime variable (paths, sender,

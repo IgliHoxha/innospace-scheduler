@@ -1,6 +1,5 @@
-// Cookie auth with two roles: "admin" (env credentials) and "user" (members
-// stored in the DB). A valid login mints an HMAC-signed token that carries the
-// role + subject identity; it's verified on every request.
+// Cookie auth: an HMAC-signed token carries the role ("admin" via env creds, or
+// "user" for DB-stored members) plus subject identity, verified on each request.
 import { createHmac, timingSafeEqual, scryptSync, randomBytes } from "crypto";
 import { requireEnv, requireIntEnv } from "./env-app";
 

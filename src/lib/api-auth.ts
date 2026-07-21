@@ -1,12 +1,6 @@
-// Auth guards for API route handlers. Kept separate from auth.ts (which is pure
-// crypto, no Next dependency) because these pull in NextRequest/NextResponse.
-//
-// Usage - the guard returns the Session, or a ready-made 401/403 response to
-// return as-is:
-//
-//   const session = requireSession(req);
-//   if (session instanceof NextResponse) return session;
-//   // session is now a narrowed Session
+// Auth guards for route handlers. Separate from auth.ts (pure crypto, no Next
+// dep) since these pull in Next types. Each returns the Session, or a ready-made
+// 401/403 to return as-is: `if (x instanceof NextResponse) return x`.
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, SESSION_COOKIE, type Session } from "./auth";
 

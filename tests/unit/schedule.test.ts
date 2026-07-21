@@ -52,7 +52,7 @@ describe("durations", () => {
 
   it("renders the range label with the product en dash", () => {
     expect(schedule.rangeLabel("2026-07-16T09:30", "2026-07-16T11:00")).toBe(
-      "09:30 – 11:00",
+      "09:30 - 11:00",
     );
   });
 });

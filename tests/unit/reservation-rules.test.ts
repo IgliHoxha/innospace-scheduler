@@ -29,15 +29,15 @@ describe("note / approval thresholds", () => {
 
 describe("findOverlap", () => {
   const reserved = [
-    { start: 600, end: 660, label: "10:00 – 11:00" },
-    { start: 780, end: 840, label: "13:00 – 14:00" },
+    { start: 600, end: 660, label: "10:00 - 11:00" },
+    { start: 780, end: 840, label: "13:00 - 14:00" },
   ];
   it("finds an overlapping range and returns it (with its extra fields)", () => {
-    expect(findOverlap(630, 690, reserved)?.label).toBe("10:00 – 11:00");
+    expect(findOverlap(630, 690, reserved)?.label).toBe("10:00 - 11:00");
   });
   it("treats touching edges as non-overlapping (half-open)", () => {
-    expect(findOverlap(660, 720, reserved)).toBeNull(); // starts exactly when 10–11 ends
-    expect(findOverlap(540, 600, reserved)).toBeNull(); // ends exactly when 10–11 starts
+    expect(findOverlap(660, 720, reserved)).toBeNull(); // starts exactly when 10-11 ends
+    expect(findOverlap(540, 600, reserved)).toBeNull(); // ends exactly when 10-11 starts
   });
   it("returns null when the slot is free", () => {
     expect(findOverlap(660, 780, reserved)).toBeNull();

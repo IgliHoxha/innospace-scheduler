@@ -10,7 +10,7 @@ export type EmailStatus = Extract<
   "confirmed" | "cancelled" | "pending"
 >;
 
-/** The reserved time range as text, e.g. "09:30 – 11:00". */
+/** The reserved time range as text, e.g. "09:30 - 11:00". */
 export function timeText(reservation: Reservation): string {
   if (!reservation.startsAt || !reservation.endsAt) return "-";
   return rangeLabel(reservation.startsAt, reservation.endsAt);

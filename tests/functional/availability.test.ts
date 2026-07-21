@@ -62,7 +62,7 @@ describe("GET /api/availability", () => {
     expect(body.reserved[0]).toMatchObject({
       start: "14:00",
       end: "15:00",
-      label: "14:00 – 15:00",
+      label: "14:00 - 15:00",
       by: "Ada",
       mine: true,
     });

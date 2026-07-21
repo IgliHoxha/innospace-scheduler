@@ -132,7 +132,7 @@ because the whole coworking space shares one public IP:
 | `LOGIN_IP_BLOCK_SECONDS` | Per-IP base lockout seconds (default `60`). |
 | `LOGIN_MAX_LOCKOUTS` | Per-IP lockouts before the IP is banned outright until restart (default `10`). |
 
-State is in-memory per-process — not shared across machines or persisted across
+State is in-memory per-process: not shared across machines or persisted across
 restarts, which is fine for a single Fly machine.
 
 Secrets live only in `.env` (gitignored) locally and in `fly secrets` in
@@ -142,7 +142,7 @@ production. They are never committed.
 
 `fly.toml` targets the `innospace-scheduler` app in region `fra`, with a 1 GB
 volume (`scheduler_data`) mounted at `/app/data` for the SQLite file. It holds
-**only non-sensitive infrastructure** — there is **no `[env]` block**: every
+**only non-sensitive infrastructure**, with **no `[env]` block**: every
 runtime variable (paths, sender, base URL, scheduling window, booths, login
 throttling, credentials, API keys) is stored as an **encrypted Fly secret**, so
 nothing environment-specific or sensitive is committed. `.env.example` is the
@@ -161,14 +161,14 @@ fly deploy
 ```
 
 To read or change a value later, use `fly secrets list` (names only) and
-`fly secrets set KEY=value` (triggers a rolling restart) — there is no plaintext
+`fly secrets set KEY=value` (triggers a rolling restart). There is no plaintext
 `[env]` to edit. Pushing to `master` also deploys via GitHub Actions, which needs
 a `FLY_API_TOKEN` repository secret.
 
 The SQLite schema is versioned with `PRAGMA user_version` and applied by an
 ordered list of migrations in `src/lib/db.ts` (`MIGRATIONS`). On first query the
 DB runs every migration newer than its current version, each in a transaction, so
-a fresh DB is built and an existing one is upgraded in place — no manual step, no
+a fresh DB is built and an existing one is upgraded in place: no manual step, no
 data loss. To change the schema, **append** a new `{ version, up }` entry with the
 `ALTER`/`CREATE` statements; never edit one that has already shipped.
 

@@ -1,6 +1,6 @@
-// Time rules. A reservation is a start/end local datetime "YYYY-MM-DDTHH:MM" (no TZ:
-// set TZ so the server matches the space). The format sorts as text, so SQLite
-// indexes it directly and the date is the first 10 chars.
+// Time rules. A reservation is a start/end local datetime "YYYY-MM-DDTHH:MM" (no
+// TZ suffix: set TZ so the server matches the space). The format sorts as text,
+// so SQLite indexes it directly and the date is the first 10 chars.
 import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
 import { pad2 } from "./utils";
@@ -111,9 +111,9 @@ export function isValidTimeOfDay(minutes: number): boolean {
   return minutes % stepMinutes() === 0;
 }
 
-/** "09:30 – 11:00" for a reservation. */
+/** "09:30 - 11:00" for a reservation. */
 export function rangeLabel(startsAt: string, endsAt: string): string {
-  return `${timeOf(startsAt)} – ${timeOf(endsAt)}`;
+  return `${timeOf(startsAt)} - ${timeOf(endsAt)}`;
 }
 
 /** "1h 30m" / "45m" for a plain minute count. */

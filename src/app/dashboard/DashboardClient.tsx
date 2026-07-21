@@ -619,7 +619,7 @@ function Pagination({
   return (
     <div className="pagination">
       <span className="pagination-info">
-        {first}–{lastRow} of {total}
+        {first}-{lastRow} of {total}
         {loading ? " · loading…" : ""}
       </span>
       {totalPages > 1 && (
