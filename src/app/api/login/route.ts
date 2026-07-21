@@ -7,6 +7,8 @@ import {
   SESSION_TTL_SECONDS,
   type Session,
 } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
 import { findUserByEmail } from "@/lib/db";
 import { requireEnv } from "@/lib/env-app";
 import { MAX_EMAIL, MAX_PASSWORD } from "@/lib/types";
@@ -54,6 +56,9 @@ function lockedResponse(retryAfterSeconds: number) {
  * in with their email. Both use the same form field ("login").
  */
 export async function POST(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const ip = clientKey(req.headers);
 
   const { login, password } = (await req.json().catch(() => ({}))) as {
@@ -129,7 +134,16 @@ export async function POST(req: NextRequest) {
   return res;
 }
 
-export async function DELETE() {
+// Logout. Require a valid session so a forged cross-site DELETE can't clear the
+// cookie: with sameSite=lax the session cookie isn't sent cross-site on a DELETE,
+// so requireSession rejects it. A real (same-site) logout carries the cookie.
+export async function DELETE(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
+  const session = requireSession(req);
+  if (session instanceof NextResponse) return session;
+
   const res = NextResponse.json({ ok: true });
   res.cookies.delete(SESSION_COOKIE);
   return res;

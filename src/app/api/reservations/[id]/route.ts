@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getReservation, updateReservationStatus } from "@/lib/db";
 import { sendReservationEmail } from "@/lib/email";
 import { requireSession } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
 import { RESERVATION_STATUSES, MAX_EMAIL_BODY } from "@/lib/types";
 import type { ReservationStatus } from "@/lib/types";
 
@@ -15,6 +16,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const session = requireSession(req);
   if (session instanceof NextResponse) return session;
 

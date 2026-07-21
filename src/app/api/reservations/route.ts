@@ -8,6 +8,7 @@ import {
 import { RESERVATION_STATUSES, MAX_NOTE } from "@/lib/types";
 import type { ReservationStatus } from "@/lib/types";
 import { requireSession, requireAdmin } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
 import { boothName, isBoothId } from "@/lib/booths";
 import {
   isBookableDate,
@@ -30,6 +31,9 @@ export const dynamic = "force-dynamic";
 
 /** Members book a booth slot. Identity comes from the session, not the body. */
 export async function POST(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const session = requireSession(req);
   if (session instanceof NextResponse) return session;
 
@@ -192,6 +196,9 @@ export async function GET(req: NextRequest) {
 
 /** Admin-only: permanently remove soft-deleted reservations. */
 export async function DELETE(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const admin = requireAdmin(req);
   if (admin instanceof NextResponse) return admin;
 

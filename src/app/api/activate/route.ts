@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { activateUser, getUserById, AlreadyActivatedError } from "@/lib/db";
+import { requireAllowedOrigin } from "@/lib/cors";
 import { MAX_NAME, MIN_PASSWORD, MAX_PASSWORD } from "@/lib/types";
 import {
   verifyInviteToken,
@@ -15,6 +16,9 @@ export const runtime = "nodejs";
  * the signed invite token, not the body. On success we sign them straight in.
  */
 export async function POST(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const { token, name, password } = (await req.json().catch(() => ({}))) as {
     token?: string;
     name?: string;

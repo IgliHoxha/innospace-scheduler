@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { makeRequest, resetApp } from "../helpers/app";
+import { adminToken, makeRequest, resetApp } from "../helpers/app";
 import {
   CORRECT,
   DEFAULT_ADMIN_PASS,
@@ -95,11 +95,22 @@ describe("POST /api/login", () => {
 });
 
 describe("DELETE /api/login", () => {
-  it("signs out by clearing the session cookie", async () => {
-    const res = await route.DELETE();
+  it("signs out by clearing the session cookie when authenticated", async () => {
+    const res = await route.DELETE(
+      makeRequest("/api/login", { method: "DELETE", token: adminToken() }),
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     // Deletion is surfaced as an expired/empty cookie.
+    expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
+  });
+
+  it("rejects a logout with no session (forged cross-site DELETE)", async () => {
+    const res = await route.DELETE(
+      makeRequest("/api/login", { method: "DELETE" }),
+    );
+    expect(res.status).toBe(401);
+    // No Set-Cookie: an unauthenticated request can't clear anyone's session.
     expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
   });
 });

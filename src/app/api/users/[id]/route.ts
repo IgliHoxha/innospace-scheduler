@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteUser } from "@/lib/db";
 import { requireAdmin } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const admin = requireAdmin(req);
   if (admin instanceof NextResponse) return admin;
 

@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { optionalEnv } from "./env-app";
 
 /** ALLOWED_ORIGINS parsed; defaults to "*" (allow any) when unset (optional flag). */
@@ -33,6 +34,18 @@ export function requestOrigin(headers: Headers): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Origin guard for state-changing handlers (CSRF defense in depth alongside the
+ * sameSite=lax cookie): 403 when the request's Origin/Referer isn't allowed,
+ * else null (proceed). A no-op when ALLOWED_ORIGINS is unset ("*"), and a missing
+ * origin can't be enforced, so it passes (see isOriginAllowed). Call it first in
+ * every mutating handler (POST/PATCH/PUT/DELETE); GET reads don't need it.
+ */
+export function requireAllowedOrigin(headers: Headers): NextResponse | null {
+  if (isOriginAllowed(requestOrigin(headers))) return null;
+  return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 }
 
 /** Resolve the CORS headers for a given request origin against ALLOWED_ORIGINS. */

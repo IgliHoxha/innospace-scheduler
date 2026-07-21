@@ -1,6 +1,10 @@
-// cors.ts is currently unused by any route, but it's part of the lib surface.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { corsHeaders, isOriginAllowed, requestOrigin } from "@/lib/cors";
+import {
+  corsHeaders,
+  isOriginAllowed,
+  requestOrigin,
+  requireAllowedOrigin,
+} from "@/lib/cors";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -28,6 +32,33 @@ describe("requestOrigin", () => {
     ).toBe("https://b.com");
     expect(requestOrigin(new Headers({ referer: "not a url" }))).toBeNull();
     expect(requestOrigin(new Headers())).toBeNull();
+  });
+});
+
+describe("requireAllowedOrigin", () => {
+  it("returns null (proceed) when ALLOWED_ORIGINS is unset (wildcard)", () => {
+    expect(
+      requireAllowedOrigin(new Headers({ origin: "https://evil.com" })),
+    ).toBeNull();
+  });
+
+  it("returns null (proceed) for an allowed or missing origin", () => {
+    vi.stubEnv("ALLOWED_ORIGINS", "https://a.com");
+    expect(
+      requireAllowedOrigin(new Headers({ origin: "https://a.com" })),
+    ).toBeNull();
+    // A missing origin can't be enforced, so it passes.
+    expect(requireAllowedOrigin(new Headers())).toBeNull();
+  });
+
+  it("returns a 403 for a disallowed origin under a restricted list", async () => {
+    vi.stubEnv("ALLOWED_ORIGINS", "https://a.com");
+    const res = requireAllowedOrigin(
+      new Headers({ origin: "https://evil.com" }),
+    );
+    expect(res).not.toBeNull();
+    expect(res?.status).toBe(403);
+    expect(await res?.json()).toEqual({ ok: false, error: "Forbidden" });
   });
 });
 

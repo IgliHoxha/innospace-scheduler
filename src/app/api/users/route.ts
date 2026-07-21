@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listUsers, inviteUser, DuplicateEmailError } from "@/lib/db";
 import { createInviteToken } from "@/lib/auth";
 import { requireAdmin } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
 import { sendInviteEmail } from "@/lib/email";
 import { MAX_EMAIL } from "@/lib/types";
 
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
  * pending email resends the invite.
  */
 export async function POST(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const admin = requireAdmin(req);
   if (admin instanceof NextResponse) return admin;
 
