@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { MAX_EMAIL, type User } from "@/lib/types";
 import { SiteFooter } from "@/components/SiteFooter";
+import { UserMenu } from "@/components/UserMenu";
 
 export default function UsersClient({
   initialUsers,
@@ -12,9 +12,7 @@ export default function UsersClient({
   initialUsers: User[];
   username: string;
 }) {
-  const router = useRouter();
   const [users, setUsers] = useState<User[]>(initialUsers);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -76,24 +74,6 @@ export default function UsersClient({
     await refresh();
   }
 
-  async function logout() {
-    await fetch("/api/login", { method: "DELETE" });
-    router.replace("/login");
-  }
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   return (
     <>
       <div className="topbar">
@@ -115,34 +95,7 @@ export default function UsersClient({
             <a className="nav-link" href="/dashboard">
               Reservations
             </a>
-            <div className="user-menu">
-              <button
-                className="user-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen((o) => !o);
-                }}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-              >
-                <span className="avatar">
-                  {username.charAt(0).toUpperCase()}
-                </span>
-                <span className="user-name">{username}</span>
-                <span className="caret">▾</span>
-              </button>
-              {menuOpen && (
-                <div className="user-dropdown" role="menu">
-                  <div className="user-dropdown-head">
-                    Signed in as
-                    <strong>{username}</strong>
-                  </div>
-                  <button className="user-dropdown-item" onClick={logout}>
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+            <UserMenu username={username} />
           </div>
         </div>
       </div>

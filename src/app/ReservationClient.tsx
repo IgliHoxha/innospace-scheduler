@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import TimeRangePicker from "./TimeRangePicker";
 import { SiteFooter } from "@/components/SiteFooter";
+import { UserMenu } from "@/components/UserMenu";
 import type { Booth } from "@/lib/booths";
 import { MAX_NOTE, type Reservation } from "@/lib/types";
 import {
@@ -61,9 +61,6 @@ export default function ReservationClient({
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
 }) {
-  const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
-
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [avail, setAvail] = useState<Availability | null>(null);
@@ -210,25 +207,6 @@ export default function ReservationClient({
     await Promise.all([refreshMine(), loadAvailability()]);
   }
 
-  async function logout() {
-    await fetch("/api/login", { method: "DELETE" });
-    router.replace("/login");
-  }
-
-  // Close the user menu on any outside click or Escape.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   const upcoming = mine.filter((r) => r.status !== "deleted");
   const selectedBooth = booths.find((b) => b.id === boothId);
 
@@ -245,32 +223,7 @@ export default function ReservationClient({
             />
             <span className="brand-sub">Scheduler</span>
           </a>
-          <div className="user-menu">
-            <button
-              className="user-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen((o) => !o);
-              }}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-            >
-              <span className="avatar">{userName.charAt(0).toUpperCase()}</span>
-              <span className="user-name">{userName}</span>
-              <span className="caret">▾</span>
-            </button>
-            {menuOpen && (
-              <div className="user-dropdown" role="menu">
-                <div className="user-dropdown-head">
-                  Signed in as
-                  <strong>{userName}</strong>
-                </div>
-                <button className="user-dropdown-item" onClick={logout}>
-                  Sign out
-                </button>
-              </div>
-            )}
-          </div>
+          <UserMenu username={userName} />
         </div>
       </div>
 

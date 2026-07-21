@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { Reservation, ReservationStatus, ContactInfo } from "@/lib/types";
 import type { ReservationPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 import { SiteFooter } from "@/components/SiteFooter";
+import { UserMenu } from "@/components/UserMenu";
 import {
   boothLabel,
   emailBodyText,
@@ -32,7 +32,6 @@ export default function DashboardClient({
   username: string;
   contact: ContactInfo;
 }) {
-  const router = useRouter();
   const [data, setData] = useState<ReservationPage>(initialData);
   const [filter, setFilter] = useState<"all" | ReservationStatus>(
     INITIAL_FILTER,
@@ -41,7 +40,6 @@ export default function DashboardClient({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmPurge, setConfirmPurge] = useState(false);
   // Per-reservation edited cancellation email bodies (id -> body).
@@ -120,11 +118,6 @@ export default function DashboardClient({
     loadPage();
   }
 
-  async function logout() {
-    await fetch("/api/login", { method: "DELETE" });
-    router.replace("/login");
-  }
-
   function toggleSelected(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -160,19 +153,6 @@ export default function DashboardClient({
     setSelected(new Set());
   }, [filter, debouncedQuery, page]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   return (
     <>
       <div className="topbar">
@@ -194,34 +174,7 @@ export default function DashboardClient({
             <a className="nav-link" href="/users">
               Users
             </a>
-            <div className="user-menu">
-              <button
-                className="user-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen((o) => !o);
-                }}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-              >
-                <span className="avatar">
-                  {username.charAt(0).toUpperCase()}
-                </span>
-                <span className="user-name">{username}</span>
-                <span className="caret">▾</span>
-              </button>
-              {menuOpen && (
-                <div className="user-dropdown" role="menu">
-                  <div className="user-dropdown-head">
-                    Signed in as
-                    <strong>{username}</strong>
-                  </div>
-                  <button className="user-dropdown-item" onClick={logout}>
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+            <UserMenu username={username} />
           </div>
         </div>
       </div>
