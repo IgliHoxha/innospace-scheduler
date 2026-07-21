@@ -1,6 +1,45 @@
-// Pure, timezone-safe date/time formatting. Takes plain strings (no domain
-// types), so the mailer, the dashboard, and the picker all share one source.
+// Pure datetime-string helpers: extract, compose, validate, convert, diff, and
+// format the app's "YYYY-MM-DDTHH:MM" local wall-clock strings. No env, no domain
+// types, so the mailer, the dashboard, and the picker all share one source.
 import { pad2 } from "./utils";
+
+const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
+
+/** Is this a well-formed "YYYY-MM-DDTHH:MM" local datetime? */
+export function isDateTime(value: string | undefined): boolean {
+  const m = DATETIME_RE.exec(value ?? "");
+  return !!m && Number(m[2]) <= 23 && Number(m[3]) <= 59;
+}
+
+/** "2026-07-16" from "2026-07-16T09:30". */
+export function dateOf(dt: string): string {
+  return dt.slice(0, 10);
+}
+
+/** "09:30" from "2026-07-16T09:30": also the <input type="time"> value. */
+export function timeOf(dt: string): string {
+  return dt.slice(11, 16);
+}
+
+/** Join a date and a "HH:MM" time into a datetime string. */
+export function toDateTime(date: string, time: string): string {
+  return `${date}T${time}`;
+}
+
+/** Minutes since midnight for a datetime, e.g. 570 for "…T09:30". */
+export function minutesOfDay(dt: string): number {
+  return Number(dt.slice(11, 13)) * 60 + Number(dt.slice(14, 16));
+}
+
+/** Length of a reservation in minutes. Assumes start/end are the same day. */
+export function durationMinutes(startsAt: string, endsAt: string): number {
+  return minutesOfDay(endsAt) - minutesOfDay(startsAt);
+}
+
+/** Length of a reservation in hours, e.g. 1.5. */
+export function durationHours(startsAt: string, endsAt: string): number {
+  return durationMinutes(startsAt, endsAt) / 60;
+}
 
 const MONTHS = [
   "January",

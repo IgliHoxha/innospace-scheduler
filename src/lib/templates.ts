@@ -2,8 +2,8 @@
 // so the preview matches what's actually sent.
 import type { ContactInfo, Reservation, ReservationStatus } from "./types";
 import { boothName } from "./booths";
-import { rangeLabel, dateOf } from "./schedule";
-import { formatDateLong } from "./date-format";
+import { rangeLabel } from "./schedule";
+import { dateOf, formatDateLong } from "./date-format";
 
 export type EmailStatus = Extract<
   ReservationStatus,

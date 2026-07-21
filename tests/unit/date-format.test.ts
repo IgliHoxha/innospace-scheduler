@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
 import * as t from "@/lib/date-format";
 
+describe("datetime string primitives", () => {
+  it("accepts well-formed local datetimes and rejects malformed ones", () => {
+    expect(t.isDateTime("2026-07-16T09:30")).toBe(true);
+    expect(t.isDateTime("2026-07-16T23:59")).toBe(true);
+    expect(t.isDateTime("2026-07-16T24:00")).toBe(false); // hour > 23
+    expect(t.isDateTime("2026-07-16T09:60")).toBe(false); // minute > 59
+    expect(t.isDateTime("2026-07-16 09:30")).toBe(false); // missing T
+    expect(t.isDateTime(undefined)).toBe(false);
+  });
+
+  it("splits date and time and recombines them", () => {
+    expect(t.dateOf("2026-07-16T09:30")).toBe("2026-07-16");
+    expect(t.timeOf("2026-07-16T09:30")).toBe("09:30");
+    expect(t.toDateTime("2026-07-16", "09:30")).toBe("2026-07-16T09:30");
+    expect(t.minutesOfDay("2026-07-16T09:30")).toBe(570);
+  });
+
+  it("measures duration in minutes and hours across a range", () => {
+    expect(t.durationMinutes("2026-07-16T09:00", "2026-07-16T10:30")).toBe(90);
+    expect(t.durationHours("2026-07-16T09:00", "2026-07-16T10:30")).toBe(1.5);
+  });
+});
+
 describe("date + time formatting", () => {
   it("formatDMYShort", () => {
     expect(t.formatDMYShort("2026-07-14")).toBe("14/07/26");

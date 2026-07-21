@@ -6,11 +6,11 @@ import {
   isReservableDate,
   todayYMD,
   nowDateTime,
-  timeOf,
   rangeLabel,
   openHour,
   closeHour,
 } from "@/lib/schedule";
+import { timeOf } from "@/lib/date-format";
 import { pad2 } from "@/lib/utils";
 
 export const runtime = "nodejs";

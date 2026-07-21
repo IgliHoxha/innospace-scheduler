@@ -3,34 +3,7 @@ import * as schedule from "@/lib/schedule";
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("datetime parsing", () => {
-  it("accepts well-formed local datetimes and rejects malformed ones", () => {
-    expect(schedule.isDateTime("2026-07-16T09:30")).toBe(true);
-    expect(schedule.isDateTime("2026-07-16T23:59")).toBe(true);
-    expect(schedule.isDateTime("2026-07-16T24:00")).toBe(false); // hour > 23
-    expect(schedule.isDateTime("2026-07-16T09:60")).toBe(false); // minute > 59
-    expect(schedule.isDateTime("2026-07-16 09:30")).toBe(false); // missing T
-    expect(schedule.isDateTime(undefined)).toBe(false);
-  });
-
-  it("splits date and time and recombines them", () => {
-    expect(schedule.dateOf("2026-07-16T09:30")).toBe("2026-07-16");
-    expect(schedule.timeOf("2026-07-16T09:30")).toBe("09:30");
-    expect(schedule.toDateTime("2026-07-16", "09:30")).toBe("2026-07-16T09:30");
-    expect(schedule.minutesOfDay("2026-07-16T09:30")).toBe(570);
-  });
-});
-
 describe("durations", () => {
-  it("measures minutes and hours across a range", () => {
-    expect(
-      schedule.durationMinutes("2026-07-16T09:00", "2026-07-16T10:30"),
-    ).toBe(90);
-    expect(schedule.durationHours("2026-07-16T09:00", "2026-07-16T10:30")).toBe(
-      1.5,
-    );
-  });
-
   it("labels durations for humans", () => {
     expect(schedule.durationLabel("2026-07-16T09:00", "2026-07-16T10:30")).toBe(
       "1h 30m",
