@@ -172,37 +172,15 @@ a fresh DB is built and an existing one is upgraded in place — no manual step,
 data loss. To change the schema, **append** a new `{ version, up }` entry with the
 `ALTER`/`CREATE` statements; never edit one that has already shipped.
 
-## Integrations (Kafka + gRPC) — optional skeleton
-
-Both are **off by default** and safe to ignore; they exist as ready-to-extend
-scaffolding.
-
-- **Kafka domain events** (`src/lib/events.ts`, `src/lib/kafka.ts`). Booking
-  actions publish events (`reservation.created`, …) to Kafka. Publishing is a
-  no-op until `KAFKA_BROKERS` is set, and is always best-effort — a broker
-  problem can never delay or fail a booking. The topic is
-  `${KAFKA_TOPIC_PREFIX}${event}`. An example emit is wired into
-  `POST /api/reservations`; add more with `publishReservationEvent(...)`.
-- **gRPC read API** (`proto/scheduler.proto`, `src/server/grpc.ts`). A standalone
-  `SchedulerService` (ListBooths, GetAvailability, GetReservation) over the same
-  db layer, for other internal services. It is **not** part of the web server —
-  run it on its own with `npm run grpc` (binds `GRPC_HOST:GRPC_PORT`, default
-  `0.0.0.0:50051`).
-
-See `.env.example` for every `KAFKA_*` / `GRPC_*` variable.
-
 ## Project layout
 
 ```
 src/lib/           booths, schedule window, types, db (reservations + users),
-                   auth (roles + scrypt), email, templates, turnstile, cors,
-                   events + kafka (domain-event skeleton)
+                   auth (roles + scrypt), email, templates, turnstile, cors
 src/app/           / (member booking), /login, /dashboard and /users (admin),
                    /activate (member setup), /api/{login,availability,
                    reservations,users,activate}
-src/server/        gRPC server + standalone entrypoint (`npm run grpc`)
 src/components/ui/ shadcn Input + the typed time-picker field
-proto/             scheduler.proto (gRPC service definition)
 tests/             unit / integration / functional (Vitest)
 ```
 

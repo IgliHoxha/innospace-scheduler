@@ -44,8 +44,8 @@ describe("schema migrations", () => {
     // Write a row, then rebind the module to the SAME file (a fresh "boot").
     const d = new Database(file);
     d.prepare(
-      "INSERT INTO users (id, createdAt, name, email, passwordHash) VALUES (?,?,?,?,?)",
-    ).run("u1", now(), "Ada", "ada@example.com", "scrypt$aa$bb");
+      "INSERT INTO users (id, createdAt, updatedAt, name, email, passwordHash) VALUES (?,?,?,?,?,?)",
+    ).run("u1", now(), now(), "Ada", "ada@example.com", "scrypt$aa$bb");
     d.close();
 
     vi.resetModules();

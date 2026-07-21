@@ -17,14 +17,14 @@ const DB_FILE =
   process.env.DATA_FILE || path.join(process.cwd(), "data", "scheduler.db");
 
 const COLS =
-  "id,createdAt,status,source,fullName,email,phoneNumber,boothId,startsAt,endsAt,note,userId";
+  "id,createdAt,updatedAt,status,fullName,email,phoneNumber,boothId,startsAt,endsAt,note,userId";
 
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 const TABLE_BODY = `(
   id TEXT PRIMARY KEY,
   createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN (${inList(RESERVATION_STATUSES)})),
-  source TEXT,
   fullName TEXT, email TEXT, phoneNumber TEXT,
   boothId TEXT NOT NULL,
   startsAt TEXT NOT NULL,
@@ -38,6 +38,7 @@ const TABLE_BODY = `(
 const USERS_TABLE_BODY = `(
   id TEXT PRIMARY KEY,
   createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
   name TEXT,
   email TEXT NOT NULL UNIQUE,
   passwordHash TEXT
@@ -122,7 +123,7 @@ function getDb(): Database.Database {
 
 function insert(db: Database.Database, r: Reservation) {
   db.prepare(
-    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@status,@source,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
+    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
   ).run(toRow(r));
 }
 
@@ -130,8 +131,8 @@ function toRow(r: Reservation): Row {
   return {
     id: r.id,
     createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
     status: r.status,
-    source: r.source ?? "website",
     fullName: r.fullName ?? null,
     email: r.email ?? null,
     phoneNumber: r.phoneNumber ?? null,
@@ -148,8 +149,8 @@ function fromRow(r: Row): Reservation {
   return {
     id: String(r.id),
     createdAt: String(r.createdAt),
+    updatedAt: String(r.updatedAt ?? r.createdAt),
     status: String(r.status) as ReservationStatus,
-    source: s(r.source),
     fullName: s(r.fullName),
     email: s(r.email),
     phoneNumber: s(r.phoneNumber),
@@ -311,12 +312,13 @@ export async function createReservation(
   status: Extract<ReservationStatus, "confirmed" | "pending"> = "confirmed",
 ): Promise<Reservation> {
   const db = getDb();
+  const now = new Date().toISOString();
   const reservation: Reservation = {
     ...input,
     id: randomUUID(),
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     status,
-    source: "website",
   };
 
   const tx = db.transaction((r: Reservation) => {
@@ -364,8 +366,8 @@ export async function updateReservationStatus(
 ): Promise<Reservation | null> {
   const db = getDb();
   const res = db
-    .prepare("UPDATE reservations SET status = ? WHERE id = ?")
-    .run(status, id);
+    .prepare("UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ?")
+    .run(status, new Date().toISOString(), id);
   if (res.changes === 0) return null;
   const row = db.prepare("SELECT * FROM reservations WHERE id = ?").get(id) as
     Row | undefined;
@@ -378,6 +380,7 @@ function userFromRow(r: Row): User {
   return {
     id: String(r.id),
     createdAt: String(r.createdAt),
+    updatedAt: String(r.updatedAt ?? r.createdAt),
     name: r.name == null ? "" : String(r.name),
     email: String(r.email),
     activated: r.passwordHash != null,
@@ -426,16 +429,23 @@ export async function inviteUser(emailRaw: string): Promise<User> {
     return userFromRow(existing); // re-invite the pending record
   }
 
+  const now = new Date().toISOString();
   const user: User = {
     id: randomUUID(),
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     name: "",
     email,
     activated: false,
   };
   db.prepare(
-    "INSERT INTO users (id,createdAt,name,email,passwordHash) VALUES (@id,@createdAt,NULL,@email,NULL)",
-  ).run({ id: user.id, createdAt: user.createdAt, email });
+    "INSERT INTO users (id,createdAt,updatedAt,name,email,passwordHash) VALUES (@id,@createdAt,@updatedAt,NULL,@email,NULL)",
+  ).run({
+    id: user.id,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    email,
+  });
   return user;
 }
 
@@ -454,11 +464,9 @@ export async function activateUser(
   if (!row) throw new Error("This invite is no longer valid.");
   if (row.passwordHash != null) throw new AlreadyActivatedError();
 
-  db.prepare("UPDATE users SET name = ?, passwordHash = ? WHERE id = ?").run(
-    name.trim(),
-    hashPassword(password),
-    userId,
-  );
+  db.prepare(
+    "UPDATE users SET name = ?, passwordHash = ?, updatedAt = ? WHERE id = ?",
+  ).run(name.trim(), hashPassword(password), new Date().toISOString(), userId);
   return userFromRow(
     db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as Row,
   );

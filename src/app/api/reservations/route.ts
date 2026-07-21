@@ -23,7 +23,6 @@ import {
   stepMinutes,
 } from "@/lib/schedule";
 import { sendReservationEmail } from "@/lib/email";
-import { publishReservationEvent } from "@/lib/kafka";
 import { meetsMinDuration } from "@/lib/booking-rules";
 
 export const runtime = "nodejs";
@@ -140,10 +139,6 @@ export async function POST(req: NextRequest) {
         console.error("[reservations] confirmation email failed:", err);
       }
     }
-
-    // Publish a domain event (no-op unless KAFKA_BROKERS is set). Fire-and-forget
-    // and best-effort: it must never delay or fail the booking response.
-    void publishReservationEvent("reservation.created", reservation);
 
     return NextResponse.json(
       {

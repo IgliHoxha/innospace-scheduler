@@ -5,6 +5,7 @@ import type { Reservation } from "@/lib/types";
 const base: Reservation = {
   id: "r1",
   createdAt: "2026-07-14T08:00:00.000Z",
+  updatedAt: "2026-07-14T08:00:00.000Z",
   status: "confirmed",
   boothId: "booth-1",
   startsAt: "2026-07-14T09:30",

@@ -38,8 +38,8 @@ export interface ReservationInput {
 export interface Reservation extends ReservationInput {
   id: string;
   createdAt: string;
+  updatedAt: string;
   status: ReservationStatus;
-  source?: string;
 }
 
 /**
@@ -50,6 +50,7 @@ export interface Reservation extends ReservationInput {
 export interface User {
   id: string;
   createdAt: string;
+  updatedAt: string;
   name: string;
   email: string;
   /** True once the member has completed the invite (set name + password). */
