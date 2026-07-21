@@ -96,31 +96,29 @@ describe("contact footer (env-driven)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("getContactFromEnv reads the BUSINESS_* vars", () => {
-    vi.stubEnv("BUSINESS_ADDRESS", "1 Test St");
+    vi.stubEnv("BUSINESS_NAME", "Test Org");
     vi.stubEnv("BUSINESS_PHONE", "+355 1");
+    vi.stubEnv("BUSINESS_EMAIL", "hi@test.co");
     expect(t.getContactFromEnv()).toMatchObject({
-      address: "1 Test St",
+      org: "Test Org",
       phone: "+355 1",
+      email: "hi@test.co",
     });
   });
 
   it("confirmed email includes only the contact fields provided", () => {
     const body = t.emailBodyText(base, "confirmed", {
-      address: "1 Test St",
-      accessApt1: "Apt1: ring the bell",
       phone: "+355 1",
+      email: "hi@test.co",
     });
-    expect(body).toContain("1 Test St");
-    expect(body).toContain("Important access instructions");
-    expect(body).toContain("Apt1: ring the bell");
     expect(body).toContain("Phone: +355 1");
-    expect(body).not.toContain("NID:"); // not provided
+    expect(body).toContain("Email: hi@test.co");
   });
 
-  it("confirmed email omits the whole block when no contact is given", () => {
+  it("confirmed email omits the phone/email rows when no contact is given", () => {
     const body = t.emailBodyText(base, "confirmed");
     expect(body).toContain("InnoSpace Tirana"); // org default
     expect(body).not.toContain("Phone:");
-    expect(body).not.toContain("access instructions");
+    expect(body).not.toContain("Email:");
   });
 });

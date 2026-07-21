@@ -146,13 +146,8 @@ function firstName(r: Reservation): string {
 export type ContactInfo = {
   name?: string; // who signs off the confirmation
   org?: string;
-  address?: string;
-  accessApt1?: string;
-  accessApt2?: string;
-  mapsUrl?: string;
   phone?: string;
   email?: string;
-  nid?: string;
 };
 
 // Server-only: BUSINESS_* / EMAIL_SIGNOFF_NAME aren't exposed to the browser.
@@ -160,13 +155,8 @@ export function getContactFromEnv(): ContactInfo {
   return {
     name: process.env.EMAIL_SIGNOFF_NAME,
     org: process.env.BUSINESS_NAME,
-    address: process.env.BUSINESS_ADDRESS,
-    accessApt1: process.env.BUSINESS_ACCESS_APT1,
-    accessApt2: process.env.BUSINESS_ACCESS_APT2,
-    mapsUrl: process.env.BUSINESS_MAPS_URL,
     phone: process.env.BUSINESS_PHONE,
     email: process.env.BUSINESS_EMAIL,
-    nid: process.env.BUSINESS_NID,
   };
 }
 
@@ -177,17 +167,9 @@ function signOff(contact?: ContactInfo): string[] {
   const lines: string[] = [];
   if (c.name) lines.push(c.name);
   lines.push("", c.org || "InnoSpace Tirana");
-  if (c.address) lines.push(c.address);
-  const access = [c.accessApt1, c.accessApt2].filter(Boolean) as string[];
-  if (access.length) {
-    lines.push("", "⚠️ Important access instructions:");
-    for (const a of access) lines.push("", a);
-  }
-  if (c.mapsUrl) lines.push("", `View on Google Maps: ${c.mapsUrl}`);
   const rows: string[] = [];
   if (c.phone) rows.push(`Phone: ${c.phone}`);
   if (c.email) rows.push(`Email: ${c.email}`);
-  if (c.nid) rows.push(`NID: ${c.nid}`);
   if (rows.length) lines.push("", ...rows);
   return lines;
 }
