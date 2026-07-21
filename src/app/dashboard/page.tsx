@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { queryReservations } from "@/lib/db";
+import { getContactFromEnv } from "@/lib/email";
 import DashboardClient from "./DashboardClient";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 
@@ -21,5 +22,11 @@ export default async function DashboardPage() {
     pageSize: PAGE_SIZE,
   });
 
-  return <DashboardClient initialData={initialData} username={session.name} />;
+  return (
+    <DashboardClient
+      initialData={initialData}
+      username={session.name}
+      contact={getContactFromEnv()}
+    />
+  );
 }

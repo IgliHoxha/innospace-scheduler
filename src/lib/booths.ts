@@ -1,16 +1,12 @@
-// Bookable booths, overridable via SCHEDULER_BOOTHS ("id:Name:capacity",
-// comma-separated; capacity optional). Server-side only.
+// Bookable booths, defined via the required SCHEDULER_BOOTHS var
+// ("id:Name:capacity", comma-separated; capacity optional). Server-side only.
+import { requireEnv } from "./env-app";
+
 export interface Booth {
   id: string;
   name: string;
   capacity?: number;
 }
-
-const DEFAULT_BOOTHS: Booth[] = [
-  { id: "booth-1", name: "Booth 1", capacity: 2 },
-  { id: "booth-2", name: "Booth 2", capacity: 4 },
-  { id: "booth-3", name: "Booth 3", capacity: 6 },
-];
 
 function parseBooths(raw: string): Booth[] {
   const booths: Booth[] = [];
@@ -29,12 +25,14 @@ function parseBooths(raw: string): Booth[] {
 
 let _booths: Booth[] | null = null;
 
-/** The resolved booth list (env override, else the seeded defaults). */
+/** The resolved booth list, parsed from the required SCHEDULER_BOOTHS var. */
 export function getBooths(): Booth[] {
   if (_booths) return _booths;
-  const raw = process.env.SCHEDULER_BOOTHS?.trim();
-  const booths = raw ? parseBooths(raw) : DEFAULT_BOOTHS;
-  _booths = booths.length ? booths : DEFAULT_BOOTHS;
+  const booths = parseBooths(requireEnv("SCHEDULER_BOOTHS"));
+  if (!booths.length) {
+    throw new Error("SCHEDULER_BOOTHS did not define any valid booths.");
+  }
+  _booths = booths;
   return _booths;
 }
 

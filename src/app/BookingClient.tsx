@@ -13,13 +13,10 @@ import {
   meetsMinDuration,
   noteRequiredFor,
 } from "@/lib/booking-rules";
-import {
-  boothLabel,
-  formatDateLong,
-  timeText,
-  formatDateMedium,
-  dateOfReservation,
-} from "@/lib/templates";
+import { boothLabel, timeText, dateOfReservation } from "@/lib/templates";
+import { formatDateLong, formatDateMedium } from "@/lib/date-format";
+import { formatDuration } from "@/lib/schedule";
+import { pad2 } from "@/lib/utils";
 
 /** A booking already taken for the chosen booth+day, as "HH:MM" times. */
 interface Booked {
@@ -46,16 +43,7 @@ interface DateOption {
 const toMinutes = (t: string) =>
   Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
-const pad2 = (n: number) => String(n).padStart(2, "0");
 const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
-
-function durationLabel(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h && m) return `${h}h ${m}m`;
-  if (h) return `${h}h`;
-  return `${m}m`;
-}
 
 export default function BookingClient({
   booths,
@@ -357,7 +345,7 @@ export default function BookingClient({
 
                 {duration > 0 && !problem && (
                   <span className="duration-pill">
-                    {durationLabel(duration)}
+                    {formatDuration(duration)}
                   </span>
                 )}
               </div>

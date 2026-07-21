@@ -2,50 +2,50 @@
 // set TZ so the server matches the space). The format sorts as text, so SQLite
 // indexes it directly and the date is the first 10 chars.
 import { approvalRequiredFor, noteRequiredFor } from "./booking-rules";
+import { requireIntEnv } from "./env-app";
+import { pad2 } from "./utils";
 
-function intEnv(name: string, fallback: number): number {
-  const v = Number(process.env[name]);
-  return Number.isInteger(v) ? v : fallback;
-}
-
-/** First bookable hour of the day (24h). Default 09:00. */
+/** First bookable hour of the day (24h). Required. Env: OPEN_HOUR. */
 export function openHour(): number {
-  return Math.min(23, Math.max(0, intEnv("OPEN_HOUR", 9)));
+  return Math.min(23, Math.max(0, requireIntEnv("OPEN_HOUR")));
 }
 
-/** Closing hour: a booking must end by this hour. Default 18:00. */
+/** Closing hour: a booking must end by this hour. Required. Env: CLOSE_HOUR. */
 export function closeHour(): number {
-  return Math.min(24, Math.max(openHour() + 1, intEnv("CLOSE_HOUR", 18)));
+  return Math.min(24, Math.max(openHour() + 1, requireIntEnv("CLOSE_HOUR")));
 }
 
-/** How many days ahead (including today) can be booked. Default 14. */
+/** How many days ahead (including today) can be booked. Required. Env: BOOKING_WINDOW_DAYS. */
 export function bookingWindowDays(): number {
-  return Math.max(0, intEnv("BOOKING_WINDOW_DAYS", 14));
+  return Math.max(0, requireIntEnv("BOOKING_WINDOW_DAYS"));
 }
 
 /**
  * Times snap to this many minutes, so members can pick 09:10 but not 09:07.
- * Must divide 60 evenly (1/5/10/15/30/60). Default 5. Env: TIME_STEP_MINUTES.
+ * Must divide 60 evenly (1/5/10/15/30/60). Required. Env: TIME_STEP_MINUTES.
  */
 export function stepMinutes(): number {
-  const v = intEnv("TIME_STEP_MINUTES", 5);
-  return v > 0 && v <= 60 && 60 % v === 0 ? v : 5;
+  const v = requireIntEnv("TIME_STEP_MINUTES");
+  if (!(v > 0 && v <= 60 && 60 % v === 0)) {
+    throw new Error(
+      "TIME_STEP_MINUTES must divide 60 evenly (1/5/10/15/30/60).",
+    );
+  }
+  return v;
 }
 
-/** Shortest bookable length, in minutes. Default 15. Env: MIN_BOOKING_MINUTES. */
+/** Shortest bookable length, in minutes. Required. Env: MIN_BOOKING_MINUTES. */
 export function minBookingMinutes(): number {
-  return Math.max(stepMinutes(), intEnv("MIN_BOOKING_MINUTES", 15));
+  return Math.max(stepMinutes(), requireIntEnv("MIN_BOOKING_MINUTES"));
 }
 
 /**
  * Longest booking (in hours) that is auto-confirmed. Anything longer is created
- * as "pending" and needs admin approval. Default 2. Env: AUTO_APPROVE_MAX_HOURS.
+ * as "pending" and needs admin approval. Required. Env: AUTO_APPROVE_MAX_HOURS.
  */
 export function autoApproveMaxHours(): number {
-  return Math.max(1, intEnv("AUTO_APPROVE_MAX_HOURS", 2));
+  return Math.max(1, requireIntEnv("AUTO_APPROVE_MAX_HOURS"));
 }
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
 
 const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
 
@@ -116,14 +116,18 @@ export function rangeLabel(startsAt: string, endsAt: string): string {
   return `${timeOf(startsAt)} – ${timeOf(endsAt)}`;
 }
 
-/** "1h 30m" / "45m": a human duration for a booking. */
-export function durationLabel(startsAt: string, endsAt: string): string {
-  const total = durationMinutes(startsAt, endsAt);
-  const h = Math.floor(total / 60);
-  const m = total % 60;
+/** "1h 30m" / "45m" for a plain minute count. */
+export function formatDuration(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
   if (h && m) return `${h}h ${m}m`;
   if (h) return `${h}h`;
   return `${m}m`;
+}
+
+/** "1h 30m" / "45m": a human duration for a booking. */
+export function durationLabel(startsAt: string, endsAt: string): string {
+  return formatDuration(durationMinutes(startsAt, endsAt));
 }
 
 function ymd(d: Date): string {

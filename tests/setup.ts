@@ -4,29 +4,43 @@ import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
 import { SIGNING } from "./helpers/fixtures";
 
-// A fixed signing secret so minted session/invite tokens verify inside handlers.
-process.env.AUTH_SECRET = SIGNING;
+// Every required env var now has NO code default, so the suite must provide a
+// deterministic baseline. These values mirror the previous code defaults, so
+// value-dependent tests keep asserting the same numbers. Individual tests still
+// override with vi.stubEnv and restore themselves.
+const REQUIRED_BASELINE: Record<string, string> = {
+  AUTH_SECRET: SIGNING,
+  SCHEDULER_BOOTHS: "booth-1:Booth 1:2,booth-2:Booth 2:4,booth-3:Booth 3:6",
+  OPEN_HOUR: "9",
+  CLOSE_HOUR: "18",
+  BOOKING_WINDOW_DAYS: "14",
+  TIME_STEP_MINUTES: "5",
+  MIN_BOOKING_MINUTES: "15",
+  AUTO_APPROVE_MAX_HOURS: "2",
+  INVITE_TTL_DAYS: "2",
+  DASHBOARD_USERNAME: "admin",
+  DASHBOARD_PASSWORD: "change-me",
+  LOGIN_MAX_ATTEMPTS: "5",
+  LOGIN_BLOCK_SECONDS: "60",
+  LOGIN_MAX_LOCKOUTS: "10",
+  LOGIN_IP_MAX_ATTEMPTS: "20",
+  LOGIN_IP_BLOCK_SECONDS: "60",
+  EMAIL_FROM: "onboarding@resend.dev",
+  APP_BASE_URL: "https://scheduler.example.test",
+  EMAIL_SIGNOFF_NAME: "Test Signer",
+  BUSINESS_NAME: "Test Org",
+  BUSINESS_PHONE: "+000 000",
+  BUSINESS_EMAIL: "hello@test.test",
+  BUSINESS_WEBSITE_URL: "https://test.test",
+};
+for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
+  process.env[key] = value;
+}
 
-// Clear anything that would otherwise steer scheduling/booth/email logic, so the
-// suite runs against the documented code defaults regardless of the shell env.
+// Optional feature-flags stay OFF for a deterministic suite (email skipped, no
+// captcha, CORS wildcard). DATA_FILE is set per-test by loadDb() to a temp file.
 for (const key of [
-  "SCHEDULER_BOOTHS",
-  "OPEN_HOUR",
-  "CLOSE_HOUR",
-  "BOOKING_WINDOW_DAYS",
-  "TIME_STEP_MINUTES",
-  "MIN_BOOKING_MINUTES",
-  "AUTO_APPROVE_MAX_HOURS",
-  "INVITE_TTL_DAYS",
-  "DASHBOARD_USERNAME",
-  "DASHBOARD_PASSWORD",
-  "LOGIN_MAX_ATTEMPTS",
-  "LOGIN_BLOCK_SECONDS",
-  "LOGIN_MAX_LOCKOUTS",
-  "LOGIN_IP_MAX_ATTEMPTS",
-  "LOGIN_IP_BLOCK_SECONDS",
   "RESEND_API_KEY",
-  "EMAIL_FROM",
   "TURNSTILE_SECRET_KEY",
   "ALLOWED_ORIGINS",
   "DATA_FILE",

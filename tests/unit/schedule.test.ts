@@ -43,6 +43,13 @@ describe("durations", () => {
     );
   });
 
+  it("formatDuration formats a plain minute count", () => {
+    expect(schedule.formatDuration(90)).toBe("1h 30m");
+    expect(schedule.formatDuration(60)).toBe("1h");
+    expect(schedule.formatDuration(45)).toBe("45m");
+    expect(schedule.formatDuration(0)).toBe("0m");
+  });
+
   it("renders the range label with the product en dash", () => {
     expect(schedule.rangeLabel("2026-07-16T09:30", "2026-07-16T11:00")).toBe(
       "09:30 – 11:00",
@@ -98,12 +105,12 @@ describe("isValidTimeOfDay", () => {
     expect(schedule.isValidTimeOfDay(8 * 60 + 15)).toBe(true);
   });
 
-  it("falls back to a 5-min step when TIME_STEP_MINUTES is invalid", () => {
-    expect(schedule.stepMinutes()).toBe(5);
+  it("throws when TIME_STEP_MINUTES does not divide 60", () => {
+    expect(schedule.stepMinutes()).toBe(5); // baseline
     vi.stubEnv("TIME_STEP_MINUTES", "7"); // does not divide 60
-    expect(schedule.stepMinutes()).toBe(5);
+    expect(() => schedule.stepMinutes()).toThrow();
     vi.stubEnv("TIME_STEP_MINUTES", "90"); // over 60
-    expect(schedule.stepMinutes()).toBe(5);
+    expect(() => schedule.stepMinutes()).toThrow();
   });
 });
 

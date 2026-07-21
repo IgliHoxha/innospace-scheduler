@@ -1,42 +1,51 @@
 import { Resend } from "resend";
+import { COLORS } from "../../tailwind.config";
 import { inviteTtlDays } from "./auth";
+import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
 import type { Reservation } from "./types";
 import {
   emailBodyText,
   emailHeading,
   emailSubject,
-  getContactFromEnv,
+  signOff,
   type EmailStatus,
 } from "./templates";
 
-const BRAND = "#25bdad";
-const PLUM = "#524552";
+export { getContactFromEnv };
 
+const BRAND = COLORS.brand;
+const PLUM = COLORS.plum;
+
+// Base URL for links in emails (invite/activation). Required: a wrong base sends
+// broken links, so it must be configured explicitly.
 function baseUrl(): string {
-  return process.env.APP_BASE_URL || "https://scheduler.innospacetirana.com";
+  return requireEnv("APP_BASE_URL");
 }
 
-// The logo must load from a publicly reachable URL: email clients (Gmail etc.)
-// can't fetch a localhost APP_BASE_URL, so it defaults to the live domain rather
-// than baseUrl(). Override with EMAIL_LOGO_URL if the asset moves.
+// The logo is an app asset (public/email-logo.png), so it's served under
+// APP_BASE_URL. Caveat: in dev that base is localhost, which mail clients can't
+// fetch - but dev normally skips sending (RESEND_API_KEY unset).
 function emailLogoUrl(): string {
-  return (
-    process.env.EMAIL_LOGO_URL ||
-    "https://scheduler.innospacetirana.com/email-logo.png"
-  );
+  return `${baseUrl().replace(/\/$/, "")}/email-logo.png`;
 }
 
+// Lazy singleton: one Resend client for the process, built on first send (not at
+// import, so tests/dev with no key never construct it). RESEND_API_KEY is an
+// optional feature-flag: unset skips email. A null isn't cached, so a later key works.
+let _resend: Resend | null = null;
 function client(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY;
+  if (_resend) return _resend;
+  const apiKey = optionalEnv("RESEND_API_KEY");
   if (!apiKey) {
     console.warn("[email] RESEND_API_KEY not set: skipping email.");
     return null;
   }
-  return new Resend(apiKey);
+  _resend = new Resend(apiKey);
+  return _resend;
 }
 
 function from(): string {
-  return process.env.EMAIL_FROM || "onboarding@resend.dev";
+  return requireEnv("EMAIL_FROM");
 }
 
 function escapeHtml(s: string): string {
@@ -67,21 +76,29 @@ function shell(opts: {
   accent: string;
   heading: string;
   bodyHtml: string;
+  org: string;
+  url: string;
 }): string {
-  const { accent, heading, bodyHtml } = opts;
+  const { accent, heading, bodyHtml, org, url } = opts;
+  // Footer website link; visible text drops the scheme and any trailing slash.
+  const footerLink = ` · <a href="${url}" style="color:${BRAND};text-decoration:none">${url
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")}</a>`;
+  const logo = emailLogoUrl();
+  const header = `<div style="padding:22px 28px;border-bottom:1px solid ${COLORS.divider}">
+        <img src="${logo}" alt="${org}" height="30" style="height:30px;width:auto;display:block" />
+      </div>`;
   return `
-  <div style="background:#f4f6f8;padding:28px 12px;font-family:'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif">
-    <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb">
-      <div style="padding:22px 28px;border-bottom:1px solid #eee">
-        <img src="${emailLogoUrl()}" alt="Innospace Tirana" height="30" style="height:30px;width:auto;display:block" />
-      </div>
+  <div style="background:${COLORS.accentBg};padding:28px 12px;font-family:'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif">
+    <div style="max-width:560px;margin:0 auto;background:${COLORS.background};border-radius:14px;overflow:hidden;border:1px solid ${COLORS.border}">
+      ${header}
       <div style="height:4px;background:${accent}"></div>
       <div style="padding:28px">
         <h1 style="margin:0 0 16px;color:${accent};font-size:22px">${heading}</h1>
         ${bodyHtml}
       </div>
-      <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #eee;color:#a59ba5;font-size:12px">
-        Innospace Tirana · <a href="https://innospacetirana.com" style="color:${BRAND};text-decoration:none">innospacetirana.com</a>
+      <div style="padding:16px 28px;background:${COLORS.footerBg};border-top:1px solid ${COLORS.divider};color:${COLORS.footerText};font-size:12px">
+        ${org}${footerLink}
       </div>
     </div>
   </div>`;
@@ -103,23 +120,26 @@ export async function sendReservationEmail(
     return;
   }
 
+  const contact = getContactFromEnv();
   const body = (
-    customBody ?? emailBodyText(reservation, status, getContactFromEnv())
+    customBody ?? emailBodyText(reservation, status, contact)
   ).trim();
 
   await resend.emails.send({
     from: from(),
     to: [reservation.email],
-    subject: emailSubject(status, reservation),
+    subject: emailSubject(status, contact, reservation),
     html: shell({
       accent:
         status === "confirmed"
           ? BRAND
           : status === "pending"
-            ? "#b45309"
-            : "#b91c1c",
+            ? COLORS.statusPending
+            : COLORS.statusCancelled,
       heading: emailHeading(status),
       bodyHtml: textToHtml(body),
+      org: contact.org,
+      url: contact.url,
     }),
   });
 }
@@ -135,29 +155,35 @@ export async function sendInviteEmail(
   const resend = client();
   if (!resend) return;
 
+  const contact = getContactFromEnv();
+  const org = contact.org;
   const link = `${baseUrl()}/activate?token=${encodeURIComponent(token)}`;
   const intro = textToHtml(
     [
       "Hi there,",
       "",
-      "You've been invited to book meeting booths at InnoSpace Tirana. To finish setting up your account, choose your name and a password using the button below.",
+      `You've been invited to book meeting booths at ${org}. To finish setting up your account, choose your name and a password using the button below.`,
     ].join("\n"),
   );
   const button = `
     <p style="margin:22px 0">
       <a href="${link}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Set up my account</a>
     </p>
-    <p style="margin:0 0 14px;color:${PLUM};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>
-    <p style="margin:0;color:#a59ba5;font-size:12px">This link expires in ${inviteTtlDays()} days. If you weren't expecting this, you can ignore this email.</p>`;
+    <p style="margin:0 0 14px;color:${PLUM};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
+  // Same sign-off as every other email, then the expiry note as fine print.
+  const closing = textToHtml(signOff(contact).join("\n"));
+  const finePrint = `<p style="margin:0;color:${COLORS.footerText};font-size:12px">This link expires in ${inviteTtlDays()} days. If you weren't expecting this, you can ignore this email.</p>`;
 
   await resend.emails.send({
     from: from(),
     to: [email],
-    subject: "You're invited to Innospace Tirana Scheduler",
+    subject: `You're invited to ${org} Scheduler`,
     html: shell({
       accent: BRAND,
       heading: "Set up your account",
-      bodyHtml: intro + button,
+      bodyHtml: intro + button + closing + finePrint,
+      org,
+      url: contact.url,
     }),
   });
 }

@@ -9,7 +9,7 @@ import {
   minBookingMinutes,
 } from "@/lib/schedule";
 import { queryReservations } from "@/lib/db";
-import { formatDateMedium } from "@/lib/templates";
+import { formatDateMedium } from "@/lib/date-format";
 import BookingClient from "./BookingClient";
 
 export const dynamic = "force-dynamic";

@@ -10,11 +10,11 @@ import {
   boothLabel,
   emailBodyText,
   emailSubject,
-  formatDMYShort,
-  formatDateTime,
   timeText,
   dateOfReservation,
 } from "@/lib/templates";
+import type { ContactInfo } from "@/lib/types";
+import { formatDMYShort, formatDateTime } from "@/lib/date-format";
 
 const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [
   { key: "all", label: "All" },
@@ -27,9 +27,11 @@ const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [
 export default function DashboardClient({
   initialData,
   username,
+  contact,
 }: {
   initialData: ReservationPage;
   username: string;
+  contact: ContactInfo;
 }) {
   const router = useRouter();
   const [data, setData] = useState<ReservationPage>(initialData);
@@ -59,7 +61,7 @@ export default function DashboardClient({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function draftFor(r: Reservation): string {
-    return drafts[r.id] ?? emailBodyText(r, "cancelled");
+    return drafts[r.id] ?? emailBodyText(r, "cancelled", contact);
   }
 
   const reqId = useRef(0);
@@ -376,6 +378,7 @@ export default function DashboardClient({
                       <EmailPreview
                         reservation={r}
                         draft={drafts[r.id]}
+                        contact={contact}
                         onChange={(value) =>
                           setDrafts((d) => ({ ...d, [r.id]: value }))
                         }
@@ -699,10 +702,12 @@ function WhenCell({ iso }: { iso: string }) {
 function EmailPreview({
   reservation,
   draft,
+  contact,
   onChange,
 }: {
   reservation: Reservation;
   draft: string | undefined;
+  contact: ContactInfo;
   onChange: (value: string) => void;
 }) {
   if (reservation.status === "deleted") {
@@ -710,12 +715,12 @@ function EmailPreview({
   }
 
   if (reservation.status === "cancelled") {
-    const value = draft ?? emailBodyText(reservation, "cancelled");
+    const value = draft ?? emailBodyText(reservation, "cancelled", contact);
     return (
       <div className="email-preview">
         <div className="email-sent cancelled">Cancellation sent</div>
         <div className="email-subject">
-          Subject: {emailSubject("cancelled", reservation)}
+          Subject: {emailSubject("cancelled", contact, reservation)}
         </div>
         <textarea
           className="email-text"
@@ -728,12 +733,12 @@ function EmailPreview({
     );
   }
 
-  const value = draft ?? emailBodyText(reservation, "cancelled");
+  const value = draft ?? emailBodyText(reservation, "cancelled", contact);
   return (
     <div className="email-preview">
       <div className="email-sent cancelled">Cancellation email</div>
       <div className="email-subject">
-        Subject: {emailSubject("cancelled", reservation)}
+        Subject: {emailSubject("cancelled", contact, reservation)}
       </div>
       <textarea
         className="email-text"

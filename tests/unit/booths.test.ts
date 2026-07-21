@@ -32,7 +32,7 @@ describe("SCHEDULER_BOOTHS override", () => {
     expect(b.isBoothId("booth-1")).toBe(false); // defaults no longer apply
   });
 
-  it("skips empty entries and falls back to defaults when none survive", async () => {
+  it("skips empty entries; throws when none are parseable", async () => {
     vi.resetModules();
     vi.stubEnv("SCHEDULER_BOOTHS", "a:A, ,b:B"); // middle entry has no id
     const b = await import("@/lib/booths");
@@ -41,10 +41,6 @@ describe("SCHEDULER_BOOTHS override", () => {
     vi.resetModules();
     vi.stubEnv("SCHEDULER_BOOTHS", " , : "); // nothing parseable
     const empty = await import("@/lib/booths");
-    expect(empty.getBooths().map((r) => r.id)).toEqual([
-      "booth-1",
-      "booth-2",
-      "booth-3",
-    ]);
+    expect(() => empty.getBooths()).toThrow();
   });
 });

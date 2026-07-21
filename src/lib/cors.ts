@@ -1,6 +1,8 @@
-/** ALLOWED_ORIGINS parsed; defaults to "*" (allow any) when unset. */
+import { optionalEnv } from "./env-app";
+
+/** ALLOWED_ORIGINS parsed; defaults to "*" (allow any) when unset (optional flag). */
 function allowedOrigins(): string[] {
-  return (process.env.ALLOWED_ORIGINS || "*")
+  return (optionalEnv("ALLOWED_ORIGINS") ?? "*")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

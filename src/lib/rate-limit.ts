@@ -11,6 +11,8 @@
 //   • per-IP      - high threshold (tolerates the shared office IP), escalating
 //     lockout, and a ban only after sustained abuse.
 
+import { requireIntEnv } from "./env-app";
+
 type Bucket = {
   fails: number; // consecutive failures in the current window
   lockouts: number; // how many times this key has been locked out (escalation)
@@ -31,16 +33,17 @@ type Policy = {
   maxLockouts: number | null;
 };
 
-function envInt(name: string, fallback: number): number {
-  const n = Number(process.env[name]);
-  return Number.isInteger(n) && n > 0 ? n : fallback;
+function posIntEnv(name: string): number {
+  const n = requireIntEnv(name);
+  if (n <= 0) throw new Error(`${name} must be a positive integer.`);
+  return n;
 }
 
 /** Per-account: strict, but never a permanent ban (avoids member lockout DoS). */
 function accountPolicy(): Policy {
   return {
-    maxAttempts: envInt("LOGIN_MAX_ATTEMPTS", 5),
-    blockBaseSeconds: envInt("LOGIN_BLOCK_SECONDS", 60),
+    maxAttempts: posIntEnv("LOGIN_MAX_ATTEMPTS"),
+    blockBaseSeconds: posIntEnv("LOGIN_BLOCK_SECONDS"),
     maxLockouts: null,
   };
 }
@@ -48,9 +51,9 @@ function accountPolicy(): Policy {
 /** Per-IP: lenient threshold (shared office IP), bans only under sustained abuse. */
 function ipPolicy(): Policy {
   return {
-    maxAttempts: envInt("LOGIN_IP_MAX_ATTEMPTS", 20),
-    blockBaseSeconds: envInt("LOGIN_IP_BLOCK_SECONDS", 60),
-    maxLockouts: envInt("LOGIN_MAX_LOCKOUTS", 10),
+    maxAttempts: posIntEnv("LOGIN_IP_MAX_ATTEMPTS"),
+    blockBaseSeconds: posIntEnv("LOGIN_IP_BLOCK_SECONDS"),
+    maxLockouts: posIntEnv("LOGIN_MAX_LOCKOUTS"),
   };
 }
 

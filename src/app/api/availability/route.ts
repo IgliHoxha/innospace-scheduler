@@ -11,11 +11,10 @@ import {
   openHour,
   closeHour,
 } from "@/lib/schedule";
+import { pad2 } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /**
  * What's already taken for a booth on a day, so the booking screen can show it

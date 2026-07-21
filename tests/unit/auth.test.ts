@@ -77,12 +77,14 @@ describe("invite tokens", () => {
     expect(verifyInviteToken(createInviteToken("u42", -10))).toBeNull();
   });
 
-  it("reads INVITE_TTL_DAYS, defaulting to 2", () => {
-    expect(inviteTtlDays()).toBe(2);
+  it("reads INVITE_TTL_DAYS and rejects invalid values", () => {
+    expect(inviteTtlDays()).toBe(2); // baseline
     vi.stubEnv("INVITE_TTL_DAYS", "5");
     expect(inviteTtlDays()).toBe(5);
     vi.stubEnv("INVITE_TTL_DAYS", "0");
-    expect(inviteTtlDays()).toBe(2); // invalid falls back
+    expect(() => inviteTtlDays()).toThrow();
+    vi.stubEnv("INVITE_TTL_DAYS", "abc");
+    expect(() => inviteTtlDays()).toThrow();
   });
 });
 
@@ -95,10 +97,15 @@ describe("admin credentials", () => {
     expect(checkAdminCredentials("", "")).toBe(false);
   });
 
-  it("falls back to the admin/change-me defaults", () => {
+  it("uses the configured credentials and throws when unset", () => {
+    // Baseline sets DASHBOARD_USERNAME/PASSWORD to these.
     expect(checkAdminCredentials(DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS)).toBe(
       true,
     );
+    vi.stubEnv("DASHBOARD_USERNAME", "");
+    expect(() =>
+      checkAdminCredentials(DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS),
+    ).toThrow();
   });
 });
 

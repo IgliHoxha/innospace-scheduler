@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as t from "@/lib/templates";
-import type { Reservation } from "@/lib/types";
+import type { ContactInfo, Reservation } from "@/lib/types";
 
 const base: Reservation = {
   id: "r1",
@@ -13,27 +13,14 @@ const base: Reservation = {
   fullName: "Ada Lovelace",
 };
 
-describe("date + time formatting", () => {
-  it("formatDMYShort", () => {
-    expect(t.formatDMYShort("2026-07-14")).toBe("14/07/26");
-    expect(t.formatDMYShort(undefined)).toBe("-");
-  });
-
-  it("formatDateLong", () => {
-    expect(t.formatDateLong("2026-07-14")).toMatch(/^[A-Za-z]+, 14 July 2026$/);
-    expect(t.formatDateLong(undefined)).toBe("your requested date");
-  });
-
-  it("formatDateMedium", () => {
-    expect(t.formatDateMedium("2026-07-14")).toMatch(/^[A-Za-z]{3}, 14 Jul$/);
-    expect(t.formatDateMedium(undefined)).toBe("");
-  });
-
-  it("formatDateTime renders a local DD/MM/YY HH:MM, or empty for junk", () => {
-    expect(t.formatDateTime("2026-07-14T14:30:00")).toBe("14/07/26 14:30");
-    expect(t.formatDateTime("not-a-date")).toBe("");
-  });
-});
+// Every ContactInfo field is required now (populated from env in production).
+const contact: ContactInfo = {
+  name: "Alex",
+  org: "Test Org",
+  phone: "+000 1",
+  email: "hi@test.co",
+  url: "https://test.co",
+};
 
 describe("reservation display helpers", () => {
   it("timeText uses the product en dash, or a placeholder when unset", () => {
@@ -57,9 +44,14 @@ describe("reservation display helpers", () => {
 
 describe("email copy", () => {
   it("subject varies by status", () => {
-    expect(t.emailSubject("confirmed", base)).toContain("confirmed");
-    expect(t.emailSubject("pending", base)).toContain("received");
-    expect(t.emailSubject("cancelled", base)).toContain("Update");
+    expect(t.emailSubject("confirmed", contact, base)).toContain("confirmed");
+    expect(t.emailSubject("pending", contact, base)).toContain("received");
+    expect(t.emailSubject("cancelled", contact, base)).toContain("Update");
+  });
+
+  it("subject uses the org name from contact", () => {
+    expect(t.emailSubject("cancelled", contact, base)).toContain("at Test Org");
+    expect(t.emailSubject("pending", contact, base)).toContain("at Test Org");
   });
 
   it("heading varies by status", () => {
@@ -69,7 +61,11 @@ describe("email copy", () => {
   });
 
   it("body greets by first name and includes the details + note", () => {
-    const body = t.emailBodyText({ ...base, note: "Client call" }, "confirmed");
+    const body = t.emailBodyText(
+      { ...base, note: "Client call" },
+      "confirmed",
+      contact,
+    );
     expect(body).toContain("Hi Ada,");
     expect(body).toContain("Booth 1");
     expect(body).toContain("09:30 – 11:00");
@@ -78,47 +74,51 @@ describe("email copy", () => {
 
   it('falls back to "there" when there is no name', () => {
     expect(
-      t.emailBodyText({ ...base, fullName: undefined }, "pending"),
+      t.emailBodyText({ ...base, fullName: undefined }, "pending", contact),
     ).toContain("Hi there,");
   });
 
   it("cancelled body greets by first name, or plainly when unset", () => {
-    const body = t.emailBodyText({ ...base, status: "cancelled" }, "cancelled");
+    const body = t.emailBodyText(
+      { ...base, status: "cancelled" },
+      "cancelled",
+      contact,
+    );
     expect(body).toContain("Hello Ada,");
     expect(body).toContain("cancelled");
     expect(
-      t.emailBodyText({ ...base, fullName: undefined }, "cancelled"),
+      t.emailBodyText({ ...base, fullName: undefined }, "cancelled", contact),
     ).toContain("Hello,");
+  });
+
+  it("cancelled body uses the org name from contact", () => {
+    expect(t.emailBodyText(base, "cancelled", contact)).toContain(
+      "booth at Test Org.",
+    );
   });
 });
 
-describe("contact footer (env-driven)", () => {
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("getContactFromEnv reads the BUSINESS_* vars", () => {
-    vi.stubEnv("BUSINESS_NAME", "Test Org");
-    vi.stubEnv("BUSINESS_PHONE", "+355 1");
-    vi.stubEnv("BUSINESS_EMAIL", "hi@test.co");
-    expect(t.getContactFromEnv()).toMatchObject({
-      org: "Test Org",
-      phone: "+355 1",
-      email: "hi@test.co",
-    });
+describe("contact footer", () => {
+  it("signOff is the canonical closing: Best regards, name, org, phone, email", () => {
+    expect(t.signOff(contact)).toEqual([
+      "Best regards,",
+      "Alex",
+      "",
+      "Test Org",
+      "",
+      "Phone: +000 1",
+      "Email: hi@test.co",
+    ]);
   });
 
-  it("confirmed email includes only the contact fields provided", () => {
-    const body = t.emailBodyText(base, "confirmed", {
-      phone: "+355 1",
-      email: "hi@test.co",
-    });
-    expect(body).toContain("Phone: +355 1");
-    expect(body).toContain("Email: hi@test.co");
-  });
-
-  it("confirmed email omits the phone/email rows when no contact is given", () => {
-    const body = t.emailBodyText(base, "confirmed");
-    expect(body).toContain("InnoSpace Tirana"); // org default
-    expect(body).not.toContain("Phone:");
-    expect(body).not.toContain("Email:");
+  it("every email renders the full contact block", () => {
+    for (const status of ["confirmed", "pending", "cancelled"] as const) {
+      const body = t.emailBodyText(base, status, contact);
+      expect(body).toContain("Best regards,");
+      expect(body).toContain("Alex");
+      expect(body).toContain("Test Org");
+      expect(body).toContain("Phone: +000 1");
+      expect(body).toContain("Email: hi@test.co");
+    }
   });
 });

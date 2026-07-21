@@ -2,6 +2,7 @@
 // stored in the DB). A valid login mints an HMAC-signed token that carries the
 // role + subject identity; it's verified on every request.
 import { createHmac, timingSafeEqual, scryptSync, randomBytes } from "crypto";
+import { requireEnv, requireIntEnv } from "./env-app";
 
 export const SESSION_COOKIE = "innospace_scheduler_session";
 
@@ -24,7 +25,7 @@ interface TokenPayload extends Session {
 }
 
 function secret(): string {
-  return process.env.AUTH_SECRET || "dev-insecure-secret-change-me";
+  return requireEnv("AUTH_SECRET");
 }
 
 function sign(payload: string): string {
@@ -88,10 +89,13 @@ export function verifySessionToken(
 // own name + password. Same HMAC scheme as sessions, but purpose-scoped so a
 // session cookie can never be replayed as an invite (or vice versa).
 
-/** How many days an invite link stays valid. Default 2. Env: INVITE_TTL_DAYS. */
+/** How many days an invite link stays valid. Required. Env: INVITE_TTL_DAYS. */
 export function inviteTtlDays(): number {
-  const v = Number(process.env.INVITE_TTL_DAYS);
-  return Number.isInteger(v) && v > 0 ? v : 2;
+  const v = requireIntEnv("INVITE_TTL_DAYS");
+  if (v <= 0) {
+    throw new Error("INVITE_TTL_DAYS must be a positive integer.");
+  }
+  return v;
 }
 
 /** The invite TTL in seconds, derived from INVITE_TTL_DAYS. */
@@ -157,8 +161,8 @@ export function checkAdminCredentials(
   password: string,
 ): boolean {
   if (!username || !password) return false;
-  const expectedUser = process.env.DASHBOARD_USERNAME || "admin";
-  const expectedPass = process.env.DASHBOARD_PASSWORD || "change-me";
+  const expectedUser = requireEnv("DASHBOARD_USERNAME");
+  const expectedPass = requireEnv("DASHBOARD_PASSWORD");
   // Evaluate both (no short-circuit) so timing doesn't reveal which failed.
   const userOk = safeEqual(username, expectedUser);
   const passOk = safeEqual(password, expectedPass);

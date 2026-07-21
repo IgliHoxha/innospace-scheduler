@@ -12,9 +12,7 @@ import type {
   UserRecord,
 } from "./types";
 import { hashPassword } from "./auth";
-
-const DB_FILE =
-  process.env.DATA_FILE || path.join(process.cwd(), "data", "scheduler.db");
+import { requireEnv } from "./env-app";
 
 const COLS =
   "id,createdAt,updatedAt,status,fullName,email,phoneNumber,boothId,startsAt,endsAt,note,userId";
@@ -112,8 +110,9 @@ function migrate(db: Database.Database): void {
 let _db: Database.Database | null = null;
 function getDb(): Database.Database {
   if (_db) return _db;
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  const db = new Database(DB_FILE);
+  const dbFile = requireEnv("DATA_FILE");
+  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+  const db = new Database(dbFile);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
   migrate(db);

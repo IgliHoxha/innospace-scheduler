@@ -8,6 +8,7 @@ import {
   type Session,
 } from "@/lib/auth";
 import { findUserByEmail } from "@/lib/db";
+import { requireEnv } from "@/lib/env-app";
 import { MAX_EMAIL, MAX_PASSWORD } from "@/lib/types";
 import {
   checkLoginBlocked,
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
     session = {
       role: "admin",
       sub: "admin",
-      name: process.env.DASHBOARD_USERNAME || "admin",
+      name: requireEnv("DASHBOARD_USERNAME"),
     };
   } else {
     // Otherwise a member, keyed by email.
