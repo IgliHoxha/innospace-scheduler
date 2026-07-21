@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVE_STATUSES,
   MAX_EMAIL,
   MAX_EMAIL_BODY,
   MAX_NAME,
@@ -17,6 +18,13 @@ describe("reservation statuses + caps", () => {
       "cancelled",
       "deleted",
     ]);
+  });
+
+  it("marks confirmed + pending as slot-holding, a subset of all statuses", () => {
+    expect(ACTIVE_STATUSES).toEqual(["confirmed", "pending"]);
+    for (const s of ACTIVE_STATUSES) {
+      expect(RESERVATION_STATUSES).toContain(s);
+    }
   });
 
   it("exposes the server-side length caps used by validators", () => {

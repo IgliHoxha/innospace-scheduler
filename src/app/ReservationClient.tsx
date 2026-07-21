@@ -14,7 +14,7 @@ import {
   noteRequiredFor,
 } from "@/lib/reservation-rules";
 import { boothLabel, timeText, dateOfReservation } from "@/lib/templates";
-import { formatDateLong, formatDateMedium } from "@/lib/date-format";
+import { formatDateLong, formatDateMedium } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
 import { pad2 } from "@/lib/utils";
 

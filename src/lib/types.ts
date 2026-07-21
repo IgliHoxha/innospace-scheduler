@@ -9,6 +9,13 @@ export const RESERVATION_STATUSES = [
 
 export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 
+// Statuses that hold a slot: pending blocks the time exactly like confirmed.
+// `satisfies` proves it's a subset of the canonical list, so it can't drift.
+export const ACTIVE_STATUSES = [
+  "confirmed",
+  "pending",
+] as const satisfies readonly ReservationStatus[];
+
 // Length caps for free-text input. Enforced server-side (the client mirrors them
 // with maxLength) so nothing unbounded reaches the DB, and so a huge password
 // can't burn CPU in scrypt.

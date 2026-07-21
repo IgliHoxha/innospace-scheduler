@@ -3,7 +3,7 @@
 import type { ContactInfo, Reservation, ReservationStatus } from "./types";
 import { boothName } from "./booths";
 import { rangeLabel } from "./schedule";
-import { dateOf, formatDateLong } from "./date-format";
+import { dateOf, formatDateLong } from "./datetime";
 
 export type EmailStatus = Extract<
   ReservationStatus,

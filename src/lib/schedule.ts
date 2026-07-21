@@ -3,7 +3,7 @@
 // so SQLite indexes it directly and the date is the first 10 chars.
 import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
-import { timeOf, durationMinutes, ymd } from "./date-format";
+import { timeOf, durationMinutes, ymd } from "./datetime";
 
 /** First reservable hour of the day (24h). Required. Env: OPEN_HOUR. */
 export function openHour(): number {

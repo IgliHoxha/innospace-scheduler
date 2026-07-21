@@ -37,11 +37,9 @@ export function requestOrigin(headers: Headers): string | null {
 }
 
 /**
- * Origin guard for state-changing handlers (CSRF defense in depth alongside the
- * sameSite=lax cookie): 403 when the request's Origin/Referer isn't allowed,
- * else null (proceed). A no-op when ALLOWED_ORIGINS is unset ("*"), and a missing
- * origin can't be enforced, so it passes (see isOriginAllowed). Call it first in
- * every mutating handler (POST/PATCH/PUT/DELETE); GET reads don't need it.
+ * Origin guard for mutating handlers (CSRF defense in depth with the sameSite=lax
+ * cookie): 403 when the Origin/Referer isn't allowed, else null. No-op when
+ * ALLOWED_ORIGINS is unset ("*"); even when set, a missing origin passes.
  */
 export function requireAllowedOrigin(headers: Headers): NextResponse | null {
   if (isOriginAllowed(requestOrigin(headers))) return null;

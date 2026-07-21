@@ -8,8 +8,8 @@ import {
   emailHeading,
   emailSubject,
   signOff,
-  type EmailStatus,
 } from "./templates";
+import type { EmailStatus } from "./templates";
 
 export { getContactFromEnv };
 

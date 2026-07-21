@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as t from "@/lib/date-format";
+import * as t from "@/lib/datetime";
 
 describe("datetime string primitives", () => {
   it("accepts well-formed local datetimes and rejects malformed ones", () => {
@@ -16,6 +16,12 @@ describe("datetime string primitives", () => {
     expect(t.timeOf("2026-07-16T09:30")).toBe("09:30");
     expect(t.toDateTime("2026-07-16", "09:30")).toBe("2026-07-16T09:30");
     expect(t.minutesOfDay("2026-07-16T09:30")).toBe(570);
+  });
+
+  it("maxTime returns the later of two HH:MM strings", () => {
+    expect(t.maxTime("09:00", "11:30")).toBe("11:30");
+    expect(t.maxTime("14:05", "14:00")).toBe("14:05");
+    expect(t.maxTime("10:00", "10:00")).toBe("10:00");
   });
 
   it("measures duration in minutes and hours across a range", () => {

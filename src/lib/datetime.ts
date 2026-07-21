@@ -21,6 +21,11 @@ export function timeOf(dt: string): string {
   return dt.slice(11, 16);
 }
 
+/** The later of two "HH:MM" times (they compare correctly as text). */
+export function maxTime(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
 /** Join a date and a "HH:MM" time into a datetime string. */
 export function toDateTime(date: string, time: string): string {
   return `${date}T${time}`;

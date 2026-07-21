@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
-import { RESERVATION_STATUSES } from "./types";
+import { RESERVATION_STATUSES, ACTIVE_STATUSES } from "./types";
 import type {
   Reservation,
   ReservationInput,
@@ -44,8 +44,6 @@ const USERS_TABLE_BODY = `(
 
 type Row = Record<string, string | number | null>;
 
-// Statuses that hold a slot: pending blocks the time exactly like confirmed.
-const ACTIVE_STATUSES = ["confirmed", "pending"] as const;
 const ACTIVE_LIST = inList(ACTIVE_STATUSES);
 
 /** Thrown when a requested slot range overlaps an existing active reservation. */
@@ -101,7 +99,10 @@ function migrate(db: Database.Database): void {
 }
 
 // Lazy singleton: opened on the first query, not at import (never runs at build).
+// _stmts caches prepared statements for this connection (see prep); both reset
+// together, so the cache can never outlive the connection it was compiled against.
 let _db: Database.Database | null = null;
+let _stmts: Map<string, Database.Statement> | null = null;
 function getDb(): Database.Database {
   if (_db) return _db;
   const dbFile = requireEnv("DATA_FILE");
@@ -111,15 +112,27 @@ function getDb(): Database.Database {
   db.pragma("busy_timeout = 5000");
   migrate(db);
   _db = db;
+  _stmts = new Map();
   return db;
 }
 
+// A prepared statement compiled once per connection and reused. Pass only static
+// SQL: a query whose text varies per call (dynamic WHERE / placeholder count)
+// would fill the cache with one-off entries, so those keep using db.prepare.
+function prep(sql: string): Database.Statement {
+  const db = getDb();
+  let stmt = _stmts!.get(sql);
+  if (!stmt) {
+    stmt = db.prepare(sql);
+    _stmts!.set(sql, stmt);
+  }
+  return stmt;
+}
+
 function insert(r: Reservation) {
-  getDb()
-    .prepare(
-      `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
-    )
-    .run(toRow(r));
+  prep(
+    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
+  ).run(toRow(r));
 }
 
 function toRow(r: Reservation): Row {
@@ -185,17 +198,15 @@ export interface ReservationQuery {
 const SEARCH_COLS = ["fullName", "email", "phoneNumber", "boothId", "note"];
 
 function reservationCounts(): ReservationCounts {
-  const r = getDb()
-    .prepare(
-      `SELECT
+  const r = prep(
+    `SELECT
          SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS total,
          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
          SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
          SUM(CASE WHEN status = 'deleted' THEN 1 ELSE 0 END) AS deleted
        FROM reservations`,
-    )
-    .get() as Record<string, number | null>;
+  ).get() as Record<string, number | null>;
   return {
     total: Number(r.total ?? 0),
     pending: Number(r.pending ?? 0),
@@ -279,17 +290,15 @@ export async function reservedRanges(
     userId: string | null;
   }[]
 > {
-  const rows = getDb()
-    .prepare(
-      // The member's own name first: a reservation keeps the name it was made
-      // under, so a rename would leave the old one on the board.
-      `SELECT r.startsAt, r.endsAt, r.userId, COALESCE(u.name, r.fullName) AS reservedBy
+  const rows = prep(
+    // The member's own name first: a reservation keeps the name it was made
+    // under, so a rename would leave the old one on the board.
+    `SELECT r.startsAt, r.endsAt, r.userId, COALESCE(u.name, r.fullName) AS reservedBy
        FROM reservations r
        LEFT JOIN users u ON u.id = r.userId
        WHERE r.boothId = ? AND r.startsAt BETWEEN ? AND ? AND r.status IN (${ACTIVE_LIST})
        ORDER BY r.startsAt`,
-    )
-    .all(boothId, `${date}T00:00`, `${date}T23:59`) as Row[];
+  ).all(boothId, `${date}T00:00`, `${date}T23:59`) as Row[];
   return rows.map((r) => ({
     startsAt: String(r.startsAt),
     endsAt: String(r.endsAt),
@@ -319,14 +328,12 @@ export async function createReservation(
   const tx = db.transaction((r: Reservation) => {
     // Overlap: an existing active reservation starts before this one ends AND ends
     // after this one starts. Half-open ranges, so touching edges don't clash.
-    const clash = db
-      .prepare(
-        `SELECT 1 FROM reservations
+    const clash = prep(
+      `SELECT 1 FROM reservations
          WHERE boothId = ? AND status IN (${ACTIVE_LIST})
            AND startsAt < ? AND endsAt > ?
          LIMIT 1`,
-      )
-      .get(r.boothId, r.endsAt, r.startsAt);
+    ).get(r.boothId, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
     insert(r);
   });
@@ -349,9 +356,8 @@ export async function deleteReservations(ids: string[]): Promise<number> {
 }
 
 export async function getReservation(id: string): Promise<Reservation | null> {
-  const row = getDb()
-    .prepare("SELECT * FROM reservations WHERE id = ?")
-    .get(id) as Row | undefined;
+  const row = prep("SELECT * FROM reservations WHERE id = ?").get(id) as
+    Row | undefined;
   return row ? fromRow(row) : null;
 }
 
@@ -359,13 +365,10 @@ export async function updateReservationStatus(
   id: string,
   status: ReservationStatus,
 ): Promise<Reservation | null> {
-  const db = getDb();
-  const res = db
-    .prepare("UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ?")
-    .run(status, new Date().toISOString(), id);
-  if (res.changes === 0) return null;
-  const row = db.prepare("SELECT * FROM reservations WHERE id = ?").get(id) as
-    Row | undefined;
+  // RETURNING hands back the updated row in one round-trip; no match -> undefined.
+  const row = prep(
+    "UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ? RETURNING *",
+  ).get(status, new Date().toISOString(), id) as Row | undefined;
   return row ? fromRow(row) : null;
 }
 
@@ -400,11 +403,9 @@ export class AlreadyActivatedError extends Error {
 
 export async function listUsers(): Promise<User[]> {
   // Invited (not yet named) members sort last but stay visible.
-  const rows = getDb()
-    .prepare(
-      "SELECT * FROM users ORDER BY (name IS NULL), name COLLATE NOCASE, email COLLATE NOCASE",
-    )
-    .all() as Row[];
+  const rows = prep(
+    "SELECT * FROM users ORDER BY (name IS NULL), name COLLATE NOCASE, email COLLATE NOCASE",
+  ).all() as Row[];
   return rows.map(userFromRow);
 }
 
@@ -413,11 +414,9 @@ export async function listUsers(): Promise<User[]> {
  * already-active email throws.
  */
 export async function inviteUser(emailRaw: string): Promise<User> {
-  const db = getDb();
   const email = emailRaw.trim().toLowerCase();
-  const existing = db
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email) as Row | undefined;
+  const existing = prep("SELECT * FROM users WHERE email = ?").get(email) as
+    Row | undefined;
 
   if (existing) {
     if (existing.passwordHash != null) throw new DuplicateEmailError();
@@ -433,7 +432,7 @@ export async function inviteUser(emailRaw: string): Promise<User> {
     email,
     activated: false,
   };
-  db.prepare(
+  prep(
     "INSERT INTO users (id,createdAt,updatedAt,name,email,passwordHash) VALUES (@id,@createdAt,@updatedAt,NULL,@email,NULL)",
   ).run({
     id: user.id,
@@ -453,27 +452,24 @@ export async function activateUser(
   name: string,
   password: string,
 ): Promise<User> {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as
+  const row = prep("SELECT * FROM users WHERE id = ?").get(userId) as
     Row | undefined;
   if (!row) throw new Error("This invite is no longer valid.");
   if (row.passwordHash != null) throw new AlreadyActivatedError();
 
-  db.prepare(
-    "UPDATE users SET name = ?, passwordHash = ?, updatedAt = ? WHERE id = ?",
-  ).run(name.trim(), hashPassword(password), new Date().toISOString(), userId);
-  return userFromRow(
-    db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as Row,
-  );
+  const updated = prep(
+    "UPDATE users SET name = ?, passwordHash = ?, updatedAt = ? WHERE id = ? RETURNING *",
+  ).get(name.trim(), hashPassword(password), new Date().toISOString(), userId);
+  return userFromRow(updated as Row);
 }
 
 export async function deleteUser(id: string): Promise<boolean> {
-  const res = getDb().prepare("DELETE FROM users WHERE id = ?").run(id);
+  const res = prep("DELETE FROM users WHERE id = ?").run(id);
   return res.changes > 0;
 }
 
 export async function getUserById(id: string): Promise<User | null> {
-  const row = getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as
+  const row = prep("SELECT * FROM users WHERE id = ?").get(id) as
     Row | undefined;
   return row ? userFromRow(row) : null;
 }
@@ -482,9 +478,9 @@ export async function getUserById(id: string): Promise<User | null> {
 export async function findUserByEmail(
   email: string,
 ): Promise<UserRecord | null> {
-  const row = getDb()
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email.trim().toLowerCase()) as Row | undefined;
+  const row = prep("SELECT * FROM users WHERE email = ?").get(
+    email.trim().toLowerCase(),
+  ) as Row | undefined;
   if (!row) return null;
   // Empty hash for a not-yet-activated invite: verifyPassword will reject it.
   return {

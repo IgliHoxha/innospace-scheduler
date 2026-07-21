@@ -2,7 +2,8 @@
 // dep) since these pull in Next types. Each returns the Session, or a ready-made
 // 401/403 to return as-is: `if (x instanceof NextResponse) return x`.
 import { NextRequest, NextResponse } from "next/server";
-import { verifySessionToken, SESSION_COOKIE, type Session } from "./auth";
+import { verifySessionToken, SESSION_COOKIE } from "./auth";
+import type { Session } from "./auth";
 
 function deny(error: string, status: number): NextResponse {
   return NextResponse.json({ ok: false, error }, { status });

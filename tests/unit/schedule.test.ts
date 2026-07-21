@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as schedule from "@/lib/schedule";
-import { todayYMD } from "@/lib/date-format";
+import { todayYMD } from "@/lib/datetime";
 
 afterEach(() => vi.unstubAllEnvs());
 

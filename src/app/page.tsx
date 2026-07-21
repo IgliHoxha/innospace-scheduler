@@ -8,7 +8,7 @@ import {
   minReservationMinutes,
 } from "@/lib/schedule";
 import { queryReservations } from "@/lib/db";
-import { formatDateMedium, todayYMD } from "@/lib/date-format";
+import { formatDateMedium, todayYMD } from "@/lib/datetime";
 import ReservationClient from "./ReservationClient";
 
 export const dynamic = "force-dynamic";

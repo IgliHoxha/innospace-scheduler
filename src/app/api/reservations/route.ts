@@ -24,7 +24,7 @@ import {
   durationMinutes,
   toDateTime,
   nowDateTime,
-} from "@/lib/date-format";
+} from "@/lib/datetime";
 import { sendReservationEmail } from "@/lib/email";
 import { meetsMinDuration } from "@/lib/reservation-rules";
 

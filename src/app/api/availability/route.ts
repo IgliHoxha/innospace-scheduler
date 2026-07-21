@@ -8,7 +8,7 @@ import {
   openHour,
   closeHour,
 } from "@/lib/schedule";
-import { timeOf, todayYMD, nowDateTime } from "@/lib/date-format";
+import { timeOf, todayYMD, nowDateTime, maxTime } from "@/lib/datetime";
 import { pad2 } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -63,9 +63,4 @@ export async function GET(req: NextRequest) {
     opens,
     closes: `${pad2(closeHour())}:00`,
   });
-}
-
-// "HH:MM" strings compare correctly as text.
-function maxTime(a: string, b: string): string {
-  return a >= b ? a : b;
 }

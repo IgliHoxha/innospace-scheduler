@@ -14,7 +14,7 @@ import {
   dateOfReservation,
 } from "@/lib/templates";
 import type { ContactInfo } from "@/lib/types";
-import { formatDMYShort, formatDateTime } from "@/lib/date-format";
+import { formatDMYShort, formatDateTime } from "@/lib/datetime";
 
 const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [
   { key: "all", label: "All" },
