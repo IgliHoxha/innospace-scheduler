@@ -9,6 +9,10 @@ Built with Next.js 15 (App Router), React 19, TypeScript, and SQLite
 (`better-sqlite3`), with transactional email through Resend and a one-command
 deploy to Fly.io.
 
+<p align="center">
+  <img src="docs/img/booking.png" alt="The member booking screen: pick a booth, a day, and a start/end time, with the slots already taken shown inline and the member's own bookings listed below" width="860">
+</p>
+
 ## Features
 
 - **Arbitrary time ranges**, not fixed slots. A booking is a start and end
@@ -52,6 +56,20 @@ deploy to Fly.io.
   every reservation, approves or cancels (emailing the member) or deletes, and
   manages members from the **Users** page.
 
+The admin dashboard lists every booking with live status counts, a search box,
+status filters, and a preview of the exact email each action would send:
+
+<p align="center">
+  <img src="docs/img/dashboard.png" alt="The admin bookings dashboard: status count tiles (total, awaiting, confirmed, cancelled, deleted), a search box with status filters, and a table of bookings each showing a preview of the email that action would send" width="860">
+</p>
+
+Members are invite-only and managed from the **Users** page: enter an email, and
+the member sets their own name and password from the activation link.
+
+<p align="center">
+  <img src="docs/img/users.png" alt="The admin members page: an email invite box and a table of members with name, email, active status, and the date added" width="860">
+</p>
+
 ## Tech stack
 
 | Component | Notes |
@@ -73,6 +91,10 @@ make dev                  # http://localhost:4001
 
 Sign in at `/login` as the admin (the `DASHBOARD_*` values), open **Users** to
 invite a member, then activate that member and book.
+
+<p align="center">
+  <img src="docs/img/login.png" alt="The sign-in screen: one email and password form for both the admin and invited members" width="720">
+</p>
 
 Without `RESEND_API_KEY` set, emails are skipped, so locally the invitation is not
 delivered: grab the activation link from the server logs (or the token in the DB)
