@@ -53,7 +53,14 @@ export default function DashboardClient({
   } | null>(null);
 
   const reservations = data.reservations;
-  const counts = data.counts;
+  // Admin responses always carry counts; the fallback only satisfies the optional type.
+  const counts = data.counts ?? {
+    total: 0,
+    pending: 0,
+    confirmed: 0,
+    cancelled: 0,
+    deleted: 0,
+  };
   const total = data.total;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

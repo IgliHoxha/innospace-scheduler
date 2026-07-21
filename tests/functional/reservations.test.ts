@@ -21,6 +21,7 @@ type Body = {
   error?: string;
   reservation?: { status: string };
   total?: number;
+  counts?: { total: number };
   removed?: number;
 };
 const json = (res: Response) => res.json() as Promise<Body>;
@@ -137,12 +138,15 @@ describe("GET /api/reservations", () => {
       ),
     );
     expect(mine.total).toBe(1);
+    // A member must not receive system-wide tallies; only the admin does.
+    expect(mine.counts).toBeUndefined();
     const all = await json(
       await route.GET(
         makeRequest("/api/reservations?status=all", { token: adminToken() }),
       ),
     );
     expect(all.total).toBe(2);
+    expect(all.counts).toMatchObject({ total: 2 });
   });
 });
 

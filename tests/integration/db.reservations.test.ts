@@ -104,6 +104,8 @@ describe("queryReservations", () => {
 
     const mine = await db.queryReservations({ userId: "u1" });
     expect(mine.total).toBe(2);
+    // Member-scoped list omits the global tallies (no info-disclosure, no scan).
+    expect(mine.counts).toBeUndefined();
 
     const searchBob = await db.queryReservations({ search: "bob" });
     expect(searchBob.total).toBe(1);

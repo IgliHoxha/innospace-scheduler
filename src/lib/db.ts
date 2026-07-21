@@ -186,7 +186,7 @@ export interface ReservationPage {
   total: number; // rows matching the current filter + search
   page: number; // 1-based
   pageSize: number;
-  counts: ReservationCounts; // global tallies for the stat boxes
+  counts?: ReservationCounts; // admin stat boxes only; omitted on the member-scoped list
 }
 
 export interface ReservationQuery {
@@ -274,7 +274,9 @@ export async function queryReservations(
     total,
     page,
     pageSize,
-    counts: reservationCounts(),
+    // Global tallies feed the admin stat boxes only; skip the full-table scan and
+    // the info-disclosure on the member-scoped ("my reservations") list.
+    ...(q.userId ? {} : { counts: reservationCounts() }),
   };
 }
 
@@ -331,12 +333,15 @@ export async function createReservation(
   const tx = db.transaction((r: Reservation) => {
     // Overlap: an existing active reservation starts before this one ends AND ends
     // after this one starts. Half-open ranges, so touching edges don't clash.
+    // Reservations are same-day, so any clash starts on this date: the startsAt >=
+    // day-start bound keeps the index range to one day instead of all history.
+    const dayStart = `${r.startsAt!.slice(0, 10)}T00:00`;
     const clash = prep(
       `SELECT 1 FROM reservations
          WHERE boothId = ? AND status IN (${ACTIVE_LIST})
-           AND startsAt < ? AND endsAt > ?
+           AND startsAt >= ? AND startsAt < ? AND endsAt > ?
          LIMIT 1`,
-    ).get(r.boothId, r.endsAt, r.startsAt);
+    ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
     insert(r);
   });
