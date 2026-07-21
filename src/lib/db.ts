@@ -3,13 +3,14 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
-import { RESERVATION_STATUSES, ACTIVE_STATUSES } from "./types";
-import type {
-  Reservation,
-  ReservationInput,
-  ReservationStatus,
-  User,
-  UserRecord,
+import {
+  RESERVATION_STATUSES,
+  ACTIVE_STATUSES,
+  type Reservation,
+  type ReservationInput,
+  type ReservationStatus,
+  type User,
+  type UserRecord,
 } from "./types";
 import { hashPassword } from "./auth";
 import { requireEnv } from "./env-app";
@@ -65,8 +66,10 @@ const MIGRATIONS: Migration[] = [
     up: (db) => {
       db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
       db.exec(`CREATE TABLE IF NOT EXISTS users ${USERS_TABLE_BODY};`);
+      // Serves the dashboard list's ORDER BY startsAt DESC, createdAt DESC: an
+      // ascending composite is reverse-scanned, so LIMIT stops early (no sort).
       db.exec(
-        `CREATE INDEX IF NOT EXISTS idx_reservations_createdAt ON reservations(createdAt);`,
+        `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
       );
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);`,

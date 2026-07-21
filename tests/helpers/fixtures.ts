@@ -1,8 +1,6 @@
-// Throwaway credentials for the tests. NOT real secrets: each only ever unlocks a
-// per-test temp SQLite DB that is created and deleted inside the test. Every test
-// credential lives here, referenced as a variable (never an inline
-// `password: "..."` literal) and given an obvious "fixture-*" value, so secret
-// scanners don't misread test data as a live key.
+// Throwaway test credentials, NOT real secrets: each only unlocks a per-test temp
+// DB. Kept here as named "fixture-*" values (never inline `password: "..."`), so
+// secret scanners don't misread them as live keys.
 
 /** A valid member password used across the auth/activation tests. */
 export const CORRECT = "correct-horse-fixture";

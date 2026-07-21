@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Reservation, ReservationStatus } from "@/lib/types";
+import type { Reservation, ReservationStatus, ContactInfo } from "@/lib/types";
 import type { ReservationPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -13,7 +13,6 @@ import {
   timeText,
   dateOfReservation,
 } from "@/lib/templates";
-import type { ContactInfo } from "@/lib/types";
 import { formatDMYShort, formatDateTime } from "@/lib/datetime";
 
 const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [

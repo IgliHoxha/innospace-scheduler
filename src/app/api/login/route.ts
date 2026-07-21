@@ -5,8 +5,8 @@ import {
   verifyPassword,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
+  type Session,
 } from "@/lib/auth";
-import type { Session } from "@/lib/auth";
 import { requireSession } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { findUserByEmail } from "@/lib/db";

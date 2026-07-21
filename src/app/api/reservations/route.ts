@@ -5,8 +5,11 @@ import {
   deleteReservations,
   SlotUnavailableError,
 } from "@/lib/db";
-import { RESERVATION_STATUSES, MAX_NOTE } from "@/lib/types";
-import type { ReservationStatus } from "@/lib/types";
+import {
+  RESERVATION_STATUSES,
+  MAX_NOTE,
+  type ReservationStatus,
+} from "@/lib/types";
 import { requireSession, requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { boothName, isBoothId } from "@/lib/booths";

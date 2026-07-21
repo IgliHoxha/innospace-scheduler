@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import TimeRangePicker from "./TimeRangePicker";
 import { SiteFooter } from "@/components/SiteFooter";
 import type { Booth } from "@/lib/booths";
-import type { Reservation } from "@/lib/types";
-import { MAX_NOTE } from "@/lib/types";
+import { MAX_NOTE, type Reservation } from "@/lib/types";
 import {
   approvalRequiredFor,
   findOverlap,

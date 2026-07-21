@@ -7,8 +7,8 @@ import {
   getArrowByType,
   getDateByType,
   setDateByType,
+  type TimePickerType,
 } from "@/lib/time-picker-utils";
-import type { TimePickerType } from "@/lib/time-picker-utils";
 
 export interface TimePickerInputProps extends Omit<
   React.ComponentProps<"input">,

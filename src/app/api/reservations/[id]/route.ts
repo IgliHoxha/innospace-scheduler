@@ -3,8 +3,11 @@ import { getReservation, updateReservationStatus } from "@/lib/db";
 import { sendReservationEmail } from "@/lib/email";
 import { requireSession } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
-import { RESERVATION_STATUSES, MAX_EMAIL_BODY } from "@/lib/types";
-import type { ReservationStatus } from "@/lib/types";
+import {
+  RESERVATION_STATUSES,
+  MAX_EMAIL_BODY,
+  type ReservationStatus,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 
