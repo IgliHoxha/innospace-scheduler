@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp, userToken } from "../helpers/app";
-import { todayYMD } from "@/lib/schedule";
+import { todayYMD } from "@/lib/date-format";
 
 type Route = typeof import("@/app/api/availability/route");
 type Db = typeof import("@/lib/db");

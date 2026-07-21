@@ -17,10 +17,14 @@ import {
   autoApproveMaxHours,
   isValidTimeOfDay,
   minReservationMinutes,
-  nowDateTime,
   stepMinutes,
 } from "@/lib/schedule";
-import { minutesOfDay, durationMinutes, toDateTime } from "@/lib/date-format";
+import {
+  minutesOfDay,
+  durationMinutes,
+  toDateTime,
+  nowDateTime,
+} from "@/lib/date-format";
 import { sendReservationEmail } from "@/lib/email";
 import { meetsMinDuration } from "@/lib/reservation-rules";
 

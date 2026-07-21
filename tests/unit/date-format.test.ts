@@ -24,6 +24,18 @@ describe("datetime string primitives", () => {
   });
 });
 
+describe("clock-based helpers", () => {
+  it("ymd formats a Date as YYYY-MM-DD (local, month 1-based)", () => {
+    expect(t.ymd(new Date(2026, 6, 14))).toBe("2026-07-14");
+    expect(t.ymd(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+
+  it("todayYMD and nowDateTime produce the app's string shapes", () => {
+    expect(t.todayYMD()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(t.nowDateTime()).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  });
+});
+
 describe("date + time formatting", () => {
   it("formatDMYShort", () => {
     expect(t.formatDMYShort("2026-07-14")).toBe("14/07/26");

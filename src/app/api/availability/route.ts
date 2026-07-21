@@ -4,13 +4,11 @@ import { reservedRanges } from "@/lib/db";
 import { isBoothId } from "@/lib/booths";
 import {
   isReservableDate,
-  todayYMD,
-  nowDateTime,
   rangeLabel,
   openHour,
   closeHour,
 } from "@/lib/schedule";
-import { timeOf } from "@/lib/date-format";
+import { timeOf, todayYMD, nowDateTime } from "@/lib/date-format";
 import { pad2 } from "@/lib/utils";
 
 export const runtime = "nodejs";

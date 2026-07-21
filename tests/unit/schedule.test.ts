@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as schedule from "@/lib/schedule";
+import { todayYMD } from "@/lib/date-format";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -89,7 +90,7 @@ describe("isValidTimeOfDay", () => {
 
 describe("reservation window", () => {
   it("treats today as reservable and rejects malformed or out-of-window dates", () => {
-    const today = schedule.todayYMD();
+    const today = todayYMD();
     expect(schedule.isReservableDate(today)).toBe(true);
     expect(schedule.isReservableDate("not-a-date")).toBe(false);
     expect(schedule.isReservableDate("1999-01-01")).toBe(false); // in the past

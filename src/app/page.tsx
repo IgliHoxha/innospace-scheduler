@@ -4,12 +4,11 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { getBooths } from "@/lib/booths";
 import {
   reservableDates,
-  todayYMD,
   autoApproveMaxHours,
   minReservationMinutes,
 } from "@/lib/schedule";
 import { queryReservations } from "@/lib/db";
-import { formatDateMedium } from "@/lib/date-format";
+import { formatDateMedium, todayYMD } from "@/lib/date-format";
 import ReservationClient from "./ReservationClient";
 
 export const dynamic = "force-dynamic";

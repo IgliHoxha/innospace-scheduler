@@ -44,8 +44,7 @@ const USERS_TABLE_BODY = `(
 
 type Row = Record<string, string | number | null>;
 
-// Statuses that occupy a slot: a pending (awaiting-approval) reservation holds the
-// time just like a confirmed one, so nobody else can grab it in the meantime.
+// Statuses that hold a slot: pending blocks the time exactly like confirmed.
 const ACTIVE_STATUSES = ["confirmed", "pending"] as const;
 const ACTIVE_LIST = inList(ACTIVE_STATUSES);
 
@@ -57,14 +56,9 @@ export class SlotUnavailableError extends Error {
   }
 }
 
-// Ordered schema migrations, keyed by target `PRAGMA user_version`. Each step
-// runs exactly once, in a transaction, on any DB whose version is below it, then
-// the version is bumped. A fresh DB starts at version 0 and runs them all.
-//
-// To change the schema: append a new { version: N+1, up } entry with the
-// ALTER/CREATE statements - never edit an existing one (it has already run on
-// live DBs). Migration 1 is the baseline and uses IF NOT EXISTS so it's a no-op
-// on a DB that was created before migrations existed.
+// Ordered schema migrations keyed by target `PRAGMA user_version`: each runs once,
+// in a transaction, on any DB below its version, then bumps it. To change the
+// schema, append a new { version: N+1, up } entry - never edit a shipped one.
 type Migration = { version: number; up: (db: Database.Database) => void };
 
 const MIGRATIONS: Migration[] = [
@@ -106,7 +100,7 @@ function migrate(db: Database.Database): void {
   }
 }
 
-// Lazy singleton: open on first query, not at import time (avoids running during build).
+// Lazy singleton: opened on the first query, not at import (never runs at build).
 let _db: Database.Database | null = null;
 function getDb(): Database.Database {
   if (_db) return _db;
@@ -120,10 +114,12 @@ function getDb(): Database.Database {
   return db;
 }
 
-function insert(db: Database.Database, r: Reservation) {
-  db.prepare(
-    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
-  ).run(toRow(r));
+function insert(r: Reservation) {
+  getDb()
+    .prepare(
+      `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
+    )
+    .run(toRow(r));
 }
 
 function toRow(r: Reservation): Row {
@@ -188,8 +184,8 @@ export interface ReservationQuery {
 
 const SEARCH_COLS = ["fullName", "email", "phoneNumber", "boothId", "note"];
 
-function reservationCounts(db: Database.Database): ReservationCounts {
-  const r = db
+function reservationCounts(): ReservationCounts {
+  const r = getDb()
     .prepare(
       `SELECT
          SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS total,
@@ -264,7 +260,7 @@ export async function queryReservations(
     total,
     page,
     pageSize,
-    counts: reservationCounts(db),
+    counts: reservationCounts(),
   };
 }
 
@@ -332,7 +328,7 @@ export async function createReservation(
       )
       .get(r.boothId, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
-    insert(db, r);
+    insert(r);
   });
 
   tx(reservation);

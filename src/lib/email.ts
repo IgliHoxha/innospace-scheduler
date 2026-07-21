@@ -16,15 +16,13 @@ export { getContactFromEnv };
 const BRAND = COLORS.brand;
 const PLUM = COLORS.plum;
 
-// Base URL for links in emails (invite/activation). Required: a wrong base sends
-// broken links, so it must be configured explicitly.
+// Base URL for email links (invite/activation); required, or links break.
 function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
 
-// The logo is an app asset (public/email-logo.png), so it's served under
-// APP_BASE_URL. Caveat: in dev that base is localhost, which mail clients can't
-// fetch - but dev normally skips sending (RESEND_API_KEY unset).
+// Logo is an app asset (public/email-logo.png) served under APP_BASE_URL. In dev
+// that's localhost (unfetchable by mail clients), but dev normally skips sending.
 function emailLogoUrl(): string {
   return `${baseUrl().replace(/\/$/, "")}/email-logo.png`;
 }

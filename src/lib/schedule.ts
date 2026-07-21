@@ -3,8 +3,7 @@
 // so SQLite indexes it directly and the date is the first 10 chars.
 import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
-import { timeOf, durationMinutes } from "./date-format";
-import { pad2 } from "./utils";
+import { timeOf, durationMinutes, ymd } from "./date-format";
 
 /** First reservable hour of the day (24h). Required. Env: OPEN_HOUR. */
 export function openHour(): number {
@@ -91,21 +90,6 @@ export function formatDuration(mins: number): string {
 /** "1h 30m" / "45m": a human duration for a reservation. */
 export function durationLabel(startsAt: string, endsAt: string): string {
   return formatDuration(durationMinutes(startsAt, endsAt));
-}
-
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-/** Server-local today as YYYY-MM-DD. */
-export function todayYMD(): string {
-  return ymd(new Date());
-}
-
-/** Server-local now as "YYYY-MM-DDTHH:MM": compares directly against startsAt. */
-export function nowDateTime(): string {
-  const now = new Date();
-  return `${ymd(now)}T${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 }
 
 /** Reservable dates as YYYY-MM-DD, from today through the window. */

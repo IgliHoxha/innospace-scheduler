@@ -1,6 +1,6 @@
-// Pure datetime-string helpers: extract, compose, validate, convert, diff, and
-// format the app's "YYYY-MM-DDTHH:MM" local wall-clock strings. No env, no domain
-// types, so the mailer, the dashboard, and the picker all share one source.
+// Datetime-string helpers for the app's "YYYY-MM-DDTHH:MM" local wall-clock format:
+// extract, compose, validate, convert, diff, format, plus "now"/"today" from the
+// system clock. No env or domain types, so mailer, dashboard, and picker share one.
 import { pad2 } from "./utils";
 
 const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
@@ -39,6 +39,22 @@ export function durationMinutes(startsAt: string, endsAt: string): number {
 /** Length of a reservation in hours, e.g. 1.5. */
 export function durationHours(startsAt: string, endsAt: string): number {
   return durationMinutes(startsAt, endsAt) / 60;
+}
+
+/** Format a Date as YYYY-MM-DD in the server's local time. */
+export function ymd(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Server-local today as YYYY-MM-DD. */
+export function todayYMD(): string {
+  return ymd(new Date());
+}
+
+/** Server-local now as "YYYY-MM-DDTHH:MM": compares directly against startsAt. */
+export function nowDateTime(): string {
+  const now = new Date();
+  return `${ymd(now)}T${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 }
 
 const MONTHS = [

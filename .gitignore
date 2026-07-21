@@ -15,9 +15,7 @@
 .env
 .env*.local
 
-# data: real reservation submissions, keep out of git
-/data/reservations.json
-/data/reservations.json.imported
+# data: the SQLite DB (+ WAL/SHM sidecars), keep out of git
 /data/*.db
 /data/*.db-wal
 /data/*.db-shm
