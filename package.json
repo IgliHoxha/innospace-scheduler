@@ -17,8 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "grpc": "tsx src/server/grpc-entry.ts",
-    "screenshots": "node scripts/screenshots.mjs"
+    "grpc": "tsx src/server/grpc-entry.ts"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.4",
