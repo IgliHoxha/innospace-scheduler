@@ -19,7 +19,7 @@ export const MAX_PASSWORD = 200;
 export const MIN_PASSWORD = 6;
 export const MAX_EMAIL_BODY = 5000;
 
-/** The slot fields a booking submits (identity is taken from the session). */
+/** The slot fields a reservation submits (identity is taken from the session). */
 export interface ReservationInput {
   fullName?: string;
   email?: string;
@@ -31,7 +31,7 @@ export interface ReservationInput {
   /** Local end datetime, exclusive (e.g. "2026-07-16T11:00"). */
   endsAt?: string;
   note?: string;
-  /** Id of the user (member) who booked, or "admin". */
+  /** Id of the user (member) who reserved, or "admin". */
   userId?: string;
 }
 

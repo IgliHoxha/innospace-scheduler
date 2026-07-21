@@ -40,13 +40,13 @@ describe("GET /api/availability", () => {
     expect((await res.json()).error).toBe("Unknown booth.");
   });
 
-  it("400 for a date outside the booking window", async () => {
+  it("400 for a date outside the reservation window", async () => {
     expect(
       (await get("booth=booth-1&date=1999-01-01", userToken("u1"))).status,
     ).toBe(400);
   });
 
-  it("returns booked ranges, opening hours, and a mine flag", async () => {
+  it("returns reserved ranges, opening hours, and a mine flag", async () => {
     await seatOne("u1", "Ada");
     const res = await get(`booth=booth-1&date=${today}`, userToken("u1"));
     expect(res.status).toBe(200);
@@ -58,8 +58,8 @@ describe("GET /api/availability", () => {
       opens: "09:00",
       closes: "18:00",
     });
-    expect(body.booked).toHaveLength(1);
-    expect(body.booked[0]).toMatchObject({
+    expect(body.reserved).toHaveLength(1);
+    expect(body.reserved[0]).toMatchObject({
       start: "14:00",
       end: "15:00",
       label: "14:00 – 15:00",
@@ -68,12 +68,12 @@ describe("GET /api/availability", () => {
     });
   });
 
-  it("marks another member's booking as not mine", async () => {
+  it("marks another member's reservation as not mine", async () => {
     await seatOne("u2", "Bob");
     const body = await (
       await get(`booth=booth-1&date=${today}`, userToken("u1"))
     ).json();
-    expect(body.booked[0]).toMatchObject({ by: "Bob", mine: false });
+    expect(body.reserved[0]).toMatchObject({ by: "Bob", mine: false });
   });
 });
 

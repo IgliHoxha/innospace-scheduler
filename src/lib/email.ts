@@ -105,8 +105,8 @@ function shell(opts: {
 }
 
 /**
- * Send a confirmation (on booking) or cancellation (from the dashboard) email
- * to the member who booked. customBody (dashboard edit) overrides the template.
+ * Send a confirmation (on reservation) or cancellation (from the dashboard) email
+ * to the member who reserved. customBody (dashboard edit) overrides the template.
  */
 export async function sendReservationEmail(
   reservation: Reservation,
@@ -162,7 +162,7 @@ export async function sendInviteEmail(
     [
       "Hi there,",
       "",
-      `You've been invited to book meeting booths at ${org}. To finish setting up your account, choose your name and a password using the button below.`,
+      `You've been invited to reserve meeting booths at ${org}. To finish setting up your account, choose your name and a password using the button below.`,
     ].join("\n"),
   );
   const button = `

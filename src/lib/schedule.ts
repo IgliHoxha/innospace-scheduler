@@ -1,23 +1,23 @@
-// Time rules. A booking is a start/end local datetime "YYYY-MM-DDTHH:MM" (no TZ:
+// Time rules. A reservation is a start/end local datetime "YYYY-MM-DDTHH:MM" (no TZ:
 // set TZ so the server matches the space). The format sorts as text, so SQLite
 // indexes it directly and the date is the first 10 chars.
-import { approvalRequiredFor, noteRequiredFor } from "./booking-rules";
+import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
 import { pad2 } from "./utils";
 
-/** First bookable hour of the day (24h). Required. Env: OPEN_HOUR. */
+/** First reservable hour of the day (24h). Required. Env: OPEN_HOUR. */
 export function openHour(): number {
   return Math.min(23, Math.max(0, requireIntEnv("OPEN_HOUR")));
 }
 
-/** Closing hour: a booking must end by this hour. Required. Env: CLOSE_HOUR. */
+/** Closing hour: a reservation must end by this hour. Required. Env: CLOSE_HOUR. */
 export function closeHour(): number {
   return Math.min(24, Math.max(openHour() + 1, requireIntEnv("CLOSE_HOUR")));
 }
 
-/** How many days ahead (including today) can be booked. Required. Env: BOOKING_WINDOW_DAYS. */
-export function bookingWindowDays(): number {
-  return Math.max(0, requireIntEnv("BOOKING_WINDOW_DAYS"));
+/** How many days ahead (including today) can be reserved. Required. Env: RESERVATION_WINDOW_DAYS. */
+export function reservationWindowDays(): number {
+  return Math.max(0, requireIntEnv("RESERVATION_WINDOW_DAYS"));
 }
 
 /**
@@ -34,13 +34,13 @@ export function stepMinutes(): number {
   return v;
 }
 
-/** Shortest bookable length, in minutes. Required. Env: MIN_BOOKING_MINUTES. */
-export function minBookingMinutes(): number {
-  return Math.max(stepMinutes(), requireIntEnv("MIN_BOOKING_MINUTES"));
+/** Shortest reservable length, in minutes. Required. Env: MIN_RESERVATION_MINUTES. */
+export function minReservationMinutes(): number {
+  return Math.max(stepMinutes(), requireIntEnv("MIN_RESERVATION_MINUTES"));
 }
 
 /**
- * Longest booking (in hours) that is auto-confirmed. Anything longer is created
+ * Longest reservation (in hours) that is auto-confirmed. Anything longer is created
  * as "pending" and needs admin approval. Required. Env: AUTO_APPROVE_MAX_HOURS.
  */
 export function autoApproveMaxHours(): number {
@@ -75,17 +75,17 @@ export function minutesOfDay(dt: string): number {
   return Number(dt.slice(11, 13)) * 60 + Number(dt.slice(14, 16));
 }
 
-/** Length of a booking in minutes. Assumes start/end are the same day. */
+/** Length of a reservation in minutes. Assumes start/end are the same day. */
 export function durationMinutes(startsAt: string, endsAt: string): number {
   return minutesOfDay(endsAt) - minutesOfDay(startsAt);
 }
 
-/** Length of a booking in hours, e.g. 1.5. */
+/** Length of a reservation in hours, e.g. 1.5. */
 export function durationHours(startsAt: string, endsAt: string): number {
   return durationMinutes(startsAt, endsAt) / 60;
 }
 
-/** Does this booking exceed the auto-approve limit (so needs admin approval)? */
+/** Does this reservation exceed the auto-approve limit (so needs admin approval)? */
 export function needsApproval(startsAt: string, endsAt: string): boolean {
   return approvalRequiredFor(
     durationMinutes(startsAt, endsAt),
@@ -94,7 +94,7 @@ export function needsApproval(startsAt: string, endsAt: string): boolean {
 }
 
 /**
- * Bookings this long need a note (admin context). Same threshold as auto-approve:
+ * Reservations this long need a note (admin context). Same threshold as auto-approve:
  * >= needs a note, > also needs approval.
  */
 export function noteRequired(startsAt: string, endsAt: string): boolean {
@@ -111,7 +111,7 @@ export function isValidTimeOfDay(minutes: number): boolean {
   return minutes % stepMinutes() === 0;
 }
 
-/** "09:30 – 11:00" for a booking. */
+/** "09:30 – 11:00" for a reservation. */
 export function rangeLabel(startsAt: string, endsAt: string): string {
   return `${timeOf(startsAt)} – ${timeOf(endsAt)}`;
 }
@@ -125,7 +125,7 @@ export function formatDuration(mins: number): string {
   return `${m}m`;
 }
 
-/** "1h 30m" / "45m": a human duration for a booking. */
+/** "1h 30m" / "45m": a human duration for a reservation. */
 export function durationLabel(startsAt: string, endsAt: string): string {
   return formatDuration(durationMinutes(startsAt, endsAt));
 }
@@ -145,12 +145,12 @@ export function nowDateTime(): string {
   return `${ymd(now)}T${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 }
 
-/** Bookable dates as YYYY-MM-DD, from today through the window. */
-export function bookableDates(): string[] {
+/** Reservable dates as YYYY-MM-DD, from today through the window. */
+export function reservableDates(): string[] {
   const out: string[] = [];
   const base = new Date();
   base.setHours(12, 0, 0, 0); // noon anchor avoids DST off-by-one when adding days
-  for (let i = 0; i <= bookingWindowDays(); i++) {
+  for (let i = 0; i <= reservationWindowDays(); i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
     out.push(ymd(d));
@@ -158,8 +158,8 @@ export function bookableDates(): string[] {
   return out;
 }
 
-/** Is this YYYY-MM-DD within the bookable window (not past, not beyond)? */
-export function isBookableDate(date: string | undefined): boolean {
+/** Is this YYYY-MM-DD within the reservable window (not past, not beyond)? */
+export function isReservableDate(date: string | undefined): boolean {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  return bookableDates().includes(date);
+  return reservableDates().includes(date);
 }

@@ -114,13 +114,13 @@ describe("isValidTimeOfDay", () => {
   });
 });
 
-describe("booking window", () => {
-  it("treats today as bookable and rejects malformed or out-of-window dates", () => {
+describe("reservation window", () => {
+  it("treats today as reservable and rejects malformed or out-of-window dates", () => {
     const today = schedule.todayYMD();
-    expect(schedule.isBookableDate(today)).toBe(true);
-    expect(schedule.isBookableDate("not-a-date")).toBe(false);
-    expect(schedule.isBookableDate("1999-01-01")).toBe(false); // in the past
-    expect(schedule.isBookableDate(undefined)).toBe(false);
-    expect(schedule.bookableDates()[0]).toBe(today); // window starts today
+    expect(schedule.isReservableDate(today)).toBe(true);
+    expect(schedule.isReservableDate("not-a-date")).toBe(false);
+    expect(schedule.isReservableDate("1999-01-01")).toBe(false); // in the past
+    expect(schedule.isReservableDate(undefined)).toBe(false);
+    expect(schedule.reservableDates()[0]).toBe(today); // window starts today
   });
 });

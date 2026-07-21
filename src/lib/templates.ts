@@ -10,13 +10,13 @@ export type EmailStatus = Extract<
   "confirmed" | "cancelled" | "pending"
 >;
 
-/** The booked time range as text, e.g. "09:30 – 11:00". */
+/** The reserved time range as text, e.g. "09:30 – 11:00". */
 export function timeText(reservation: Reservation): string {
   if (!reservation.startsAt || !reservation.endsAt) return "-";
   return rangeLabel(reservation.startsAt, reservation.endsAt);
 }
 
-/** The booked day, YYYY-MM-DD, taken from the start datetime. */
+/** The reserved day, YYYY-MM-DD, taken from the start datetime. */
 export function dateOfReservation(
   reservation: Reservation,
 ): string | undefined {
@@ -44,17 +44,17 @@ export function emailSubject(
 ): string {
   const booth = r ? boothLabel(r) : "meeting booth";
   if (status === "cancelled")
-    return `Update on your ${booth} booking at ${contact.org}`;
+    return `Update on your ${booth} reservation at ${contact.org}`;
   if (status === "pending")
-    return `We received your ${booth} booking request at ${contact.org}`;
+    return `We received your ${booth} reservation request at ${contact.org}`;
   const date = r ? dateText(r) : "";
-  return `Your ${booth} booking is confirmed${date ? ` for ${date}` : ""}`;
+  return `Your ${booth} reservation is confirmed${date ? ` for ${date}` : ""}`;
 }
 
 export function emailHeading(status: EmailStatus): string {
-  if (status === "confirmed") return "Booking confirmed";
-  if (status === "pending") return "Booking request received";
-  return "Booking cancelled";
+  if (status === "confirmed") return "Reservation confirmed";
+  if (status === "pending") return "Reservation request received";
+  return "Reservation cancelled";
 }
 
 function firstName(r: Reservation): string {
@@ -80,7 +80,7 @@ function confirmedBody(r: Reservation, contact: ContactInfo): string {
   const lines = [
     `Hi ${firstName(r)},`,
     "",
-    `Your meeting booth is booked. Here are the details:`,
+    `Your meeting booth is reserved. Here are the details:`,
     "",
     `Booth: ${boothLabel(r)}`,
     `Date: ${dateText(r)}`,
@@ -102,13 +102,13 @@ function cancelledBody(r: Reservation, contact: ContactInfo): string {
   return [
     greeting,
     "",
-    `Thank you for booking a meeting booth at ${contact.org}.`,
+    `Thank you for reserving a meeting booth at ${contact.org}.`,
     "",
-    `We're sorry to let you know that your booking for ${boothLabel(r)} on ${dateText(
+    `We're sorry to let you know that your reservation for ${boothLabel(r)} on ${dateText(
       r,
     )} (${timeText(r)}) has been cancelled.`,
     "",
-    "We sincerely apologize for the inconvenience. Please feel free to book another slot at your convenience, or reply to this email and we'll be glad to help.",
+    "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
     "",
     ...signOff(contact),
   ].join("\n");
@@ -118,7 +118,7 @@ function pendingBody(r: Reservation, contact: ContactInfo): string {
   return [
     `Hi ${firstName(r)},`,
     "",
-    "Thanks for your booking request. Because it's longer than our instant-booking limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
+    "Thanks for your reservation request. Because it's longer than our instant-reservation limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
     "",
     `Booth: ${boothLabel(r)}`,
     `Date: ${dateText(r)}`,

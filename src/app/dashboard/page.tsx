@@ -13,7 +13,7 @@ export default async function DashboardPage() {
     (await cookies()).get(SESSION_COOKIE)?.value,
   );
   if (!session) redirect("/login");
-  // Members don't get the dashboard: send them to the booking screen.
+  // Members don't get the dashboard: send them to the reservation screen.
   if (session.role !== "admin") redirect("/");
 
   const initialData = await queryReservations({

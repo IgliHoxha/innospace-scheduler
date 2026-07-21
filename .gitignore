@@ -15,9 +15,9 @@
 .env
 .env*.local
 
-# data: real booking submissions, keep out of git
-/data/bookings.json
-/data/bookings.json.imported
+# data: real reservation submissions, keep out of git
+/data/reservations.json
+/data/reservations.json.imported
 /data/*.db
 /data/*.db-wal
 /data/*.db-shm

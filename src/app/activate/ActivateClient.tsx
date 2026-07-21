@@ -41,7 +41,7 @@ export default function ActivateClient({
     });
     setLoading(false);
     if (res.ok) {
-      // Activation signs the member in: send them to the booking screen.
+      // Activation signs the member in: send them to the reservation screen.
       router.replace("/");
       router.refresh();
     } else {
@@ -56,7 +56,7 @@ export default function ActivateClient({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="login-logo" src="/logo.svg" alt="Innospace Tirana" />
         <p>
-          Set up your account for <strong>{email}</strong> to start booking
+          Set up your account for <strong>{email}</strong> to start reserving
           meeting booths.
         </p>
         {error && <p className="error">{error}</p>}

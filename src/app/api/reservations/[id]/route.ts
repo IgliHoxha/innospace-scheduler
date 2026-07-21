@@ -9,7 +9,7 @@ import type { ReservationStatus } from "@/lib/types";
 export const runtime = "nodejs";
 
 /**
- * Update a reservation's status. Admin can cancel or delete any booking;
+ * Update a reservation's status. Admin can cancel or delete any reservation;
  * a member may only cancel their own.
  */
 export async function PATCH(
@@ -49,7 +49,7 @@ export async function PATCH(
     );
   }
 
-  // Members can only cancel their own bookings; admins can do anything.
+  // Members can only cancel their own reservations; admins can do anything.
   if (session.role !== "admin") {
     if (existing.userId !== session.sub || status !== "cancelled") {
       return NextResponse.json(

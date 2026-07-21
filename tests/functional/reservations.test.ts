@@ -61,7 +61,7 @@ describe("POST /api/reservations - validation", () => {
   it("400 when the end is not after the start", async () => {
     expect((await post({ ...ok, end: "14:00" })).status).toBe(400);
   });
-  it("400 when shorter than the minimum booking", async () => {
+  it("400 when shorter than the minimum reservation", async () => {
     expect((await post({ ...ok, end: "14:10" })).status).toBe(400);
   });
   it("400 for a time that has already passed", async () => {
@@ -90,13 +90,13 @@ describe("POST /api/reservations - validation", () => {
 });
 
 describe("POST /api/reservations - success", () => {
-  it("201 confirmed for a short booking, and emails the member", async () => {
+  it("201 confirmed for a short reservation, and emails the member", async () => {
     const res = await post(ok);
     expect(res.status).toBe(201);
     expect((await json(res)).reservation?.status).toBe("confirmed");
     expect(email.sendReservationEmail).toHaveBeenCalledOnce();
   });
-  it("201 pending for a long booking that needs approval", async () => {
+  it("201 pending for a long reservation that needs approval", async () => {
     const res = await post({ ...ok, end: "17:00", note: "Workshop" }); // 3h
     expect(res.status).toBe(201);
     expect((await json(res)).reservation?.status).toBe("pending");
@@ -104,7 +104,7 @@ describe("POST /api/reservations - success", () => {
       "pending",
     );
   });
-  it("409 when the slot overlaps an existing active booking", async () => {
+  it("409 when the slot overlaps an existing active reservation", async () => {
     await post(ok);
     expect((await post({ ...ok, start: "14:30", end: "15:30" })).status).toBe(
       409,

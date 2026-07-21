@@ -33,7 +33,7 @@ function addHour(hhmm: string) {
  * Start / End time range as typed HH:MM fields (openstatus pattern): type over
  * the digits, arrow up/down to step, arrow left/right to move between fields.
  * It only collects the two times; opening hours, the minimum, and clashes are
- * enforced by the booking form and the server, not here.
+ * enforced by the reservation form and the server, not here.
  */
 export default function TimeRangePicker({
   value,
@@ -43,7 +43,7 @@ export default function TimeRangePicker({
 }: {
   value: TimeRange | null;
   onChange: (range: TimeRange) => void;
-  /** First bookable time of the day, "HH:MM": the default the fields open on. */
+  /** First reservable time of the day, "HH:MM": the default the fields open on. */
   initial: string;
   disabled?: boolean;
 }) {

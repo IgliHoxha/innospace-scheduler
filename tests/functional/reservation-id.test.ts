@@ -91,7 +91,7 @@ describe("PATCH /api/reservations/[id]", () => {
     ).toBe(404);
   });
 
-  it("403 when a member cancels someone else's booking", async () => {
+  it("403 when a member cancels someone else's reservation", async () => {
     const r = await seed("u2");
     expect(
       (await patch(r.id, { status: "cancelled" }, userToken("u1"))).status,
@@ -105,7 +105,7 @@ describe("PATCH /api/reservations/[id]", () => {
     ).toBe(403);
   });
 
-  it("lets a member cancel their own booking and emails a cancellation", async () => {
+  it("lets a member cancel their own reservation and emails a cancellation", async () => {
     const r = await seed("u1");
     const res = await patch(r.id, { status: "cancelled" }, userToken("u1"));
     expect(res.status).toBe(200);
@@ -114,7 +114,7 @@ describe("PATCH /api/reservations/[id]", () => {
     );
   });
 
-  it("lets an admin confirm a pending booking and emails a confirmation", async () => {
+  it("lets an admin confirm a pending reservation and emails a confirmation", async () => {
     const r = await seed("u1", "pending");
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     expect(res.status).toBe(200);

@@ -12,24 +12,24 @@ import {
   findOverlap,
   meetsMinDuration,
   noteRequiredFor,
-} from "@/lib/booking-rules";
+} from "@/lib/reservation-rules";
 import { boothLabel, timeText, dateOfReservation } from "@/lib/templates";
 import { formatDateLong, formatDateMedium } from "@/lib/date-format";
 import { formatDuration } from "@/lib/schedule";
 import { pad2 } from "@/lib/utils";
 
-/** A booking already taken for the chosen booth+day, as "HH:MM" times. */
-interface Booked {
+/** A reservation already taken for the chosen booth+day, as "HH:MM" times. */
+interface Reserved {
   start: string;
   end: string;
   label: string;
-  /** Who holds it. Null only if the booking never carried a name. */
+  /** Who holds it. Null only if the reservation never carried a name. */
   by: string | null;
   mine: boolean;
 }
 
 interface Availability {
-  booked: Booked[];
+  reserved: Reserved[];
   earliest: string;
   opens: string;
   closes: string;
@@ -45,22 +45,22 @@ const toMinutes = (t: string) =>
 
 const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 
-export default function BookingClient({
+export default function ReservationClient({
   booths,
   dates,
   userName,
   initialMine,
   autoApproveMaxHours,
-  minBookingMinutes,
+  minReservationMinutes,
 }: {
   booths: Booth[];
   dates: DateOption[];
   userName: string;
   initialMine: Reservation[];
-  /** Bookings longer than this need approval; at this length or longer they need a note. */
+  /** Reservations longer than this need approval; at this length or longer they need a note. */
   autoApproveMaxHours: number;
-  /** Shortest allowed booking, in minutes. */
-  minBookingMinutes: number;
+  /** Shortest allowed reservation, in minutes. */
+  minReservationMinutes: number;
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -72,7 +72,7 @@ export default function BookingClient({
   const [end, setEnd] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
-  const [booking, setBooking] = useState(false);
+  const [reservation, setReservation] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -119,12 +119,12 @@ export default function BookingClient({
   const mustNote = noteRequiredFor(duration, autoApproveMaxHours);
   const willNeedApproval = approvalRequiredFor(duration, autoApproveMaxHours);
 
-  // Bookable free stretches. If none (day over or fully taken) we hide the picker
+  // Reservable free stretches. If none (day over or fully taken) we hide the picker
   // and say why instead.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
     const dayEnd = toMinutes(avail.closes);
-    const busy = avail.booked
+    const busy = avail.reserved
       .map((b) => ({ from: toMinutes(b.start), to: toMinutes(b.end) }))
       .sort((a, b) => a.from - b.from);
     let cursor = Math.max(toMinutes(avail.opens), toMinutes(avail.earliest));
@@ -135,8 +135,8 @@ export default function BookingClient({
       cursor = Math.max(cursor, b.to);
     }
     if (cursor < dayEnd) gaps.push({ from: cursor, to: dayEnd });
-    return gaps.filter((g) => g.to - g.from >= minBookingMinutes);
-  }, [avail, minBookingMinutes]);
+    return gaps.filter((g) => g.to - g.from >= minReservationMinutes);
+  }, [avail, minReservationMinutes]);
 
   const noTimeLeft = !!avail && freeGaps.length === 0;
   const dayIsOver =
@@ -146,29 +146,29 @@ export default function BookingClient({
     if (!avail || !start || !end || startMin == null || endMin == null)
       return "";
     if (endMin <= startMin) return "The end time must be after the start time.";
-    if (!meetsMinDuration(duration, minBookingMinutes))
-      return `Bookings must be at least ${minBookingMinutes} minutes long.`;
+    if (!meetsMinDuration(duration, minReservationMinutes))
+      return `Reservations must be at least ${minReservationMinutes} minutes long.`;
     const clash = findOverlap(
       startMin,
       endMin,
-      avail.booked.map((b) => ({
+      avail.reserved.map((b) => ({
         start: toMinutes(b.start),
         end: toMinutes(b.end),
         label: b.label,
       })),
     );
-    if (clash) return `That overlaps an existing booking (${clash.label}).`;
+    if (clash) return `That overlaps an existing reservation (${clash.label}).`;
     if (mustNote && !note.trim())
-      return `Please say what the booking is for - a note is required for ${autoApproveMaxHours} hours or more.`;
+      return `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
     return "";
   }
 
   const problem = validate();
-  const canBook = !!start && !!end && !problem && !booking;
+  const canReserve = !!start && !!end && !problem && !reservation;
 
-  async function book() {
-    if (!canBook) return;
-    setBooking(true);
+  async function reserve() {
+    if (!canReserve) return;
+    setReservation(true);
     setError("");
     setSuccess(null);
     try {
@@ -187,17 +187,17 @@ export default function BookingClient({
         const when = `${booth} on ${formatDateLong(date)}, ${start} – ${end}`;
         setSuccess(
           json.reservation?.status === "pending"
-            ? `Request submitted: ${when}. Bookings over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. The slot is held for you meanwhile.`
-            : `Booked ${when}.`,
+            ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. The slot is held for you meanwhile.`
+            : `Reserved ${when}.`,
         );
         setNote("");
         await Promise.all([loadAvailability(), refreshMine()]);
       } else {
-        setError(json.error || "Could not book that time.");
+        setError(json.error || "Could not reserve that time.");
         loadAvailability(); // someone may have just taken it
       }
     } finally {
-      setBooking(false);
+      setReservation(false);
     }
   }
 
@@ -276,7 +276,7 @@ export default function BookingClient({
       </div>
 
       <div className="container">
-        <h1 className="page-title">Book a meeting booth</h1>
+        <h1 className="page-title">Reserve a meeting booth</h1>
 
         {/* Step 1: booth */}
         <div className="field-label">Booth</div>
@@ -325,7 +325,7 @@ export default function BookingClient({
             <div className="empty">
               {dayIsOver
                 ? `We're closed for today (${avail.opens} – ${avail.closes}). Pick another date.`
-                : "This booth is fully booked on this day. Try another booth or date."}
+                : "This booth is fully reserved on this day. Try another booth or date."}
             </div>
           ) : (
             <>
@@ -350,19 +350,19 @@ export default function BookingClient({
                 )}
               </div>
 
-              <div className="booked-list">
-                {avail.booked.length === 0 ? (
+              <div className="reserved-list">
+                {avail.reserved.length === 0 ? (
                   <span className="muted">
-                    Nothing booked yet - the whole day is free.
+                    Nothing reserved yet - the whole day is free.
                   </span>
                 ) : (
                   <>
-                    <span className="muted">Already booked:</span>
-                    {avail.booked.map((b) => (
-                      <span key={b.start} className="booked-chip">
+                    <span className="muted">Already reserved:</span>
+                    {avail.reserved.map((b) => (
+                      <span key={b.start} className="reserved-chip">
                         {b.label}
                         {(b.mine || b.by) && (
-                          <span className="booked-by">
+                          <span className="reserved-by">
                             {b.mine ? "You" : b.by}
                           </span>
                         )}
@@ -397,8 +397,8 @@ export default function BookingClient({
         {error && <p className="error">{error}</p>}
         {success && <p className="success">{success}</p>}
 
-        <div className="book-bar">
-          <div className="book-summary">
+        <div className="reserve-bar">
+          <div className="reserve-summary">
             {start && end && !problem ? (
               <>
                 <strong>{selectedBooth?.name}</strong> ·{" "}
@@ -408,19 +408,21 @@ export default function BookingClient({
                 )}
               </>
             ) : (
-              <span className="muted">Pick a start and end time to book.</span>
+              <span className="muted">
+                Pick a start and end time to reserve.
+              </span>
             )}
           </div>
-          <button className="btn" disabled={!canBook} onClick={book}>
-            {booking ? "Booking…" : "Book"}
+          <button className="btn" disabled={!canReserve} onClick={reserve}>
+            {reservation ? "Reservation…" : "Reserve"}
           </button>
         </div>
 
-        {/* My bookings */}
-        <h2 className="section-title">My bookings</h2>
+        {/* My reservations */}
+        <h2 className="section-title">My reservations</h2>
         <div className="card">
           {upcoming.length === 0 ? (
-            <div className="empty">You have no bookings yet.</div>
+            <div className="empty">You have no reservations yet.</div>
           ) : (
             <table>
               <thead>
@@ -473,7 +475,7 @@ export default function BookingClient({
             role="dialog"
             aria-modal="true"
           >
-            <h2>Cancel booking?</h2>
+            <h2>Cancel reservation?</h2>
             <p>
               Cancel <strong>{boothLabel(cancelTarget)}</strong> on{" "}
               {formatDateLong(dateOfReservation(cancelTarget))} (

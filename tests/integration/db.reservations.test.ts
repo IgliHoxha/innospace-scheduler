@@ -7,8 +7,8 @@ let db: Db;
 const D = "2026-07-16";
 const at = (t: string) => `${D}T${t}`;
 
-// A confirmed booth-1 booking over [start, end).
-async function book(
+// A confirmed booth-1 reservation over [start, end).
+async function reserve(
   start: string,
   end: string,
   over?: Partial<Parameters<Db["createReservation"]>[0]>,
@@ -28,44 +28,44 @@ beforeEach(async () => {
 });
 
 describe("createReservation + overlap", () => {
-  it("stores a confirmed booking and lists it in bookedRanges", async () => {
-    const r = await book("10:00", "11:00");
+  it("stores a confirmed reservation and lists it in reservedRanges", async () => {
+    const r = await reserve("10:00", "11:00");
     expect(r.status).toBe("confirmed");
     expect(r.id).toBeTruthy();
 
-    const ranges = await db.bookedRanges("booth-1", D);
+    const ranges = await db.reservedRanges("booth-1", D);
     expect(ranges).toHaveLength(1);
     expect(ranges[0]).toMatchObject({
       startsAt: at("10:00"),
       endsAt: at("11:00"),
       userId: "u1",
-      bookedBy: "Ada",
+      reservedBy: "Ada",
     });
   });
 
   it("rejects an overlapping range atomically", async () => {
-    await book("10:00", "11:00");
-    await expect(book("10:30", "11:30")).rejects.toBeInstanceOf(
+    await reserve("10:00", "11:00");
+    await expect(reserve("10:30", "11:30")).rejects.toBeInstanceOf(
       db.SlotUnavailableError,
     );
     // the loser did not persist
-    expect(await db.bookedRanges("booth-1", D)).toHaveLength(1);
+    expect(await db.reservedRanges("booth-1", D)).toHaveLength(1);
   });
 
   it("allows touching, half-open ranges (11:00 end vs 11:00 start)", async () => {
-    await book("10:00", "11:00");
-    await expect(book("11:00", "12:00")).resolves.toBeTruthy();
+    await reserve("10:00", "11:00");
+    await expect(reserve("11:00", "12:00")).resolves.toBeTruthy();
   });
 
   it("does not clash across different booths", async () => {
-    await book("10:00", "11:00");
+    await reserve("10:00", "11:00");
     await expect(
-      book("10:00", "11:00", { boothId: "booth-2" }),
+      reserve("10:00", "11:00", { boothId: "booth-2" }),
     ).resolves.toBeTruthy();
   });
 
-  it("a pending booking holds the slot just like a confirmed one", async () => {
-    await book("13:00", "14:00");
+  it("a pending reservation holds the slot just like a confirmed one", async () => {
+    await reserve("13:00", "14:00");
     await db.createReservation(
       {
         boothId: "booth-1",
@@ -75,7 +75,7 @@ describe("createReservation + overlap", () => {
       },
       "pending",
     );
-    await expect(book("15:30", "16:00")).rejects.toBeInstanceOf(
+    await expect(reserve("15:30", "16:00")).rejects.toBeInstanceOf(
       db.SlotUnavailableError,
     );
   });
@@ -83,8 +83,8 @@ describe("createReservation + overlap", () => {
 
 describe("queryReservations", () => {
   it("paginates, counts, filters and scopes by user", async () => {
-    await book("09:00", "09:30", { userId: "u1" });
-    await book("10:00", "10:30", { userId: "u2", fullName: "Bob" });
+    await reserve("09:00", "09:30", { userId: "u1" });
+    await reserve("10:00", "10:30", { userId: "u2", fullName: "Bob" });
     await db.createReservation(
       {
         boothId: "booth-2",
@@ -114,7 +114,7 @@ describe("queryReservations", () => {
   });
 
   it("hides soft-deleted rows from the default view", async () => {
-    const r = await book("10:00", "11:00");
+    const r = await reserve("10:00", "11:00");
     await db.updateReservationStatus(r.id, "deleted");
     expect((await db.queryReservations()).total).toBe(0);
     expect((await db.queryReservations({ filter: "deleted" })).total).toBe(1);
@@ -123,14 +123,14 @@ describe("queryReservations", () => {
 
 describe("status update + delete guard", () => {
   it("updates status and returns the row, or null for a missing id", async () => {
-    const r = await book("10:00", "11:00");
+    const r = await reserve("10:00", "11:00");
     const updated = await db.updateReservationStatus(r.id, "cancelled");
     expect(updated?.status).toBe("cancelled");
     expect(await db.updateReservationStatus("nope", "cancelled")).toBeNull();
   });
 
   it("hard-deletes only soft-deleted rows", async () => {
-    const live = await book("10:00", "11:00");
+    const live = await reserve("10:00", "11:00");
     expect(await db.deleteReservations([live.id])).toBe(0); // not deleted yet
 
     await db.updateReservationStatus(live.id, "deleted");

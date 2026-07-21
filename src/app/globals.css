@@ -252,7 +252,7 @@ a {
   color: var(--brand);
 }
 
-/* Booking screen */
+/* Reservation screen */
 .page-title {
   font-size: 24px;
   color: var(--plum);
@@ -373,7 +373,7 @@ a {
   color: var(--muted);
 }
 
-.booked-list {
+.reserved-list {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -383,7 +383,7 @@ a {
   border-top: 1px solid var(--border);
   font-size: 13px;
 }
-.booked-chip {
+.reserved-chip {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -395,11 +395,11 @@ a {
   font-size: 12px;
 }
 /* The holder's name reads as a footnote to the time, not a second label. */
-.booked-by {
+.reserved-by {
   font-weight: 500;
   opacity: 0.75;
 }
-.booked-by::before {
+.reserved-by::before {
   content: "·";
   margin-right: 6px;
 }
@@ -419,7 +419,7 @@ a {
   outline: none;
   border-color: var(--brand);
 }
-/* Long bookings must explain themselves: flag the empty note. */
+/* Long reservations must explain themselves: flag the empty note. */
 .note-box.required {
   border-color: #e7bb6b;
   background: #fffbf2;
@@ -428,7 +428,7 @@ a {
   border-color: #b45309;
 }
 
-.book-bar {
+.reserve-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -440,10 +440,10 @@ a {
   border: 1px solid var(--border);
   border-radius: 16px;
 }
-.book-summary {
+.reserve-summary {
   font-size: 14px;
 }
-.book-bar .btn {
+.reserve-bar .btn {
   padding: 11px 26px;
 }
 

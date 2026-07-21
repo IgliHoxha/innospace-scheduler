@@ -1,4 +1,4 @@
-// Bookable booths, defined via the required SCHEDULER_BOOTHS var
+// Reservable booths, defined via the required SCHEDULER_BOOTHS var
 // ("id:Name:capacity", comma-separated; capacity optional). Server-side only.
 import { requireEnv } from "./env-app";
 

@@ -231,7 +231,7 @@ export default function DashboardClient({
         <div className="page-head">
           <div>
             <span className="eyebrow">Innospace Tirana</span>
-            <h1 className="page-title">Bookings</h1>
+            <h1 className="page-title">Reservations</h1>
           </div>
           <a className="btn" href="/users">
             + Add / manage members
@@ -314,7 +314,7 @@ export default function DashboardClient({
         <div className="card" aria-busy={loading}>
           {reservations.length === 0 ? (
             <div className="empty">
-              {loading ? "Loading…" : "No bookings to show."}
+              {loading ? "Loading…" : "No reservations to show."}
             </div>
           ) : (
             <table>
@@ -330,7 +330,7 @@ export default function DashboardClient({
                       />
                     </th>
                   )}
-                  <th>Booked at</th>
+                  <th>Reserved at</th>
                   <th>Member</th>
                   <th>Booth</th>
                   <th>Date</th>
@@ -350,7 +350,7 @@ export default function DashboardClient({
                           type="checkbox"
                           checked={selected.has(r.id)}
                           onChange={() => toggleSelected(r.id)}
-                          aria-label={`Select booking ${r.fullName || r.id}`}
+                          aria-label={`Select reservation ${r.fullName || r.id}`}
                         />
                       </td>
                     )}
@@ -389,8 +389,8 @@ export default function DashboardClient({
                         {r.status === "pending" && (
                           <button
                             className="icon-btn tick"
-                            title="Approve booking"
-                            aria-label="Approve booking"
+                            title="Approve reservation"
+                            aria-label="Approve reservation"
                             onClick={() =>
                               setPending({
                                 id: r.id,
@@ -408,13 +408,13 @@ export default function DashboardClient({
                           className="icon-btn cross"
                           title={
                             r.status === "pending"
-                              ? "Reject booking"
-                              : "Cancel booking"
+                              ? "Reject reservation"
+                              : "Cancel reservation"
                           }
                           aria-label={
                             r.status === "pending"
-                              ? "Reject booking"
-                              : "Cancel booking"
+                              ? "Reject reservation"
+                              : "Cancel reservation"
                           }
                           disabled={
                             r.status !== "confirmed" && r.status !== "pending"
@@ -433,8 +433,8 @@ export default function DashboardClient({
                         </button>
                         <button
                           className="icon-btn trash"
-                          title="Delete booking"
-                          aria-label="Delete booking"
+                          title="Delete reservation"
+                          aria-label="Delete reservation"
                           disabled={r.status === "deleted"}
                           onClick={() =>
                             setPending({
@@ -486,7 +486,7 @@ export default function DashboardClient({
             <p>
               This will permanently remove{" "}
               <strong>
-                {selected.size} booking{selected.size === 1 ? "" : "s"}
+                {selected.size} reservation{selected.size === 1 ? "" : "s"}
               </strong>{" "}
               from the database. This cannot be undone.
             </p>
@@ -519,10 +519,10 @@ export default function DashboardClient({
           >
             <h2>
               {pending.status === "confirmed"
-                ? "Approve booking?"
+                ? "Approve reservation?"
                 : pending.status === "cancelled"
-                  ? "Cancel booking?"
-                  : "Delete booking?"}
+                  ? "Cancel reservation?"
+                  : "Delete reservation?"}
             </h2>
             <p>
               {pending.status === "confirmed"
@@ -530,7 +530,7 @@ export default function DashboardClient({
                 : pending.status === "cancelled"
                   ? "Cancel"
                   : "Delete"}{" "}
-              the booking
+              the reservation
               {pending.name ? (
                 <>
                   {" "}

@@ -44,12 +44,12 @@ const USERS_TABLE_BODY = `(
 
 type Row = Record<string, string | number | null>;
 
-// Statuses that occupy a slot: a pending (awaiting-approval) booking holds the
+// Statuses that occupy a slot: a pending (awaiting-approval) reservation holds the
 // time just like a confirmed one, so nobody else can grab it in the meantime.
 const ACTIVE_STATUSES = ["confirmed", "pending"] as const;
 const ACTIVE_LIST = inList(ACTIVE_STATUSES);
 
-/** Thrown when a requested slot range overlaps an existing active booking. */
+/** Thrown when a requested slot range overlaps an existing active reservation. */
 export class SlotUnavailableError extends Error {
   constructor(message = "That time slot is no longer available.") {
     super(message);
@@ -182,7 +182,7 @@ export interface ReservationQuery {
   search?: string;
   page?: number;
   pageSize?: number;
-  /** Restrict to a single member's own bookings (the "my bookings" view). */
+  /** Restrict to a single member's own reservations (the "my reservations" view). */
   userId?: string;
 }
 
@@ -252,7 +252,7 @@ export async function queryReservations(
       .get(...params) as { n: number }
   ).n;
 
-  // Most imminent-looking first: latest booking time, then creation.
+  // Most imminent-looking first: latest reservation time, then creation.
   const rows = db
     .prepare(
       `SELECT * FROM reservations ${whereSql} ORDER BY startsAt DESC, createdAt DESC LIMIT ? OFFSET ?`,
@@ -269,25 +269,25 @@ export async function queryReservations(
 }
 
 /**
- * Active (confirmed or pending) bookings for a booth on a day. The date is a
+ * Active (confirmed or pending) reservations for a booth on a day. The date is a
  * prefix of the datetime, so a range scan over startsAt uses the index.
  */
-export async function bookedRanges(
+export async function reservedRanges(
   boothId: string,
   date: string,
 ): Promise<
   {
     startsAt: string;
     endsAt: string;
-    bookedBy: string | null;
+    reservedBy: string | null;
     userId: string | null;
   }[]
 > {
   const rows = getDb()
     .prepare(
-      // The member's own name first: a booking keeps the name it was made
+      // The member's own name first: a reservation keeps the name it was made
       // under, so a rename would leave the old one on the board.
-      `SELECT r.startsAt, r.endsAt, r.userId, COALESCE(u.name, r.fullName) AS bookedBy
+      `SELECT r.startsAt, r.endsAt, r.userId, COALESCE(u.name, r.fullName) AS reservedBy
        FROM reservations r
        LEFT JOIN users u ON u.id = r.userId
        WHERE r.boothId = ? AND r.startsAt BETWEEN ? AND ? AND r.status IN (${ACTIVE_LIST})
@@ -297,7 +297,7 @@ export async function bookedRanges(
   return rows.map((r) => ({
     startsAt: String(r.startsAt),
     endsAt: String(r.endsAt),
-    bookedBy: r.bookedBy == null ? null : String(r.bookedBy),
+    reservedBy: r.reservedBy == null ? null : String(r.reservedBy),
     userId: r.userId == null ? null : String(r.userId),
   }));
 }
@@ -321,7 +321,7 @@ export async function createReservation(
   };
 
   const tx = db.transaction((r: Reservation) => {
-    // Overlap: an existing active booking starts before this one ends AND ends
+    // Overlap: an existing active reservation starts before this one ends AND ends
     // after this one starts. Half-open ranges, so touching edges don't clash.
     const clash = db
       .prepare(

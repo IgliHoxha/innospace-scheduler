@@ -55,9 +55,9 @@ describe("email copy", () => {
   });
 
   it("heading varies by status", () => {
-    expect(t.emailHeading("confirmed")).toBe("Booking confirmed");
-    expect(t.emailHeading("pending")).toBe("Booking request received");
-    expect(t.emailHeading("cancelled")).toBe("Booking cancelled");
+    expect(t.emailHeading("confirmed")).toBe("Reservation confirmed");
+    expect(t.emailHeading("pending")).toBe("Reservation request received");
+    expect(t.emailHeading("cancelled")).toBe("Reservation cancelled");
   });
 
   it("body greets by first name and includes the details + note", () => {

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Meeting-booth scheduler for Innospace Tirana: members log in, book booth time slots (arbitrary start/end, no double-booking), get an email confirmation, and an admin manages users and reservations from a dashboard.",
+  "description": "Meeting-booth scheduler for Innospace Tirana: members log in, reserve booth time slots (arbitrary start/end, no double-reservation), get an email confirmation, and an admin manages users and reservations from a dashboard.",
   "scripts": {
     "dev": "next dev -p 4001",
     "build": "next build",

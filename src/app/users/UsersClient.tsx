@@ -114,7 +114,7 @@ export default function UsersClient({
           </a>
           <div className="topbar-right">
             <a className="nav-link" href="/dashboard">
-              Bookings
+              Reservations
             </a>
             <div className="user-menu">
               <button
@@ -152,7 +152,7 @@ export default function UsersClient({
         <h1 className="page-title">Members</h1>
         <p className="page-subtitle">
           Invite a member by email. They&apos;ll get a link to choose their own
-          name and password, then sign in to book booths.
+          name and password, then sign in to reserve booths.
         </p>
 
         <form className="card add-user" onSubmit={addUser}>
@@ -255,7 +255,7 @@ export default function UsersClient({
               Remove <strong>{removeTarget.name || removeTarget.email}</strong>
               {removeTarget.name ? ` (${removeTarget.email})` : ""}?{" "}
               {removeTarget.activated
-                ? "They will no longer be able to sign in. Their existing bookings are kept."
+                ? "They will no longer be able to sign in. Their existing reservations are kept."
                 : "Their pending invite will stop working."}
             </p>
             <div className="modal-actions">

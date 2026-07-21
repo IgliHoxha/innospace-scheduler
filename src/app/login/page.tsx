@@ -23,7 +23,7 @@ export default function LoginPage() {
     setLoading(false);
     if (res.ok) {
       const data = (await res.json().catch(() => ({}))) as { role?: string };
-      // Admins go to the dashboard; members go to the booking screen.
+      // Admins go to the dashboard; members go to the reservation screen.
       router.replace(data.role === "admin" ? "/dashboard" : "/");
       router.refresh();
     } else {
@@ -37,7 +37,7 @@ export default function LoginPage() {
       <form className="login-card" onSubmit={onSubmit}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="login-logo" src="/logo.svg" alt="Innospace Tirana" />
-        <p>Sign in to book a meeting booth.</p>
+        <p>Sign in to reserve a meeting booth.</p>
         {error && <p className="error">{error}</p>}
         <input
           id="login"

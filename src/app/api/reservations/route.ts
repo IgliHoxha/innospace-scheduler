@@ -11,12 +11,12 @@ import { requireSession, requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { boothName, isBoothId } from "@/lib/booths";
 import {
-  isBookableDate,
+  isReservableDate,
   needsApproval,
   noteRequired,
   autoApproveMaxHours,
   isValidTimeOfDay,
-  minBookingMinutes,
+  minReservationMinutes,
   minutesOfDay,
   durationMinutes,
   toDateTime,
@@ -24,12 +24,12 @@ import {
   stepMinutes,
 } from "@/lib/schedule";
 import { sendReservationEmail } from "@/lib/email";
-import { meetsMinDuration } from "@/lib/booking-rules";
+import { meetsMinDuration } from "@/lib/reservation-rules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Members book a booth slot. Identity comes from the session, not the body. */
+/** Members reserve a booth slot. Identity comes from the session, not the body. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -51,9 +51,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (!isBookableDate(date)) {
+  if (!isReservableDate(date)) {
     return NextResponse.json(
-      { ok: false, error: "That date can't be booked." },
+      { ok: false, error: "That date can't be reserved." },
       { status: 400 },
     );
   }
@@ -85,12 +85,15 @@ export async function POST(req: NextRequest) {
     );
   }
   if (
-    !meetsMinDuration(durationMinutes(startsAt, endsAt), minBookingMinutes())
+    !meetsMinDuration(
+      durationMinutes(startsAt, endsAt),
+      minReservationMinutes(),
+    )
   ) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Bookings must be at least ${minBookingMinutes()} minutes long.`,
+        error: `Reservations must be at least ${minReservationMinutes()} minutes long.`,
       },
       { status: 400 },
     );
@@ -105,7 +108,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Please add a note saying what the booking is for - it's required for bookings of ${autoApproveMaxHours()} hours or more.`,
+        error: `Please add a note saying what the reservation is for - it's required for reservations of ${autoApproveMaxHours()} hours or more.`,
       },
       { status: 400 },
     );
@@ -117,7 +120,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Bookings over the limit need admin approval; shorter ones confirm instantly.
+  // Reservations over the limit need admin approval; shorter ones confirm instantly.
   const status = needsApproval(startsAt, endsAt) ? "pending" : "confirmed";
 
   try {
@@ -162,7 +165,7 @@ export async function POST(req: NextRequest) {
     }
     console.error("[reservations] POST failed:", err);
     return NextResponse.json(
-      { ok: false, error: "Could not create the booking." },
+      { ok: false, error: "Could not create the reservation." },
       { status: 400 },
     );
   }
@@ -172,7 +175,7 @@ const VALID_FILTERS: readonly string[] = ["all", ...RESERVATION_STATUSES];
 
 /**
  * List reservations. Admin sees everything; a member is scoped to their own
- * bookings (their "my bookings" list).
+ * reservations (their "my reservations" list).
  */
 export async function GET(req: NextRequest) {
   const session = requireSession(req);
