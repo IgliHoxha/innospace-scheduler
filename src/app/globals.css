@@ -427,14 +427,29 @@ a {
   color: var(--brand-dark);
   font-variant-numeric: tabular-nums;
 }
+.daycal-plot {
+  /* Anchors the pick tag. */
+  position: relative;
+}
+/* Reserve a strip above the bar only when a narrow tag floats there. */
+.daycal-plot.has-toptag {
+  padding-top: 20px;
+}
 .daycal-bar {
   position: relative;
-  height: 40px;
+  height: 46px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   /* The empty bar reads as free time; blocks are painted over it. */
-  background: #eefaf8;
+  background: linear-gradient(#f2fbf9, #eafaf7);
   overflow: hidden;
+}
+.daycal-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(15, 91, 82, 0.07);
 }
 .daycal-past {
   position: absolute;
@@ -450,27 +465,29 @@ a {
 }
 .daycal-block {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  top: 4px;
+  bottom: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
-  border-radius: 6px;
+  padding: 0 8px;
+  border-radius: 8px;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   /* Others' reservations read muted red, yours read teal (.mine). */
-  background: #fdf1f1;
-  border: 1px solid #f6d5d5;
-  color: #b91c1c;
+  background: #fdeeee;
+  border: 1px solid #f3c9c9;
+  color: #b02525;
 }
 .daycal-block.mine {
-  background: #e8f8f6;
-  border-color: #b8ebe4;
-  color: #10574f;
+  background: #e4f6f3;
+  border-color: #a9e6dd;
+  color: #0f5b52;
 }
 .daycal-block-label {
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -479,19 +496,35 @@ a {
   position: absolute;
   top: -1px;
   bottom: -1px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: rgba(37, 189, 173, 0.18);
+  border-radius: 9px;
+  background: rgba(37, 189, 173, 0.16);
   border: 2px solid var(--brand);
-  color: var(--brand-dark);
+  box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.13);
+  pointer-events: none;
+}
+.daycal-pick-tag {
+  position: absolute;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
+  letter-spacing: 0.01em;
+  color: var(--brand-dark);
   pointer-events: none;
+}
+/* Roomy pick: the tag sits centred inside the selection. */
+.daycal-pick-tag.over {
+  top: 50%;
+}
+/* Too-narrow pick: a chip floating in the strip above, clear of any neighbour. */
+.daycal-pick-tag.above {
+  top: 0;
+  background: #fff;
+  padding: 1px 7px;
+  border-radius: 6px;
+  box-shadow:
+    0 1px 3px rgba(16, 24, 40, 0.14),
+    0 0 0 1px rgba(37, 189, 173, 0.55);
 }
 .daycal-ticks {
   position: relative;
@@ -524,19 +557,19 @@ a {
   border: 1px solid transparent;
 }
 .daycal-legend .sw.free {
-  background: #eefaf8;
+  background: #eafaf7;
   border-color: var(--border);
 }
 .daycal-legend .sw.booked {
-  background: #fdf1f1;
-  border-color: #f6d5d5;
+  background: #fdeeee;
+  border-color: #f3c9c9;
 }
 .daycal-legend .sw.you {
-  background: #e8f8f6;
-  border-color: #b8ebe4;
+  background: #e4f6f3;
+  border-color: #a9e6dd;
 }
 .daycal-legend .sw.pick {
-  background: rgba(37, 189, 173, 0.18);
+  background: rgba(37, 189, 173, 0.16);
   border-color: var(--brand);
 }
 
