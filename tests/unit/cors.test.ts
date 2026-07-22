@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  corsHeaders,
   isOriginAllowed,
   isRequestOriginAllowed,
   requestOrigin,
@@ -119,29 +118,5 @@ describe("same-origin requests", () => {
     expect(isRequestOriginAllowed(new Headers({ host: "x.example.com" }))).toBe(
       true,
     );
-  });
-});
-
-describe("corsHeaders", () => {
-  it("always sets method/header/vary, and echoes an allowed origin", () => {
-    const h = corsHeaders("https://a.com");
-    expect(h["Access-Control-Allow-Methods"]).toContain("POST");
-    expect(h["Access-Control-Allow-Headers"]).toBe("Content-Type");
-    expect(h["Vary"]).toBe("Origin");
-    expect(h["Access-Control-Allow-Origin"]).toBe("https://a.com"); // wildcard default
-  });
-
-  it("echoes an allowed origin under a restricted list", () => {
-    vi.stubEnv("ALLOWED_ORIGINS", "https://a.com");
-    expect(corsHeaders("https://a.com")["Access-Control-Allow-Origin"]).toBe(
-      "https://a.com",
-    );
-  });
-
-  it("omits Allow-Origin for a disallowed origin under a restricted list", () => {
-    vi.stubEnv("ALLOWED_ORIGINS", "https://a.com");
-    expect(
-      corsHeaders("https://evil.com")["Access-Control-Allow-Origin"],
-    ).toBeUndefined();
   });
 });

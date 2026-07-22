@@ -75,21 +75,3 @@ export function requireAllowedOrigin(headers: Headers): NextResponse | null {
   if (isRequestOriginAllowed(headers)) return null;
   return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 }
-
-/** Resolve the CORS headers for a given request origin against ALLOWED_ORIGINS. */
-export function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed = allowedOrigins();
-
-  const allowAll = allowed.includes("*");
-  const allowOrigin =
-    allowAll || (origin && allowed.includes(origin)) ? origin || "*" : "";
-
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  };
-  if (allowOrigin) headers["Access-Control-Allow-Origin"] = allowOrigin;
-  return headers;
-}
