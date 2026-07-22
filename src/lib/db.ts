@@ -515,3 +515,38 @@ export async function findUserByEmail(
     passwordHash: row.passwordHash == null ? "" : String(row.passwordHash),
   };
 }
+
+/** Full record (incl. hash) by id, for the password-reset fingerprint check. */
+export async function findUserRecordById(
+  id: string,
+): Promise<UserRecord | null> {
+  const row = prep("SELECT * FROM users WHERE id = ?").get(id) as
+    Row | undefined;
+  if (!row) return null;
+  return {
+    ...userFromRow(row),
+    passwordHash: row.passwordHash == null ? "" : String(row.passwordHash),
+  };
+}
+
+/**
+ * Set a new password for an already-activated member (forgot-password flow).
+ * Fails if the user is gone or was never activated: a not-yet-activated member
+ * has no password to reset and should use their invite link instead.
+ */
+export async function resetPassword(
+  userId: string,
+  password: string,
+): Promise<User> {
+  const row = prep("SELECT * FROM users WHERE id = ?").get(userId) as
+    Row | undefined;
+  // Gone, or never activated (no password to reset): treat both as a dead link.
+  if (!row || row.passwordHash == null) {
+    throw new Error("This reset link is no longer valid.");
+  }
+
+  const updated = prep(
+    "UPDATE users SET passwordHash = ?, updatedAt = ? WHERE id = ? RETURNING *",
+  ).get(hashPassword(password), new Date().toISOString(), userId);
+  return userFromRow(updated as Row);
+}

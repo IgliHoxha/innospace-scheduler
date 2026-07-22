@@ -49,6 +49,19 @@ function ipPolicy(): Policy {
   };
 }
 
+/**
+ * Per-IP throttle for password-reset requests, so the endpoint can't be used to
+ * spam a member's inbox. Reuses the per-IP login thresholds but never bans (it
+ * would be a self-inflicted DoS on the shared office IP for a public form).
+ */
+function resetPolicy(): Policy {
+  return {
+    maxAttempts: posIntEnv("LOGIN_IP_MAX_ATTEMPTS"),
+    blockBaseSeconds: posIntEnv("LOGIN_IP_BLOCK_SECONDS"),
+    maxLockouts: null,
+  };
+}
+
 export type RateStatus = {
   blocked: boolean;
   banned: boolean;
@@ -145,6 +158,10 @@ function acctKey(loginId: string): string {
 function ipKey(ip: string): string {
   return `ip:${ip}`;
 }
+// Own namespace so reset throttling can never lock a member's real login bucket.
+function resetKey(ip: string): string {
+  return `reset:${ip}`;
+}
 
 /** Is this client currently blocked by either bucket? Read-only. */
 export function checkLoginBlocked(ip: string, loginId: string): RateStatus {
@@ -163,6 +180,16 @@ export function registerLoginFailure(ip: string, loginId: string): RateStatus {
 export function registerLoginSuccess(ip: string, loginId: string): void {
   buckets.delete(ipKey(ip));
   buckets.delete(acctKey(loginId));
+}
+
+/** Is this IP currently throttled for password-reset requests? Read-only. */
+export function checkResetBlocked(ip: string): RateStatus {
+  return peek(resetKey(ip));
+}
+
+/** Record a password-reset request against the per-IP reset throttle. */
+export function registerResetRequest(ip: string): RateStatus {
+  return hit(resetKey(ip), resetPolicy());
 }
 
 /**

@@ -147,6 +147,92 @@ export function verifyInviteToken(
   }
 }
 
+// ---- Password-reset tokens -------------------------------------------------
+// A signed, self-expiring token emailed to a member who forgot their password.
+// Purpose-scoped like invites (never replayable as a session/invite), and bound
+// to a fingerprint of the account's current password hash: once the password
+// changes the fingerprint no longer matches, so a used or stale link stops
+// working (single-use without any server-side token store).
+
+/** How long a reset link stays valid, in minutes. Required. Env: PASSWORD_RESET_TTL_MINUTES. */
+export function resetTtlMinutes(): number {
+  const v = requireIntEnv("PASSWORD_RESET_TTL_MINUTES");
+  if (v <= 0) {
+    throw new Error("PASSWORD_RESET_TTL_MINUTES must be a positive integer.");
+  }
+  return v;
+}
+
+/** The reset TTL in seconds, derived from PASSWORD_RESET_TTL_MINUTES. */
+export function resetTtlSeconds(): number {
+  return resetTtlMinutes() * 60;
+}
+
+/**
+ * An opaque, deterministic fingerprint of a stored password hash. Embedded in a
+ * reset token and re-derived on use: a mismatch means the password already
+ * changed, so the token is spent. Not a secret (it's HMAC'd only to stay opaque).
+ */
+export function passwordFingerprint(passwordHash: string): string {
+  return createHmac("sha256", secret())
+    .update(`reset-fp:${passwordHash}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+interface ResetPayload {
+  sub: string; // the member's id
+  purpose: "reset";
+  fp: string; // fingerprint of the password hash at issue time
+  exp: number;
+}
+
+export function createResetToken(
+  userId: string,
+  passwordHash: string,
+  ttlSeconds = resetTtlSeconds(),
+): string {
+  const payload: ResetPayload = {
+    sub: userId,
+    purpose: "reset",
+    fp: passwordFingerprint(passwordHash),
+    exp: Date.now() + ttlSeconds * 1000,
+  };
+  const body = b64url(JSON.stringify(payload));
+  return `${body}.${sign(body)}`;
+}
+
+/**
+ * Verify a reset token's signature, purpose and expiry, returning the member id
+ * and the embedded fingerprint. The caller must still confirm the fingerprint
+ * matches the account's current password hash (see passwordFingerprint).
+ */
+export function verifyResetToken(
+  token: string | undefined | null,
+): { userId: string; fp: string } | null {
+  if (!token) return null;
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+
+  const body = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+
+  const a = Buffer.from(sig);
+  const b = Buffer.from(sign(body));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+
+  try {
+    const payload = JSON.parse(unb64url(body)) as ResetPayload;
+    if (payload?.purpose !== "reset") return null;
+    if (typeof payload.fp !== "string" || !payload.fp) return null;
+    if (typeof payload.exp !== "number" || payload.exp <= Date.now())
+      return null;
+    return { userId: String(payload.sub), fp: payload.fp };
+  } catch {
+    return null;
+  }
+}
+
 function safeEqual(input: string, expected: string): boolean {
   const a = Buffer.from(input);
   const b = Buffer.from(expected);

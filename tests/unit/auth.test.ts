@@ -10,11 +10,15 @@ import {
 import {
   checkAdminCredentials,
   createInviteToken,
+  createResetToken,
   createSessionToken,
   hashPassword,
   inviteTtlDays,
+  passwordFingerprint,
+  resetTtlMinutes,
   verifyInviteToken,
   verifyPassword,
+  verifyResetToken,
   verifySessionToken,
   type Session,
 } from "@/lib/auth";
@@ -85,6 +89,61 @@ describe("invite tokens", () => {
     expect(() => inviteTtlDays()).toThrow();
     vi.stubEnv("INVITE_TTL_DAYS", "abc");
     expect(() => inviteTtlDays()).toThrow();
+  });
+});
+
+describe("password-reset tokens", () => {
+  const HASH_A = "scrypt$aaaa$bbbb";
+  const HASH_B = "scrypt$cccc$dddd";
+
+  it("round-trips the user id plus the hash fingerprint", () => {
+    expect(verifyResetToken(createResetToken("u42", HASH_A))).toEqual({
+      userId: "u42",
+      fp: passwordFingerprint(HASH_A),
+    });
+  });
+
+  it("cannot be replayed as a session or invite (and vice versa)", () => {
+    const reset = createResetToken("u42", HASH_A);
+    expect(verifySessionToken(reset)).toBeNull();
+    expect(verifyInviteToken(reset)).toBeNull();
+    expect(verifyResetToken(createSessionToken(userSession))).toBeNull();
+    expect(verifyResetToken(createInviteToken("u42"))).toBeNull();
+  });
+
+  it("rejects a missing, malformed, expired, or tampered token", () => {
+    expect(verifyResetToken(null)).toBeNull();
+    expect(verifyResetToken("no-dot-here")).toBeNull();
+    expect(verifyResetToken(createResetToken("u42", HASH_A, -10))).toBeNull();
+    const tok = createResetToken("u42", HASH_A);
+    const [body, sig] = tok.split(".");
+    const flipped = (body[0] === "a" ? "b" : "a") + body.slice(1);
+    expect(verifyResetToken(`${flipped}.${sig}`)).toBeNull();
+  });
+
+  it("binds the fingerprint to the hash, so it changes when the password does", () => {
+    // The caller compares the embedded fp against the *current* hash; once the
+    // password changes the fingerprints diverge and the link is spent.
+    expect(passwordFingerprint(HASH_A)).not.toBe(passwordFingerprint(HASH_B));
+    const { fp } = verifyResetToken(createResetToken("u42", HASH_A))!;
+    expect(fp).toBe(passwordFingerprint(HASH_A));
+    expect(fp).not.toBe(passwordFingerprint(HASH_B));
+  });
+
+  it("is scoped by AUTH_SECRET", () => {
+    const tok = createResetToken("u42", HASH_A);
+    vi.stubEnv("AUTH_SECRET", SIGNING_ALT);
+    expect(verifyResetToken(tok)).toBeNull();
+  });
+
+  it("reads PASSWORD_RESET_TTL_MINUTES and rejects invalid values", () => {
+    expect(resetTtlMinutes()).toBe(30); // baseline
+    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "45");
+    expect(resetTtlMinutes()).toBe(45);
+    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "0");
+    expect(() => resetTtlMinutes()).toThrow();
+    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "abc");
+    expect(() => resetTtlMinutes()).toThrow();
   });
 });
 

@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import { COLORS } from "../../tailwind.config";
-import { inviteTtlDays } from "./auth";
+import { inviteTtlDays, resetTtlMinutes } from "./auth";
 import { boothName } from "./booths";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
 import type { Reservation } from "./types";
@@ -180,6 +180,50 @@ export async function sendInviteEmail(
     html: shell({
       accent: BRAND,
       heading: "Set up your account",
+      bodyHtml: intro + button + closing + finePrint,
+      org,
+      url: contact.url,
+    }),
+  });
+}
+
+/**
+ * Email a member a password-reset link. Sent only for an existing, activated
+ * account; the generic response elsewhere avoids revealing whether one exists.
+ */
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+): Promise<void> {
+  const resend = client();
+  if (!resend) return;
+
+  const contact = getContactFromEnv();
+  const org = contact.org;
+  const link = `${baseUrl()}/reset?token=${encodeURIComponent(token)}`;
+  const minutes = resetTtlMinutes();
+  const intro = textToHtml(
+    [
+      "Hi there,",
+      "",
+      `We received a request to reset the password for your ${org} Scheduler account. Choose a new password using the button below.`,
+    ].join("\n"),
+  );
+  const button = `
+    <p style="margin:22px 0">
+      <a href="${link}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Reset my password</a>
+    </p>
+    <p style="margin:0 0 14px;color:${PLUM};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
+  const closing = textToHtml(signOff(contact).join("\n"));
+  const finePrint = `<p style="margin:0;color:${COLORS.footerText};font-size:12px">This link expires in ${minutes} minutes and can be used once. If you didn't request a reset, you can safely ignore this email: your password stays unchanged.</p>`;
+
+  await resend.emails.send({
+    from: from(),
+    to: [email],
+    subject: `Reset your ${org} Scheduler password`,
+    html: shell({
+      accent: BRAND,
+      heading: "Reset your password",
       bodyHtml: intro + button + closing + finePrint,
       org,
       url: contact.url,

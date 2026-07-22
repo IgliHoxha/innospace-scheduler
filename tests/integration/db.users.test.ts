@@ -3,6 +3,8 @@ import { loadDb } from "../helpers/app";
 import { CORRECT } from "../helpers/fixtures";
 import { verifyPassword } from "@/lib/auth";
 
+const NEW_PASS = "brand-new-fixture-pass";
+
 type Db = Awaited<ReturnType<typeof loadDb>>;
 let db: Db;
 
@@ -56,6 +58,54 @@ describe("activateUser", () => {
 
   it("throws for a missing/deleted invite", async () => {
     await expect(db.activateUser("ghost-id", "Ada", CORRECT)).rejects.toThrow();
+  });
+});
+
+describe("resetPassword", () => {
+  it("replaces an activated member's password (old fails, new works)", async () => {
+    const u = await db.inviteUser("x@example.com");
+    await db.activateUser(u.id, "Ada", CORRECT);
+
+    const updated = await db.resetPassword(u.id, NEW_PASS);
+    expect(updated.activated).toBe(true);
+
+    const rec = await db.findUserByEmail("x@example.com");
+    expect(verifyPassword(NEW_PASS, rec!.passwordHash)).toBe(true);
+    expect(verifyPassword(CORRECT, rec!.passwordHash)).toBe(false);
+  });
+
+  it("changes the stored hash, so a prior reset token's fingerprint is spent", async () => {
+    const u = await db.inviteUser("x@example.com");
+    await db.activateUser(u.id, "Ada", CORRECT);
+    const before = (await db.findUserRecordById(u.id))!.passwordHash;
+    await db.resetPassword(u.id, NEW_PASS);
+    const after = (await db.findUserRecordById(u.id))!.passwordHash;
+    expect(after).not.toBe(before);
+  });
+
+  it("throws for a not-yet-activated invite (no password to reset)", async () => {
+    const u = await db.inviteUser("x@example.com");
+    await expect(db.resetPassword(u.id, NEW_PASS)).rejects.toThrow();
+  });
+
+  it("throws for a missing/deleted user", async () => {
+    await expect(db.resetPassword("ghost-id", NEW_PASS)).rejects.toThrow();
+  });
+});
+
+describe("findUserRecordById", () => {
+  it("returns the record with hash for an activated member", async () => {
+    const u = await db.inviteUser("x@example.com");
+    await db.activateUser(u.id, "Ada", CORRECT);
+    const rec = await db.findUserRecordById(u.id);
+    expect(rec?.email).toBe("x@example.com");
+    expect(verifyPassword(CORRECT, rec!.passwordHash)).toBe(true);
+  });
+
+  it("returns an empty hash for a pending invite, and null when unknown", async () => {
+    const u = await db.inviteUser("x@example.com");
+    expect((await db.findUserRecordById(u.id))?.passwordHash).toBe("");
+    expect(await db.findUserRecordById("ghost-id")).toBeNull();
   });
 });
 

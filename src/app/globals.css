@@ -1113,6 +1113,19 @@ tr:last-child td {
   width: 100%;
   margin-top: 4px;
 }
+/* Secondary link under the button (forgot password / back to sign in). */
+.login-alt {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.login-alt:hover {
+  color: var(--brand-dark);
+  text-decoration: underline;
+}
 /* Warning/error alert - scoped tighter than `.login-card p` so the red wins. */
 .login-card .error,
 .error {
