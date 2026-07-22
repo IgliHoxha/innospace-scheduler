@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { COLORS } from "../../tailwind.config";
 import { inviteTtlDays } from "./auth";
+import { boothName } from "./booths";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
 import type { Reservation } from "./types";
 import {
@@ -120,13 +121,13 @@ export async function sendReservationEmail(
 
   const contact = getContactFromEnv();
   const body = (
-    customBody ?? emailBodyText(reservation, status, contact)
+    customBody ?? emailBodyText(reservation, status, contact, boothName)
   ).trim();
 
   await resend.emails.send({
     from: from(),
     to: [reservation.email],
-    subject: emailSubject(status, contact, reservation),
+    subject: emailSubject(status, contact, boothName, reservation),
     html: shell({
       accent:
         status === "confirmed"

@@ -1,7 +1,6 @@
 // Pure email/display helpers shared by the mailer and the dashboard preview,
 // so the preview matches what's actually sent.
 import type { ContactInfo, Reservation, ReservationStatus } from "./types";
-import { boothName } from "./booths";
 import { rangeLabel } from "./schedule";
 import { dateOf, formatDateLong } from "./datetime";
 
@@ -9,6 +8,14 @@ export type EmailStatus = Extract<
   ReservationStatus,
   "confirmed" | "cancelled" | "pending"
 >;
+
+/**
+ * Resolves a booth id to its display name. Passed in (not imported) so these
+ * helpers stay pure and browser-safe: the env-backed lookup reads SCHEDULER_BOOTHS
+ * and would throw in a client bundle. Server passes booths.boothName; the client
+ * passes a resolver over the booth list it already holds.
+ */
+export type BoothNamer = (boothId: string | undefined) => string;
 
 /** The reserved time range as text, e.g. "09:30 - 11:00". */
 export function timeText(reservation: Reservation): string {
@@ -28,21 +35,28 @@ export function dateText(reservation: Reservation): string {
   return formatDateLong(dateOfReservation(reservation));
 }
 
-export function boothLabel(reservation: Reservation): string {
+export function boothLabel(
+  reservation: Reservation,
+  boothName: BoothNamer,
+): string {
   return boothName(reservation.boothId);
 }
 
 /** One-line summary used in emails and the confirmation screen. */
-export function reservationSummary(reservation: Reservation): string {
-  return `${boothLabel(reservation)} · ${dateText(reservation)} · ${timeText(reservation)}`;
+export function reservationSummary(
+  reservation: Reservation,
+  boothName: BoothNamer,
+): string {
+  return `${boothLabel(reservation, boothName)} · ${dateText(reservation)} · ${timeText(reservation)}`;
 }
 
 export function emailSubject(
   status: EmailStatus,
   contact: ContactInfo,
+  boothName: BoothNamer,
   r?: Reservation,
 ): string {
-  const booth = r ? boothLabel(r) : "meeting booth";
+  const booth = r ? boothLabel(r, boothName) : "meeting booth";
   if (status === "cancelled")
     return `Update on your ${booth} reservation at ${contact.org}`;
   if (status === "pending")
@@ -76,13 +90,17 @@ export function signOff(contact: ContactInfo): string[] {
   ];
 }
 
-function confirmedBody(r: Reservation, contact: ContactInfo): string {
+function confirmedBody(
+  r: Reservation,
+  contact: ContactInfo,
+  boothName: BoothNamer,
+): string {
   const lines = [
     `Hi ${firstName(r)},`,
     "",
     `Your meeting booth is reserved. Here are the details:`,
     "",
-    `Booth: ${boothLabel(r)}`,
+    `Booth: ${boothLabel(r, boothName)}`,
     `Date: ${dateText(r)}`,
     `Time: ${timeText(r)}`,
   ];
@@ -96,7 +114,11 @@ function confirmedBody(r: Reservation, contact: ContactInfo): string {
   return lines.join("\n");
 }
 
-function cancelledBody(r: Reservation, contact: ContactInfo): string {
+function cancelledBody(
+  r: Reservation,
+  contact: ContactInfo,
+  boothName: BoothNamer,
+): string {
   const first = r.fullName?.trim() ? r.fullName.trim().split(" ")[0] : "";
   const greeting = first ? `Hello ${first},` : "Hello,";
   return [
@@ -104,7 +126,7 @@ function cancelledBody(r: Reservation, contact: ContactInfo): string {
     "",
     `Thank you for reserving a meeting booth at ${contact.org}.`,
     "",
-    `We're sorry to let you know that your reservation for ${boothLabel(r)} on ${dateText(
+    `We're sorry to let you know that your reservation for ${boothLabel(r, boothName)} on ${dateText(
       r,
     )} (${timeText(r)}) has been cancelled.`,
     "",
@@ -114,13 +136,17 @@ function cancelledBody(r: Reservation, contact: ContactInfo): string {
   ].join("\n");
 }
 
-function pendingBody(r: Reservation, contact: ContactInfo): string {
+function pendingBody(
+  r: Reservation,
+  contact: ContactInfo,
+  boothName: BoothNamer,
+): string {
   return [
     `Hi ${firstName(r)},`,
     "",
     "Thanks for your reservation request. Because it's longer than our instant-reservation limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
     "",
-    `Booth: ${boothLabel(r)}`,
+    `Booth: ${boothLabel(r, boothName)}`,
     `Date: ${dateText(r)}`,
     `Time: ${timeText(r)}`,
     ...(r.note?.trim() ? [`Note: ${r.note.trim()}`] : []),
@@ -136,8 +162,9 @@ export function emailBodyText(
   r: Reservation,
   status: EmailStatus,
   contact: ContactInfo,
+  boothName: BoothNamer,
 ): string {
-  if (status === "confirmed") return confirmedBody(r, contact);
-  if (status === "pending") return pendingBody(r, contact);
-  return cancelledBody(r, contact);
+  if (status === "confirmed") return confirmedBody(r, contact, boothName);
+  if (status === "pending") return pendingBody(r, contact, boothName);
+  return cancelledBody(r, contact, boothName);
 }

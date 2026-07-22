@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as t from "@/lib/templates";
+import { boothNameIn } from "@/lib/booths";
 import type { ContactInfo, Reservation } from "@/lib/types";
 
 const base: Reservation = {
@@ -13,6 +14,10 @@ const base: Reservation = {
   fullName: "Ada Lovelace",
 };
 
+// Resolver passed to the pure helpers, standing in for the env-backed lookup.
+const booths = [{ id: "booth-1", name: "Booth 1" }];
+const boothName = (id: string | undefined) => boothNameIn(booths, id);
+
 // Every ContactInfo field is required now (populated from env in production).
 const contact: ContactInfo = {
   name: "Alex",
@@ -23,35 +28,58 @@ const contact: ContactInfo = {
 };
 
 describe("reservation display helpers", () => {
-  it("timeText uses the product en dash, or a placeholder when unset", () => {
+  it("timeText uses the product hyphen, or a placeholder when unset", () => {
     expect(t.timeText(base)).toBe("09:30 - 11:00");
     expect(
       t.timeText({ ...base, startsAt: undefined, endsAt: undefined }),
     ).toBe("-");
   });
 
-  it("boothLabel resolves the booth name", () => {
-    expect(t.boothLabel(base)).toBe("Booth 1");
-    expect(t.boothLabel({ ...base, boothId: "unknown" })).toBe("unknown");
+  it("boothLabel resolves the booth name via the supplied resolver", () => {
+    expect(t.boothLabel(base, boothName)).toBe("Booth 1");
+    expect(t.boothLabel({ ...base, boothId: "unknown" }, boothName)).toBe(
+      "unknown",
+    );
   });
 
   it("reservationSummary joins booth, date and time", () => {
-    expect(t.reservationSummary(base)).toBe(
+    expect(t.reservationSummary(base, boothName)).toBe(
       "Booth 1 · Tuesday, 14 July 2026 · 09:30 - 11:00",
     );
+  });
+
+  // Guards the client-crash regression: these helpers must never read env
+  // (SCHEDULER_BOOTHS) themselves, so they stay usable in a browser bundle.
+  it("stays pure with SCHEDULER_BOOTHS unset (no env read of its own)", () => {
+    vi.stubEnv("SCHEDULER_BOOTHS", "");
+    expect(t.boothLabel(base, boothName)).toBe("Booth 1");
+    expect(t.emailBodyText(base, "confirmed", contact, boothName)).toContain(
+      "Booth 1",
+    );
+    vi.unstubAllEnvs();
   });
 });
 
 describe("email copy", () => {
   it("subject varies by status", () => {
-    expect(t.emailSubject("confirmed", contact, base)).toContain("confirmed");
-    expect(t.emailSubject("pending", contact, base)).toContain("received");
-    expect(t.emailSubject("cancelled", contact, base)).toContain("Update");
+    expect(t.emailSubject("confirmed", contact, boothName, base)).toContain(
+      "confirmed",
+    );
+    expect(t.emailSubject("pending", contact, boothName, base)).toContain(
+      "received",
+    );
+    expect(t.emailSubject("cancelled", contact, boothName, base)).toContain(
+      "Update",
+    );
   });
 
   it("subject uses the org name from contact", () => {
-    expect(t.emailSubject("cancelled", contact, base)).toContain("at Test Org");
-    expect(t.emailSubject("pending", contact, base)).toContain("at Test Org");
+    expect(t.emailSubject("cancelled", contact, boothName, base)).toContain(
+      "at Test Org",
+    );
+    expect(t.emailSubject("pending", contact, boothName, base)).toContain(
+      "at Test Org",
+    );
   });
 
   it("heading varies by status", () => {
@@ -65,6 +93,7 @@ describe("email copy", () => {
       { ...base, note: "Client call" },
       "confirmed",
       contact,
+      boothName,
     );
     expect(body).toContain("Hi Ada,");
     expect(body).toContain("Booth 1");
@@ -74,7 +103,12 @@ describe("email copy", () => {
 
   it('falls back to "there" when there is no name', () => {
     expect(
-      t.emailBodyText({ ...base, fullName: undefined }, "pending", contact),
+      t.emailBodyText(
+        { ...base, fullName: undefined },
+        "pending",
+        contact,
+        boothName,
+      ),
     ).toContain("Hi there,");
   });
 
@@ -83,16 +117,22 @@ describe("email copy", () => {
       { ...base, status: "cancelled" },
       "cancelled",
       contact,
+      boothName,
     );
     expect(body).toContain("Hello Ada,");
     expect(body).toContain("cancelled");
     expect(
-      t.emailBodyText({ ...base, fullName: undefined }, "cancelled", contact),
+      t.emailBodyText(
+        { ...base, fullName: undefined },
+        "cancelled",
+        contact,
+        boothName,
+      ),
     ).toContain("Hello,");
   });
 
   it("cancelled body uses the org name from contact", () => {
-    expect(t.emailBodyText(base, "cancelled", contact)).toContain(
+    expect(t.emailBodyText(base, "cancelled", contact, boothName)).toContain(
       "booth at Test Org.",
     );
   });
@@ -113,7 +153,7 @@ describe("contact footer", () => {
 
   it("every email renders the full contact block", () => {
     for (const status of ["confirmed", "pending", "cancelled"] as const) {
-      const body = t.emailBodyText(base, status, contact);
+      const body = t.emailBodyText(base, status, contact, boothName);
       expect(body).toContain("Best regards,");
       expect(body).toContain("Alex");
       expect(body).toContain("Test Org");

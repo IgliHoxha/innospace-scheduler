@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { MAX_EMAIL, type User } from "@/lib/types";
 import { SiteFooter } from "@/components/SiteFooter";
-import { UserMenu } from "@/components/UserMenu";
+import { Topbar } from "@/components/Topbar";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export default function UsersClient({
   initialUsers,
@@ -76,29 +77,14 @@ export default function UsersClient({
 
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-inner">
-          <a
-            className="brand"
-            href="/dashboard"
-            aria-label="Scheduler dashboard"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="topbar-logo"
-              src="/logo.svg"
-              alt="Innospace Tirana"
-            />
-            <span className="brand-sub">Scheduler</span>
+      <Topbar
+        username={username}
+        nav={
+          <a className="nav-link" href="/dashboard">
+            Reservations
           </a>
-          <div className="topbar-right">
-            <a className="nav-link" href="/dashboard">
-              Reservations
-            </a>
-            <UserMenu username={username} />
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="container">
         <h1 className="page-title">Members</h1>
@@ -191,41 +177,20 @@ export default function UsersClient({
       </div>
 
       {removeTarget && (
-        <div
-          className="modal-overlay"
-          onClick={() => setRemoveTarget(null)}
-          role="presentation"
+        <ConfirmDialog
+          title="Remove member?"
+          onClose={() => setRemoveTarget(null)}
+          onConfirm={() => remove(removeTarget)}
+          confirmLabel="Yes, remove"
         >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2>Remove member?</h2>
-            <p>
-              Remove <strong>{removeTarget.name || removeTarget.email}</strong>
-              {removeTarget.name ? ` (${removeTarget.email})` : ""}?{" "}
-              {removeTarget.activated
-                ? "They will no longer be able to sign in. Their existing reservations are kept."
-                : "Their pending invite will stop working."}
-            </p>
-            <div className="modal-actions">
-              <button
-                className="btn ghost"
-                onClick={() => setRemoveTarget(null)}
-              >
-                No
-              </button>
-              <button
-                className="btn danger"
-                onClick={() => remove(removeTarget)}
-              >
-                Yes, remove
-              </button>
-            </div>
-          </div>
-        </div>
+          <p>
+            Remove <strong>{removeTarget.name || removeTarget.email}</strong>
+            {removeTarget.name ? ` (${removeTarget.email})` : ""}?{" "}
+            {removeTarget.activated
+              ? "They will no longer be able to sign in. Their existing reservations are kept."
+              : "Their pending invite will stop working."}
+          </p>
+        </ConfirmDialog>
       )}
       <SiteFooter />
     </>

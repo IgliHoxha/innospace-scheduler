@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Reservation, ReservationStatus, ContactInfo } from "@/lib/types";
+import { boothNameIn, type Booth } from "@/lib/booths";
 import type { ReservationPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 import { SiteFooter } from "@/components/SiteFooter";
-import { UserMenu } from "@/components/UserMenu";
+import { Topbar } from "@/components/Topbar";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   boothLabel,
   emailBodyText,
   emailSubject,
   timeText,
   dateOfReservation,
+  type BoothNamer,
 } from "@/lib/templates";
 import { formatDMYShort, formatDateTime } from "@/lib/datetime";
 
@@ -27,11 +30,17 @@ export default function DashboardClient({
   initialData,
   username,
   contact,
+  booths,
 }: {
   initialData: ReservationPage;
   username: string;
   contact: ContactInfo;
+  booths: Booth[];
 }) {
+  // Resolve booth names from props, never from env: this is a client bundle where
+  // the env-backed lookup would throw.
+  const boothName = (id: string | undefined) => boothNameIn(booths, id);
+
   const [data, setData] = useState<ReservationPage>(initialData);
   const [filter, setFilter] = useState<"all" | ReservationStatus>(
     INITIAL_FILTER,
@@ -65,7 +74,7 @@ export default function DashboardClient({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function draftFor(r: Reservation): string {
-    return drafts[r.id] ?? emailBodyText(r, "cancelled", contact);
+    return drafts[r.id] ?? emailBodyText(r, "cancelled", contact, boothName);
   }
 
   const reqId = useRef(0);
@@ -162,29 +171,14 @@ export default function DashboardClient({
 
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-inner">
-          <a
-            className="brand"
-            href="/dashboard"
-            aria-label="Scheduler dashboard"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="topbar-logo"
-              src="/logo.svg"
-              alt="Innospace Tirana"
-            />
-            <span className="brand-sub">Scheduler</span>
+      <Topbar
+        username={username}
+        nav={
+          <a className="nav-link" href="/users">
+            Users
           </a>
-          <div className="topbar-right">
-            <a className="nav-link" href="/users">
-              Users
-            </a>
-            <UserMenu username={username} />
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="container">
         <div className="page-head">
@@ -324,7 +318,7 @@ export default function DashboardClient({
                         </small>
                       )}
                     </td>
-                    <td>{boothLabel(r)}</td>
+                    <td>{boothLabel(r, boothName)}</td>
                     <td className="dates">
                       {formatDMYShort(dateOfReservation(r))}
                     </td>
@@ -338,6 +332,7 @@ export default function DashboardClient({
                         reservation={r}
                         draft={drafts[r.id]}
                         contact={contact}
+                        boothName={boothName}
                         onChange={(value) =>
                           setDrafts((d) => ({ ...d, [r.id]: value }))
                         }
@@ -430,110 +425,77 @@ export default function DashboardClient({
       </div>
 
       {confirmPurge && (
-        <div
-          className="modal-overlay"
-          onClick={() => setConfirmPurge(false)}
-          role="presentation"
+        <ConfirmDialog
+          title="Delete permanently?"
+          onClose={() => setConfirmPurge(false)}
+          onConfirm={deleteForever}
+          confirmLabel="Yes, delete permanently"
         >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2>Delete permanently?</h2>
-            <p>
-              This will permanently remove{" "}
-              <strong>
-                {selected.size} reservation{selected.size === 1 ? "" : "s"}
-              </strong>{" "}
-              from the database. This cannot be undone.
-            </p>
-            <div className="modal-actions">
-              <button
-                className="btn ghost"
-                onClick={() => setConfirmPurge(false)}
-              >
-                No
-              </button>
-              <button className="btn danger" onClick={deleteForever}>
-                Yes, delete permanently
-              </button>
-            </div>
-          </div>
-        </div>
+          <p>
+            This will permanently remove{" "}
+            <strong>
+              {selected.size} reservation{selected.size === 1 ? "" : "s"}
+            </strong>{" "}
+            from the database. This cannot be undone.
+          </p>
+        </ConfirmDialog>
       )}
 
       {pending && (
-        <div
-          className="modal-overlay"
-          onClick={() => setPending(null)}
-          role="presentation"
+        <ConfirmDialog
+          title={
+            pending.status === "confirmed"
+              ? "Approve reservation?"
+              : pending.status === "cancelled"
+                ? "Cancel reservation?"
+                : "Delete reservation?"
+          }
+          variant={pending.status === "confirmed" ? "primary" : "danger"}
+          onClose={() => setPending(null)}
+          onConfirm={() => {
+            setStatus(
+              pending.id,
+              pending.status,
+              pending.status === "confirmed" ? undefined : pending.body,
+            );
+            setPending(null);
+          }}
+          confirmLabel={
+            <>
+              Yes,{" "}
+              {pending.status === "confirmed"
+                ? "approve"
+                : pending.status === "cancelled"
+                  ? "cancel"
+                  : "delete"}
+            </>
+          }
         >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2>
-              {pending.status === "confirmed"
-                ? "Approve reservation?"
-                : pending.status === "cancelled"
-                  ? "Cancel reservation?"
-                  : "Delete reservation?"}
-            </h2>
-            <p>
-              {pending.status === "confirmed"
-                ? "Approve"
-                : pending.status === "cancelled"
-                  ? "Cancel"
-                  : "Delete"}{" "}
-              the reservation
-              {pending.name ? (
-                <>
-                  {" "}
-                  for <strong>{pending.name}</strong>
-                </>
-              ) : null}
-              ?
-              {pending.status === "deleted"
-                ? " It will be hidden from the list (no email is sent)."
-                : pending.status === "confirmed"
-                  ? pending.email
-                    ? ` A confirmation email will be sent to ${pending.email}.`
-                    : " (No email on file - nothing will be sent.)"
-                  : pending.email
-                    ? ` The cancellation email (as shown in the Email column) will be sent to ${pending.email}.`
-                    : " (No email on file - nothing will be sent.)"}
-            </p>
-            <div className="modal-actions">
-              <button className="btn ghost" onClick={() => setPending(null)}>
-                No
-              </button>
-              <button
-                className={
-                  pending.status === "confirmed" ? "btn" : "btn danger"
-                }
-                onClick={() => {
-                  setStatus(
-                    pending.id,
-                    pending.status,
-                    pending.status === "confirmed" ? undefined : pending.body,
-                  );
-                  setPending(null);
-                }}
-              >
-                Yes,{" "}
-                {pending.status === "confirmed"
-                  ? "approve"
-                  : pending.status === "cancelled"
-                    ? "cancel"
-                    : "delete"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <p>
+            {pending.status === "confirmed"
+              ? "Approve"
+              : pending.status === "cancelled"
+                ? "Cancel"
+                : "Delete"}{" "}
+            the reservation
+            {pending.name ? (
+              <>
+                {" "}
+                for <strong>{pending.name}</strong>
+              </>
+            ) : null}
+            ?
+            {pending.status === "deleted"
+              ? " It will be hidden from the list (no email is sent)."
+              : pending.status === "confirmed"
+                ? pending.email
+                  ? ` A confirmation email will be sent to ${pending.email}.`
+                  : " (No email on file - nothing will be sent.)"
+                : pending.email
+                  ? ` The cancellation email (as shown in the Email column) will be sent to ${pending.email}.`
+                  : " (No email on file - nothing will be sent.)"}
+          </p>
+        </ConfirmDialog>
       )}
       <SiteFooter />
     </>
@@ -662,11 +624,13 @@ function EmailPreview({
   reservation,
   draft,
   contact,
+  boothName,
   onChange,
 }: {
   reservation: Reservation;
   draft: string | undefined;
   contact: ContactInfo;
+  boothName: BoothNamer;
   onChange: (value: string) => void;
 }) {
   if (reservation.status === "deleted") {
@@ -674,12 +638,13 @@ function EmailPreview({
   }
 
   if (reservation.status === "cancelled") {
-    const value = draft ?? emailBodyText(reservation, "cancelled", contact);
+    const value =
+      draft ?? emailBodyText(reservation, "cancelled", contact, boothName);
     return (
       <div className="email-preview">
         <div className="email-sent cancelled">Cancellation sent</div>
         <div className="email-subject">
-          Subject: {emailSubject("cancelled", contact, reservation)}
+          Subject: {emailSubject("cancelled", contact, boothName, reservation)}
         </div>
         <textarea
           className="email-text"
@@ -692,12 +657,13 @@ function EmailPreview({
     );
   }
 
-  const value = draft ?? emailBodyText(reservation, "cancelled", contact);
+  const value =
+    draft ?? emailBodyText(reservation, "cancelled", contact, boothName);
   return (
     <div className="email-preview">
       <div className="email-sent cancelled">Cancellation email</div>
       <div className="email-subject">
-        Subject: {emailSubject("cancelled", contact, reservation)}
+        Subject: {emailSubject("cancelled", contact, boothName, reservation)}
       </div>
       <textarea
         className="email-text"

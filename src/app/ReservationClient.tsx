@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TimeRangePicker from "./TimeRangePicker";
 import { SiteFooter } from "@/components/SiteFooter";
-import { UserMenu } from "@/components/UserMenu";
-import type { Booth } from "@/lib/booths";
+import { Topbar } from "@/components/Topbar";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { boothNameIn, type Booth } from "@/lib/booths";
 import { MAX_NOTE, type Reservation } from "@/lib/types";
 import {
   approvalRequiredFor,
@@ -61,6 +62,10 @@ export default function ReservationClient({
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
 }) {
+  // Resolve booth names from the props we already hold, never from env (this is a
+  // client bundle, where the env-backed lookup would throw).
+  const boothName = (id: string | undefined) => boothNameIn(booths, id);
+
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [avail, setAvail] = useState<Availability | null>(null);
@@ -212,20 +217,11 @@ export default function ReservationClient({
 
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-inner">
-          <a className="brand" href="/" aria-label="Innospace Scheduler">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="topbar-logo"
-              src="/logo.svg"
-              alt="Innospace Tirana"
-            />
-            <span className="brand-sub">Scheduler</span>
-          </a>
-          <UserMenu username={userName} />
-        </div>
-      </div>
+      <Topbar
+        username={userName}
+        brandHref="/"
+        brandLabel="Innospace Scheduler"
+      />
 
       <div className="container">
         <h1 className="page-title">Reserve a meeting booth</h1>
@@ -389,7 +385,7 @@ export default function ReservationClient({
               <tbody>
                 {upcoming.map((r) => (
                   <tr key={r.id}>
-                    <td>{boothLabel(r)}</td>
+                    <td>{boothLabel(r, boothName)}</td>
                     <td className="dates">
                       {formatDateMedium(dateOfReservation(r))}
                     </td>
@@ -416,39 +412,19 @@ export default function ReservationClient({
       </div>
 
       {cancelTarget && (
-        <div
-          className="modal-overlay"
-          onClick={() => setCancelTarget(null)}
-          role="presentation"
+        <ConfirmDialog
+          title="Cancel reservation?"
+          onClose={() => setCancelTarget(null)}
+          onConfirm={() => cancel(cancelTarget)}
+          confirmLabel="Yes, cancel"
+          cancelLabel="Keep it"
         >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2>Cancel reservation?</h2>
-            <p>
-              Cancel <strong>{boothLabel(cancelTarget)}</strong> on{" "}
-              {formatDateLong(dateOfReservation(cancelTarget))} (
-              {timeText(cancelTarget)})? The slot will be freed for others.
-            </p>
-            <div className="modal-actions">
-              <button
-                className="btn ghost"
-                onClick={() => setCancelTarget(null)}
-              >
-                Keep it
-              </button>
-              <button
-                className="btn danger"
-                onClick={() => cancel(cancelTarget)}
-              >
-                Yes, cancel
-              </button>
-            </div>
-          </div>
-        </div>
+          <p>
+            Cancel <strong>{boothLabel(cancelTarget, boothName)}</strong> on{" "}
+            {formatDateLong(dateOfReservation(cancelTarget))} (
+            {timeText(cancelTarget)})? The slot will be freed for others.
+          </p>
+        </ConfirmDialog>
       )}
       <SiteFooter />
     </>

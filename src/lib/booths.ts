@@ -41,7 +41,12 @@ export function isBoothId(id: string | undefined): boolean {
   return getBooths().some((b) => b.id === id);
 }
 
-export function boothName(id: string | undefined): string {
+/** Name lookup against a supplied booth list. Pure and client-safe (no env read). */
+export function boothNameIn(booths: Booth[], id: string | undefined): string {
   if (!id) return "Booth";
-  return getBooths().find((b) => b.id === id)?.name ?? id;
+  return booths.find((b) => b.id === id)?.name ?? id;
+}
+
+export function boothName(id: string | undefined): string {
+  return boothNameIn(getBooths(), id);
 }
