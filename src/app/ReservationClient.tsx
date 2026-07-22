@@ -54,7 +54,6 @@ export default function ReservationClient({
   initialMine,
   autoApproveMaxHours,
   minReservationMinutes,
-  stepMinutes,
 }: {
   booths: Booth[];
   dates: DateOption[];
@@ -64,8 +63,6 @@ export default function ReservationClient({
   autoApproveMaxHours: number;
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
-  /** Time grid granularity; clicks in the day timeline snap to this. */
-  stepMinutes: number;
 }) {
   // Resolve booth names from the props we already hold, never from env (this is a
   // client bundle, where the env-backed lookup would throw).
@@ -339,13 +336,6 @@ export default function ReservationClient({
                 earliest={avail.earliest}
                 reserved={avail.reserved}
                 selection={start && end ? { start, end } : null}
-                stepMinutes={stepMinutes}
-                minReservationMinutes={minReservationMinutes}
-                onPick={(from, to) => {
-                  setStart(from);
-                  setEnd(to);
-                  setError("");
-                }}
               />
             </>
           )}

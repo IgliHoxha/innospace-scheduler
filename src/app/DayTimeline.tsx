@@ -1,6 +1,6 @@
 "use client";
 
-import { buildDaySegments, snapToStep, suggestedEndMin } from "@/lib/timeline";
+import { buildDaySegments } from "@/lib/timeline";
 
 /** A reservation already taken for the booth+day, times as "HH:MM". */
 interface Reserved {
@@ -15,14 +15,11 @@ const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const toHHMM = (m: number) =>
   `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-// Vertical scale. 30 minutes = 42px, tall enough for a short label on the block.
-const PX_PER_MIN = 1.4;
-const PREFERRED_MIN = 60; // default length when you click an open stretch
-
 /**
- * Day view of one booth's availability (Google Calendar style): reservations as
- * blocks, open stretches clickable to pick a start. Purely presentational over
- * the availability the parent already loaded; picking flows back through onPick.
+ * Read-only availability graph for one booth+day: the open window drawn as a
+ * horizontal bar, reservations as blocks (teal = yours, red = others), your
+ * current pick highlighted. Purely a preview; the range is chosen in the fields
+ * above, so this never handles clicks.
  */
 export default function DayTimeline({
   opens,
@@ -30,24 +27,20 @@ export default function DayTimeline({
   earliest,
   reserved,
   selection,
-  stepMinutes,
-  minReservationMinutes,
-  onPick,
 }: {
   opens: string;
   closes: string;
   earliest: string;
   reserved: Reserved[];
   selection: { start: string; end: string } | null;
-  stepMinutes: number;
-  minReservationMinutes: number;
-  onPick: (start: string, end: string) => void;
 }) {
   const opensMin = toMin(opens);
   const closesMin = toMin(closes);
+  const span = Math.max(1, closesMin - opensMin);
   const earliestMin = Math.max(opensMin, toMin(earliest));
-  const height = (closesMin - opensMin) * PX_PER_MIN;
-  const top = (min: number) => (min - opensMin) * PX_PER_MIN;
+
+  const pct = (min: number) =>
+    Math.max(0, Math.min(100, ((min - opensMin) / span) * 100));
 
   const segments = buildDaySegments(
     opensMin,
@@ -55,118 +48,100 @@ export default function DayTimeline({
     reserved.map((r) => ({ start: toMin(r.start), end: toMin(r.end), src: r })),
   );
 
-  const hours: number[] = [];
+  const bookedMin = segments
+    .filter((s) => s.reserved)
+    .reduce((sum, s) => sum + (s.toMin - s.fromMin), 0);
+  const freePct = Math.round(((span - bookedMin) / span) * 100);
+
+  const ticks: number[] = [];
   for (let h = Math.ceil(opensMin / 60) * 60; h <= closesMin; h += 60) {
-    hours.push(h);
+    ticks.push(h);
   }
-
-  function pick(rawMin: number, segFrom: number, segTo: number) {
-    const lo = Math.max(segFrom, earliestMin);
-    let startMin = snapToStep(rawMin, stepMinutes);
-    startMin = Math.min(Math.max(startMin, lo), segTo - minReservationMinutes);
-    const endMin = suggestedEndMin(
-      startMin,
-      segTo,
-      minReservationMinutes,
-      PREFERRED_MIN,
-    );
-    if (endMin != null) onPick(toHHMM(startMin), toHHMM(endMin));
-  }
-
-  const bookable = (segFrom: number, segTo: number) =>
-    segTo - Math.max(segFrom, earliestMin) >= minReservationMinutes;
+  // Edge ticks anchor to the bar's ends; inner ones centre on their mark.
+  const tickStyle = (t: number) => {
+    if (t <= opensMin) return { left: 0 };
+    if (t >= closesMin) return { right: 0 };
+    return { left: `${pct(t)}%`, transform: "translateX(-50%)" };
+  };
 
   const selFrom = selection ? toMin(selection.start) : null;
   const selTo = selection ? toMin(selection.end) : null;
+  const hasPick =
+    selFrom != null && selTo != null && selTo > opensMin && selFrom < closesMin;
 
   return (
     <div className="daycal">
-      <div className="daycal-axis" style={{ height }}>
-        {hours.map((h) => (
-          <span key={h} className="daycal-tick" style={{ top: top(h) }}>
-            {toHHMM(h)}
-          </span>
-        ))}
+      <div className="daycal-head">
+        <span className="daycal-title">Availability</span>
+        <span className="daycal-freepct">{freePct}% free</span>
       </div>
-      <div className="daycal-track" style={{ height }}>
-        {hours.map((h) => (
-          <div key={h} className="daycal-line" style={{ top: top(h) }} />
-        ))}
 
+      <div className="daycal-bar">
         {earliestMin > opensMin && (
           <div
             className="daycal-past"
-            style={{ height: (earliestMin - opensMin) * PX_PER_MIN }}
+            style={{ left: 0, width: `${pct(earliestMin)}%` }}
+            title="Already passed"
           />
         )}
 
-        {segments.map((s, i) => {
-          const blockTop = top(s.fromMin);
-          const blockH = (s.toMin - s.fromMin) * PX_PER_MIN;
-          if (s.reserved) {
-            const r = s.reserved.src;
-            return (
-              <div
-                key={i}
-                className={`daycal-event ${r.mine ? "mine" : ""}`}
-                style={{ top: blockTop, height: blockH }}
-              >
-                <span className="daycal-event-time">
-                  {toHHMM(s.fromMin)} - {toHHMM(s.toMin)}
-                </span>
-                <span className="daycal-event-who">
-                  {r.mine ? "You" : r.by || "Reserved"}
-                </span>
-              </div>
-            );
-          }
-          if (!bookable(s.fromMin, s.toMin)) return null;
-          return (
+        {segments.map((s, i) =>
+          s.reserved ? (
             <div
               key={i}
-              className="daycal-free"
-              style={{ top: blockTop, height: blockH }}
-              role="button"
-              tabIndex={0}
-              aria-label={`Reserve from ${toHHMM(Math.max(s.fromMin, earliestMin))}`}
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                pick(
-                  s.fromMin + (e.clientY - rect.top) / PX_PER_MIN,
-                  s.fromMin,
-                  s.toMin,
-                );
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  pick(s.fromMin, s.fromMin, s.toMin);
-                }
-              }}
-            >
-              <span className="daycal-free-hint">Free - click to reserve</span>
-            </div>
-          );
-        })}
-
-        {selFrom != null &&
-          selTo != null &&
-          selTo > opensMin &&
-          selFrom < closesMin && (
-            <div
-              className="daycal-selection"
+              className={`daycal-block ${s.reserved.src.mine ? "mine" : ""}`}
               style={{
-                top: top(Math.max(selFrom, opensMin)),
-                height:
-                  (Math.min(selTo, closesMin) - Math.max(selFrom, opensMin)) *
-                  PX_PER_MIN,
+                left: `${pct(s.fromMin)}%`,
+                width: `${pct(s.toMin) - pct(s.fromMin)}%`,
               }}
+              title={`${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · ${
+                s.reserved.src.mine ? "You" : s.reserved.src.by || "Reserved"
+              }`}
             >
-              <span>
-                {toHHMM(selFrom)} - {toHHMM(selTo)}
+              <span className="daycal-block-label">
+                {s.reserved.src.mine ? "You" : s.reserved.src.by || "Reserved"}
               </span>
             </div>
-          )}
+          ) : null,
+        )}
+
+        {hasPick && (
+          <div
+            className="daycal-pick"
+            style={{
+              left: `${pct(selFrom!)}%`,
+              width: `${pct(selTo!) - pct(selFrom!)}%`,
+            }}
+            title={`Your pick ${toHHMM(selFrom!)} - ${toHHMM(selTo!)}`}
+          >
+            <span>
+              {toHHMM(selFrom!)} - {toHHMM(selTo!)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="daycal-ticks">
+        {ticks.map((t) => (
+          <span key={t} className="daycal-tick" style={tickStyle(t)}>
+            {toHHMM(t)}
+          </span>
+        ))}
+      </div>
+
+      <div className="daycal-legend">
+        <span>
+          <i className="sw free" /> Free
+        </span>
+        <span>
+          <i className="sw booked" /> Booked
+        </span>
+        <span>
+          <i className="sw you" /> You
+        </span>
+        <span>
+          <i className="sw pick" /> Your pick
+        </span>
       </div>
     </div>
   );
