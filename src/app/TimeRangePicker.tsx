@@ -22,13 +22,6 @@ function toDate(hhmm: string) {
 
 const toHHMM = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-/** start + 1h, clamped to the end of the day. */
-function addHour(hhmm: string) {
-  const [h, m] = hhmm.split(":").map(Number);
-  const t = Math.min((h + 1) * 60 + (m || 0), 23 * 60 + 59);
-  return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
-}
-
 /**
  * Start / End time range as typed HH:MM fields (openstatus pattern): type over
  * the digits, arrow up/down to step, arrow left/right to move between fields.
@@ -38,28 +31,28 @@ function addHour(hhmm: string) {
 export default function TimeRangePicker({
   value,
   onChange,
-  initial,
+  defaultRange,
   disabled,
 }: {
   value: TimeRange | null;
   onChange: (range: TimeRange) => void;
-  /** First reservable time of the day, "HH:MM": the default the fields open on. */
-  initial: string;
+  /** The range the fields open on: a real free slot, so it never opens on a clash. */
+  defaultRange: TimeRange;
   disabled?: boolean;
 }) {
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
 
-  const from = value?.from ?? initial;
-  const to = value?.to ?? addHour(initial);
+  const from = value?.from ?? defaultRange.from;
+  const to = value?.to ?? defaultRange.to;
   const fromDate = toDate(from);
   const toDate_ = toDate(to);
 
-  // Pre-fill a sensible default, and reset it when the booth or day changes, so
-  // what the fields show and what the form holds never disagree.
+  // Pre-fill the default, and reset it when the booth or day changes, so what the
+  // fields show and what the form holds never disagree.
   React.useEffect(() => {
-    onChangeRef.current({ from: initial, to: addHour(initial) });
-  }, [initial]);
+    onChangeRef.current({ from: defaultRange.from, to: defaultRange.to });
+  }, [defaultRange.from, defaultRange.to]);
 
   const fromH = React.useRef<HTMLInputElement>(null);
   const fromM = React.useRef<HTMLInputElement>(null);

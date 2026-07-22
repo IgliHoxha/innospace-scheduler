@@ -13,7 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
+    "typecheck:tests": "tsc --noEmit -p tests/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -27,6 +27,10 @@
     "react-dom": "19.0.0",
     "resend": "4.1.2",
     "tailwind-merge": "^3.6.0"
+  },
+  "overrides": {
+    "sharp": "^0.35.3",
+    "postcss": "$postcss"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

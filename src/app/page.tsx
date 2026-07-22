@@ -6,6 +6,7 @@ import {
   reservableDates,
   autoApproveMaxHours,
   minReservationMinutes,
+  stepMinutes,
 } from "@/lib/schedule";
 import { queryReservations } from "@/lib/db";
 import { formatDateMedium, todayYMD } from "@/lib/datetime";
@@ -40,6 +41,7 @@ export default async function Home() {
       initialMine={myReservations.reservations}
       autoApproveMaxHours={autoApproveMaxHours()}
       minReservationMinutes={minReservationMinutes()}
+      stepMinutes={stepMinutes()}
     />
   );
 }

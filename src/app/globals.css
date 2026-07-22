@@ -404,6 +404,127 @@ a {
   margin-right: 6px;
 }
 
+/* Day timeline: one booth's availability as a Google-Calendar-style day view. */
+.daycal {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.daycal-axis {
+  position: relative;
+  flex: 0 0 46px;
+}
+.daycal-tick {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.daycal-track {
+  position: relative;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.daycal-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--border);
+}
+.daycal-past {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    #f6f6f8,
+    #f6f6f8 6px,
+    #eef0f2 6px,
+    #eef0f2 12px
+  );
+}
+.daycal-event {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  /* Others' reservations read muted red, matching the former reserved chips. */
+  background: #fdf1f1;
+  border: 1px solid #f6d5d5;
+  color: #b91c1c;
+}
+.daycal-event.mine {
+  background: #e8f8f6;
+  border-color: #b8ebe4;
+  color: #10574f;
+}
+.daycal-event-time {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.daycal-event-who {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.8;
+  line-height: 1.1;
+}
+.daycal-free {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: transparent;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.daycal-free:hover,
+.daycal-free:focus-visible {
+  background: #eefaf8;
+  color: var(--brand-dark);
+  outline: none;
+}
+.daycal-free-hint {
+  font-size: 11px;
+  font-weight: 600;
+}
+.daycal-selection {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(37, 189, 173, 0.16);
+  border: 2px solid var(--brand);
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 .note-box {
   width: 100%;
   margin-top: 16px;

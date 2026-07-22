@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TimeRangePicker from "./TimeRangePicker";
+import DayTimeline from "./DayTimeline";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -13,6 +14,7 @@ import {
   meetsMinDuration,
   noteRequiredFor,
 } from "@/lib/reservation-rules";
+import { suggestedEndMin } from "@/lib/timeline";
 import { boothLabel, timeText, dateOfReservation } from "@/lib/templates";
 import { formatDateLong, formatDateMedium } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
@@ -52,6 +54,7 @@ export default function ReservationClient({
   initialMine,
   autoApproveMaxHours,
   minReservationMinutes,
+  stepMinutes,
 }: {
   booths: Booth[];
   dates: DateOption[];
@@ -61,6 +64,8 @@ export default function ReservationClient({
   autoApproveMaxHours: number;
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
+  /** Time grid granularity; clicks in the day timeline snap to this. */
+  stepMinutes: number;
 }) {
   // Resolve booth names from the props we already hold, never from env (this is a
   // client bundle, where the env-backed lookup would throw).
@@ -307,7 +312,17 @@ export default function ReservationClient({
                       setEnd(to);
                       setError("");
                     }}
-                    initial={toTime(freeGaps[0].from)}
+                    defaultRange={{
+                      from: toTime(freeGaps[0].from),
+                      to: toTime(
+                        suggestedEndMin(
+                          freeGaps[0].from,
+                          freeGaps[0].to,
+                          minReservationMinutes,
+                          60,
+                        ) ?? freeGaps[0].to,
+                      ),
+                    }}
                   />
                 </div>
 
@@ -318,27 +333,20 @@ export default function ReservationClient({
                 )}
               </div>
 
-              <div className="reserved-list">
-                {avail.reserved.length === 0 ? (
-                  <span className="muted">
-                    Nothing reserved yet - the whole day is free.
-                  </span>
-                ) : (
-                  <>
-                    <span className="muted">Already reserved:</span>
-                    {avail.reserved.map((b) => (
-                      <span key={b.start} className="reserved-chip">
-                        {b.label}
-                        {(b.mine || b.by) && (
-                          <span className="reserved-by">
-                            {b.mine ? "You" : b.by}
-                          </span>
-                        )}
-                      </span>
-                    ))}
-                  </>
-                )}
-              </div>
+              <DayTimeline
+                opens={avail.opens}
+                closes={avail.closes}
+                earliest={avail.earliest}
+                reserved={avail.reserved}
+                selection={start && end ? { start, end } : null}
+                stepMinutes={stepMinutes}
+                minReservationMinutes={minReservationMinutes}
+                onPick={(from, to) => {
+                  setStart(from);
+                  setEnd(to);
+                  setError("");
+                }}
+              />
             </>
           )}
         </div>
