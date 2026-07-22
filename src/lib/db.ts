@@ -339,10 +339,9 @@ export async function createReservation(
   };
 
   const tx = db.transaction((r: Reservation) => {
-    // Overlap: an existing active reservation starts before this one ends AND ends
-    // after this one starts. Half-open ranges, so touching edges don't clash.
-    // Reservations are same-day, so any clash starts on this date: the startsAt >=
-    // day-start bound keeps the index range to one day instead of all history.
+    // Overlap on half-open ranges, so touching edges don't clash. Reservations
+    // are same-day, so the startsAt >= day-start bound keeps the index scan to
+    // this date instead of all history.
     const dayStart = `${r.startsAt!.slice(0, 10)}T00:00`;
     const clash = prep(
       `SELECT 1 FROM reservations

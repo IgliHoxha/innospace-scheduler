@@ -69,11 +69,9 @@ export interface UserRecord extends User {
   passwordHash: string;
 }
 
-// The email-footer contact fields. Any left unset is omitted from the footer.
-// Populated from env server-side (getContactFromEnv in email.ts); also the shape
-// of the dashboard's contact prop, so it stays client-safe (no env access here).
-// Every field is required and comes from env (getContactFromEnv in env-app.ts):
-// there are no defaults, so emails always render a complete contact block.
+// The email-footer contact fields, every one required and read from env
+// server-side (getContactFromEnv in env-app.ts), so a footer always renders
+// complete. Also the dashboard's contact prop, hence no env access here.
 export type ContactInfo = {
   name: string; // who signs off the confirmation
   org: string;

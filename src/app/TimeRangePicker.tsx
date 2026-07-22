@@ -23,10 +23,9 @@ function toDate(hhmm: string) {
 const toHHMM = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 /**
- * Start / End time range as typed HH:MM fields (openstatus pattern): type over
- * the digits, arrow up/down to step, arrow left/right to move between fields.
- * It only collects the two times; opening hours, the minimum, and clashes are
- * enforced by the reservation form and the server, not here.
+ * Start / End as typed HH:MM fields: type over the digits, arrow up/down to
+ * step, left/right to move between fields. It only collects the two times;
+ * opening hours, minimums and clashes are enforced by the form and the server.
  */
 export default function TimeRangePicker({
   value,

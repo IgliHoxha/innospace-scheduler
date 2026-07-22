@@ -28,10 +28,9 @@ function throttled(retryAfterSeconds: number) {
 }
 
 /**
- * Start a password reset: email a member a one-time reset link. Always answers
- * with the same generic success (no account enumeration); only an existing,
- * activated account actually receives mail. Rate-limited per IP to curb inbox
- * spam. Not-yet-activated invitees are left to their invite link.
+ * Email a member a one-time reset link. Always answers with the same generic
+ * success (no account enumeration); only an existing, activated account gets
+ * mail, invitees keep their invite link. Rate-limited per IP against inbox spam.
  */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
@@ -57,10 +56,9 @@ export async function POST(req: NextRequest) {
         const token = createResetToken(user.id, user.passwordHash);
         await sendPasswordResetEmail(user.email, token);
       } catch (err) {
-        // Everything member-specific stays inside the guard: a throw here (mailer
-        // down, or a missing env like PASSWORD_RESET_TTL_MINUTES that only this
-        // branch reads) must not surface. A 500 for a real account while an
-        // unknown one gets 200 would be an account-enumeration oracle.
+        // A throw here (mailer down, or an env only this branch reads) must not
+        // surface: a 500 for a real account while an unknown one gets 200 would
+        // be an account-enumeration oracle.
         console.error("[forgot-password] reset link failed:", err);
       }
     }

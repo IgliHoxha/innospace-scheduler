@@ -1,7 +1,6 @@
-// One deliberate pass over every state-changing handler: with ALLOWED_ORIGINS
-// set, a request whose Origin isn't allowed must be refused 403 before any work
-// (CSRF defense in depth). A valid token on the authenticated routes proves the
-// 403 comes from the origin gate running first, not from the auth guard.
+// One pass over every state-changing handler: a disallowed Origin must be
+// refused 403 before any work. The valid token on authenticated routes proves
+// the 403 comes from the origin gate running first, not from the auth guard.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   adminToken,

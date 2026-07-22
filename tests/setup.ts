@@ -4,10 +4,9 @@ import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
 import { SIGNING } from "./helpers/fixtures";
 
-// Every required env var now has NO code default, so the suite must provide a
-// deterministic baseline. These values mirror the previous code defaults, so
-// value-dependent tests keep asserting the same numbers. Individual tests still
-// override with vi.stubEnv and restore themselves.
+// Required env vars have no code default, so the suite supplies a baseline. It
+// mirrors the previous defaults, so value-dependent tests keep asserting the
+// same numbers; individual tests still override with vi.stubEnv.
 const REQUIRED_BASELINE: Record<string, string> = {
   AUTH_SECRET: SIGNING,
   SCHEDULER_BOOTHS: "booth-1:Booth 1:2,booth-2:Booth 2:4,booth-3:Booth 3:6",

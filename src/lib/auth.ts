@@ -84,9 +84,9 @@ export function verifySessionToken(
 }
 
 // ---- Invite tokens ---------------------------------------------------------
-// A signed, self-expiring token emailed to a new member so they can set their
-// own name + password. Same HMAC scheme as sessions, but purpose-scoped so a
-// session cookie can never be replayed as an invite (or vice versa).
+// A signed, self-expiring token letting a new member set their own name and
+// password. Same HMAC scheme as sessions but purpose-scoped, so neither can be
+// replayed as the other.
 
 /** How many days an invite link stays valid. Required. Env: INVITE_TTL_DAYS. */
 export function inviteTtlDays(): number {
@@ -148,11 +148,9 @@ export function verifyInviteToken(
 }
 
 // ---- Password-reset tokens -------------------------------------------------
-// A signed, self-expiring token emailed to a member who forgot their password.
-// Purpose-scoped like invites (never replayable as a session/invite), and bound
-// to a fingerprint of the account's current password hash: once the password
-// changes the fingerprint no longer matches, so a used or stale link stops
-// working (single-use without any server-side token store).
+// Purpose-scoped like invites, plus bound to a fingerprint of the account's
+// current password hash: changing the password breaks the match, so a used or
+// stale link dies without any server-side token store.
 
 /** How long a reset link stays valid, in minutes. Required. Env: PASSWORD_RESET_TTL_MINUTES. */
 export function resetTtlMinutes(): number {

@@ -10,10 +10,9 @@ export type EmailStatus = Extract<
 >;
 
 /**
- * Resolves a booth id to its display name. Passed in (not imported) so these
- * helpers stay pure and browser-safe: the env-backed lookup reads SCHEDULER_BOOTHS
- * and would throw in a client bundle. Server passes booths.boothName; the client
- * passes a resolver over the booth list it already holds.
+ * Resolves a booth id to its display name. Passed in, not imported, so these
+ * helpers stay browser-safe: the env-backed lookup reads SCHEDULER_BOOTHS and
+ * would throw in a client bundle.
  */
 export type BoothNamer = (boothId: string | undefined) => string;
 

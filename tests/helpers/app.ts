@@ -30,10 +30,9 @@ export function cleanupTmp(): void {
 }
 
 /**
- * Reset the module registry and point the DB at a brand-new file, so db.ts's
- * lazy singleton and booths.ts's cache start clean. Call it, then import the
- * db and/or route modules you need: everything imported afterwards (until the
- * next reset) shares that one fresh DB.
+ * Reset the module registry and point the DB at a new file, so db.ts's lazy
+ * singleton and booths.ts's cache start clean. Import the db/route modules after
+ * calling it: they all share that one fresh DB until the next reset.
  */
 export function resetApp(): void {
   vi.resetModules();

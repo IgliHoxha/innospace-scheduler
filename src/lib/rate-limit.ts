@@ -1,7 +1,6 @@
-// In-memory login brute-force guard (module-level Map; single long-lived Fly
-// machine, so state resets on restart). Two buckets so one attacker can't lock
-// everyone out: per-account (escalating, never a permanent ban) + per-IP
-// (lenient, tolerates the shared office IP).
+// In-memory login brute-force guard (module-level Map on one long-lived Fly
+// machine). Two buckets so one attacker can't lock everyone out: per-account
+// (escalating, never banned) and per-IP (lenient, shared office IP).
 
 import { requireIntEnv } from "./env-app";
 

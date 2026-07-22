@@ -21,10 +21,9 @@ const toHHMM = (m: number) =>
 const TAG_FITS_PX = 96;
 
 /**
- * Read-only availability graph for one booth+day: the open window drawn as a
- * horizontal bar, reservations as blocks (teal = yours, red = others), your
- * current pick highlighted. Purely a preview; the range is chosen in the fields
- * above, so this never handles clicks.
+ * Read-only availability graph for one booth+day: the open window as a bar,
+ * reservations as blocks (teal = yours, red = others), your pick highlighted.
+ * A preview only: the range is chosen in the fields above, so no click handling.
  */
 export default function DayTimeline({
   opens,
