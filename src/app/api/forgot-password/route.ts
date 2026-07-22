@@ -53,12 +53,15 @@ export async function POST(req: NextRequest) {
     const user = await findUserByEmail(addr);
     // Only activated members have a password to reset; invitees use their invite.
     if (user && user.activated && user.passwordHash) {
-      const token = createResetToken(user.id, user.passwordHash);
       try {
+        const token = createResetToken(user.id, user.passwordHash);
         await sendPasswordResetEmail(user.email, token);
       } catch (err) {
-        // Don't leak the failure (or the account's existence); just log it.
-        console.error("[forgot-password] email failed:", err);
+        // Everything member-specific stays inside the guard: a throw here (mailer
+        // down, or a missing env like PASSWORD_RESET_TTL_MINUTES that only this
+        // branch reads) must not surface. A 500 for a real account while an
+        // unknown one gets 200 would be an account-enumeration oracle.
+        console.error("[forgot-password] reset link failed:", err);
       }
     }
   }

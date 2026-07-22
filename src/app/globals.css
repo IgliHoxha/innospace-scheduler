@@ -497,10 +497,10 @@ a {
   top: -1px;
   bottom: -1px;
   border-radius: 9px;
-  /* Light blue so the pick is unmistakable next to the teal "You" blocks. */
-  background: rgba(59, 130, 246, 0.14);
-  border: 2px solid #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.13);
+  /* Light sky blue so the pick is unmistakable next to the teal "You" blocks. */
+  background: rgba(56, 189, 248, 0.16);
+  border: 2px solid #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
   pointer-events: none;
 }
 .daycal-pick-tag {
@@ -510,7 +510,7 @@ a {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
-  color: #1d4ed8;
+  color: #0369a1;
   pointer-events: none;
 }
 /* Roomy pick: the tag sits centred inside the selection. */
@@ -525,7 +525,7 @@ a {
   border-radius: 6px;
   box-shadow:
     0 1px 3px rgba(16, 24, 40, 0.14),
-    0 0 0 1px rgba(59, 130, 246, 0.55);
+    0 0 0 1px rgba(56, 189, 248, 0.6);
 }
 .daycal-ticks {
   position: relative;
@@ -570,8 +570,8 @@ a {
   border-color: #a9e6dd;
 }
 .daycal-legend .sw.pick {
-  background: rgba(59, 130, 246, 0.16);
-  border-color: #3b82f6;
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
 }
 
 .note-box {

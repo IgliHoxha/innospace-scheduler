@@ -76,6 +76,25 @@ describe("POST /api/forgot-password", () => {
     expect((await res.json()).ok).toBe(true);
   });
 
+  it("stays generic when a member-only step throws (no enumeration on misconfig)", async () => {
+    // Reproduces the incident: PASSWORD_RESET_TTL_MINUTES unset made token
+    // minting throw for existing members only, so real accounts 500'd while
+    // unknown ones got 200 - an enumeration oracle. It must stay a generic 200.
+    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "");
+    await activatedMember("known@example.com");
+
+    const known = await post({ email: "known@example.com" });
+    expect(known.status).toBe(200);
+    expect((await known.json()).ok).toBe(true);
+
+    const unknown = await post({ email: "stranger@example.com" });
+    expect(unknown.status).toBe(200);
+    // Same status for member and non-member: nothing distinguishes them.
+    expect((await unknown.json()).ok).toBe(true);
+
+    vi.unstubAllEnvs();
+  });
+
   it("429 once the per-IP reset throttle trips", async () => {
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
     expect((await post({ email: "a@example.com" })).status).toBe(200);
