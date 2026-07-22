@@ -82,6 +82,21 @@ describe("origin gate on mutating handlers", () => {
     await expectForbidden(res);
   });
 
+  // Regression: every page posts to this app's own API from the host it is
+  // served on. That is same-origin, never CSRF, so it must pass without the
+  // app's own origin being listed in ALLOWED_ORIGINS.
+  it("allows the app calling its own API (same-origin, not on the list)", async () => {
+    const route = await import("@/app/api/login/route");
+    const res = await route.DELETE(
+      makeRequest("http://sched.test/api/login", {
+        method: "DELETE",
+        headers: { origin: "https://sched.test", host: "sched.test" },
+        token: adminToken(),
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("still allows a request from the configured origin", async () => {
     const route = await import("@/app/api/login/route");
     const res = await route.POST(

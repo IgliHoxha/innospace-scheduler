@@ -37,12 +37,42 @@ export function requestOrigin(headers: Headers): string | null {
 }
 
 /**
+ * Is the Origin the host the app is being served from? The app calls its own API
+ * from every page, so those requests are same-origin by construction and can
+ * never be CSRF. ALLOWED_ORIGINS only ever describes *other* sites, so the app
+ * must not have to list itself there.
+ */
+function isSameOrigin(origin: string, headers: Headers): boolean {
+  const host = headers.get("host");
+  if (!host) return false;
+  try {
+    // Host-only compare: the scheme is terminated at Cloudflare/Fly, so the
+    // forwarded request's scheme isn't a reliable match for the browser's.
+    return new URL(origin).host === host;
+  } catch {
+    return false; // malformed Origin
+  }
+}
+
+/**
+ * Should this request pass the origin gate? Same-origin always passes; a missing
+ * Origin/Referer can't be enforced, so it's allowed and left to the session
+ * guard; anything else must be on ALLOWED_ORIGINS.
+ */
+export function isRequestOriginAllowed(headers: Headers): boolean {
+  const origin = requestOrigin(headers);
+  if (!origin) return true;
+  if (isSameOrigin(origin, headers)) return true;
+  return isOriginAllowed(origin);
+}
+
+/**
  * Origin guard for mutating handlers (CSRF defense in depth with the sameSite=lax
- * cookie): 403 when the Origin/Referer isn't allowed, else null. No-op when
- * ALLOWED_ORIGINS is unset ("*"); even when set, a missing origin passes.
+ * cookie): 403 when the request's origin isn't allowed, else null. No-op when
+ * ALLOWED_ORIGINS is unset ("*").
  */
 export function requireAllowedOrigin(headers: Headers): NextResponse | null {
-  if (isOriginAllowed(requestOrigin(headers))) return null;
+  if (isRequestOriginAllowed(headers)) return null;
   return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 }
 
