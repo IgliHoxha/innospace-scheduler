@@ -111,6 +111,12 @@ describe("POST /api/reservations - success", () => {
       409,
     );
   });
+  it("409 when the member already has an overlapping reservation in another booth", async () => {
+    await post(ok); // booth-1, 14:00-15:00
+    const res = await post({ ...ok, boothId: "booth-2", start: "14:30" }); // booth-2, overlaps
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toContain("already have a reservation");
+  });
 });
 
 describe("GET /api/reservations", () => {

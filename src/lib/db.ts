@@ -55,6 +55,14 @@ export class SlotUnavailableError extends Error {
   }
 }
 
+/** The member already holds an active reservation overlapping this time (any booth). */
+export class UserBusyError extends Error {
+  constructor(message = "You already have a reservation during that time.") {
+    super(message);
+    this.name = "UserBusyError";
+  }
+}
+
 // Ordered schema migrations keyed by target `PRAGMA user_version`: each runs once,
 // in a transaction, on any DB below its version, then bumps it. To change the
 // schema, append a new { version: N+1, up } entry - never edit a shipped one.
@@ -343,6 +351,17 @@ export async function createReservation(
          LIMIT 1`,
     ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
+    // Self-overlap: a member can't hold two booths at once. Reject an active
+    // reservation of theirs that overlaps this time, in any booth.
+    if (r.userId) {
+      const selfClash = prep(
+        `SELECT 1 FROM reservations
+           WHERE userId = ? AND status IN (${ACTIVE_LIST})
+             AND startsAt >= ? AND startsAt < ? AND endsAt > ?
+           LIMIT 1`,
+      ).get(r.userId, dayStart, r.endsAt, r.startsAt);
+      if (selfClash) throw new UserBusyError();
+    }
     insert(r);
   });
 

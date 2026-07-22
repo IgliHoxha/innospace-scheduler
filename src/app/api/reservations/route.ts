@@ -4,6 +4,7 @@ import {
   queryReservations,
   deleteReservations,
   SlotUnavailableError,
+  UserBusyError,
 } from "@/lib/db";
 import {
   RESERVATION_STATUSES,
@@ -162,7 +163,7 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
-    if (err instanceof SlotUnavailableError) {
+    if (err instanceof SlotUnavailableError || err instanceof UserBusyError) {
       return NextResponse.json(
         { ok: false, error: err.message },
         { status: 409 },

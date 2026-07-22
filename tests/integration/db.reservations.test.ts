@@ -57,10 +57,36 @@ describe("createReservation + overlap", () => {
     await expect(reserve("11:00", "12:00")).resolves.toBeTruthy();
   });
 
-  it("does not clash across different booths", async () => {
+  it("does not clash across different booths (different members)", async () => {
     await reserve("10:00", "11:00");
     await expect(
+      reserve("10:00", "11:00", { boothId: "booth-2", userId: "u2" }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("rejects the same member overlapping in another booth (no being in two at once)", async () => {
+    await reserve("10:00", "11:00"); // u1, booth-1
+    await expect(
+      reserve("10:30", "11:30", { boothId: "booth-2" }), // u1, booth-2, overlaps
+    ).rejects.toBeInstanceOf(db.UserBusyError);
+    // adjacent, half-open ranges in another booth are fine for the same member
+    await expect(
+      reserve("11:00", "12:00", { boothId: "booth-2" }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("a cancelled reservation does not block the member's new booking", async () => {
+    const r = await reserve("10:00", "11:00");
+    await db.updateReservationStatus(r.id, "cancelled");
+    await expect(
       reserve("10:00", "11:00", { boothId: "booth-2" }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("does not apply the self-overlap rule when there is no userId", async () => {
+    await reserve("10:00", "11:00", { userId: undefined });
+    await expect(
+      reserve("10:30", "11:30", { boothId: "booth-2", userId: undefined }),
     ).resolves.toBeTruthy();
   });
 

@@ -159,6 +159,26 @@ export default function ReservationClient({
       })),
     );
     if (clash) return `That overlaps an existing reservation (${clash.label}).`;
+    // Self-overlap: you can't hold two booths at once. Check your own active
+    // reservations on this day, across every booth (the booth clash above only
+    // covers the selected booth).
+    const selfClash = findOverlap(
+      startMin,
+      endMin,
+      mine
+        .filter(
+          (r) =>
+            (r.status === "confirmed" || r.status === "pending") &&
+            r.startsAt?.slice(0, 10) === date,
+        )
+        .map((r) => ({
+          start: toMinutes(r.startsAt!.slice(11)),
+          end: toMinutes(r.endsAt!.slice(11)),
+          boothId: r.boothId,
+        })),
+    );
+    if (selfClash)
+      return `You already have a reservation in ${boothName(selfClash.boothId)} at that time.`;
     if (mustNote && !note.trim())
       return `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
     return "";
