@@ -465,15 +465,15 @@ a {
 }
 .daycal-block {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  /* Match the pick's height so booked and picked blocks read the same size. */
+  top: -1px;
+  bottom: -1px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 8px;
-  border-radius: 8px;
+  border-radius: 9px;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   /* Others' reservations read muted red, yours read teal (.mine). */
   background: #fdeeee;
   border: 1px solid #f3c9c9;
@@ -497,9 +497,10 @@ a {
   top: -1px;
   bottom: -1px;
   border-radius: 9px;
-  background: rgba(37, 189, 173, 0.16);
-  border: 2px solid var(--brand);
-  box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.13);
+  /* Light blue so the pick is unmistakable next to the teal "You" blocks. */
+  background: rgba(59, 130, 246, 0.14);
+  border: 2px solid #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.13);
   pointer-events: none;
 }
 .daycal-pick-tag {
@@ -509,7 +510,7 @@ a {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
-  color: var(--brand-dark);
+  color: #1d4ed8;
   pointer-events: none;
 }
 /* Roomy pick: the tag sits centred inside the selection. */
@@ -524,7 +525,7 @@ a {
   border-radius: 6px;
   box-shadow:
     0 1px 3px rgba(16, 24, 40, 0.14),
-    0 0 0 1px rgba(37, 189, 173, 0.55);
+    0 0 0 1px rgba(59, 130, 246, 0.55);
 }
 .daycal-ticks {
   position: relative;
@@ -569,8 +570,8 @@ a {
   border-color: #a9e6dd;
 }
 .daycal-legend .sw.pick {
-  background: rgba(37, 189, 173, 0.16);
-  border-color: var(--brand);
+  background: rgba(59, 130, 246, 0.16);
+  border-color: #3b82f6;
 }
 
 .note-box {
