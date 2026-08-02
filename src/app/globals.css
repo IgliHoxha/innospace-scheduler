@@ -6,10 +6,10 @@
   /* Innospace Tirana brand palette */
   --brand: #25bdad;
   --brand-dark: #1ea596;
-  --plum: #524552;
   --bg: #f4f6f8;
   --card: #ffffff;
-  --text: #524552;
+  /* Body copy and headings share one ink; the brand plum stays for emails only. */
+  --text: #000000;
   --muted: #8a7f8a;
   --border: #e5e7eb;
 }
@@ -92,7 +92,8 @@ a {
   display: block;
 }
 .brand-sub {
-  color: var(--text);
+  /* Black, to match the wordmark in logo.svg (an <img>, so it can't inherit). */
+  color: #000000;
   font-weight: 600;
   font-size: 15px;
   padding-left: 10px;
@@ -255,7 +256,7 @@ a {
 /* Reservation screen */
 .page-title {
   font-size: 24px;
-  color: var(--plum);
+  color: var(--text);
   margin: 24px 0 4px;
 }
 /* Dashboard header row: title + members button */
@@ -277,7 +278,7 @@ a {
 }
 .section-title {
   font-size: 18px;
-  color: var(--plum);
+  color: var(--text);
   margin: 32px 0 12px;
 }
 .field-label {
@@ -1030,7 +1031,7 @@ tr:last-child td {
 .modal h2 {
   margin: 0 0 10px;
   font-size: 19px;
-  color: var(--plum);
+  color: var(--text);
 }
 .modal p {
   margin: 0 0 22px;
