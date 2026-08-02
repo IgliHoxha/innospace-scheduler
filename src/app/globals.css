@@ -3,11 +3,9 @@
 @tailwind utilities;
 
 :root {
-  /* The UI is light-only. Declaring it keeps browser-rendered controls light and,
-     crucially, makes logo.svg resolve its prefers-color-scheme rule to the black
-     wordmark: an <img> SVG otherwise follows the visitor's OS theme and would go
-     white on these white surfaces. Email has no such pin, so the same file turns
-     white where a mail client dark-mode-inverts the shell. */
+  /* The UI is light-only, so say so: without this a dark-mode OS makes the browser
+     render native controls (login inputs, scrollbars) in dark chrome on these
+     white surfaces. */
   color-scheme: light;
   /* Innospace Tirana brand palette */
   --brand: #25bdad;

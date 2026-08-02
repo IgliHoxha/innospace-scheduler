@@ -45,26 +45,29 @@ afterEach(() => {
 });
 
 describe("email logo", () => {
-  it("points at logo.svg under APP_BASE_URL", async () => {
-    expect(await reservationHtml()).toContain(
-      '<img src="https://scheduler.example.test/logo.svg"',
+  it("points at the versioned email asset, not the site logo", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain(
+      '<img src="https://scheduler.example.test/logo-mark.svg?v=6"',
     );
+    // Gmail caches per source URL, so the version must survive any edit here.
+    expect(html).not.toContain('/logo.svg"');
   });
 
   it("does not double the slash when APP_BASE_URL has a trailing one", async () => {
     vi.stubEnv("APP_BASE_URL", "https://staging.example.com/");
     expect(await reservationHtml()).toContain(
-      'src="https://staging.example.com/logo.svg"',
+      'src="https://staging.example.com/logo-mark.svg?v=6"',
     );
   });
 
   it("carries width/height attributes so CSS-stripping clients size it", async () => {
     const html = await reservationHtml();
-    expect(html).toContain('width="126" height="30"');
-    expect(html).toContain("height:30px;width:126px");
+    expect(html).toContain('width="34" height="32"');
+    expect(html).toContain("width:34px;height:32px");
   });
 
-  it("falls back to the org name as alt text where SVG is blocked", async () => {
+  it("falls back to the org name as alt text where the image is blocked", async () => {
     vi.stubEnv("BUSINESS_NAME", "Innospace Tirana");
     expect(await reservationHtml()).toContain('alt="Innospace Tirana"');
   });
@@ -73,23 +76,51 @@ describe("email logo", () => {
   it("appears in the invite and password-reset mails too", async () => {
     await email.sendInviteEmail("ada@example.com", "tok_invite");
     await email.sendPasswordResetEmail("ada@example.com", "tok_reset");
-    expect(htmlOf(0)).toContain("https://scheduler.example.test/logo.svg");
-    expect(htmlOf(1)).toContain("https://scheduler.example.test/logo.svg");
+    const url = "https://scheduler.example.test/logo-mark.svg?v=6";
+    expect(htmlOf(0)).toContain(url);
+    expect(htmlOf(1)).toContain(url);
   });
 
-  // One asset serves both surfaces: black by default, white where the context is
-  // dark. That is what makes it legible after a mail client inverts the shell.
-  it("ships logo.svg with a black wordmark that flips white in a dark context", () => {
+  // Gmail can recolour HTML but never the inside of an image, so the mark is the
+  // only part shipped as artwork: teal, which reads on either background.
+  it("ships a teal-only mark asset with no wordmark and no media query", () => {
+    const svg = readFileSync(
+      join(process.cwd(), "public", "logo-mark.svg"),
+      "utf8",
+    );
+    expect(svg).toContain(".cls-1{fill:#25bdad;}");
+    expect(svg).not.toContain("cls-2");
+    expect(svg).not.toContain("prefers-color-scheme");
+  });
+
+  // The point of the whole exercise: the wordmark is HTML text inked neutral, so
+  // a dark-mode client inverts it to white exactly as it does the body copy.
+  // A <table> here made Gmail cut the bordered card container in two, rendering
+  // the header as a detached box above a "show trimmed content" expander. Keep
+  // the header markup flat: inline spans only.
+  it("builds the header without a table, so the card is not split", async () => {
+    const html = await reservationHtml();
+    expect(html).not.toContain("<table");
+    expect(html).toContain("display:inline-block;vertical-align:middle");
+  });
+
+  it("renders the wordmark as HTML text in neutral ink, not as artwork", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain('<span style="font-weight:700">inno</span>');
+    expect(html).toContain('<span style="font-weight:400">space</span>');
+    expect(html).toContain("color:#000000");
+    expect(html).toContain(">TIRANA<");
+  });
+
+  // The site asset stays tight and transparent: no panel, no adaptive rule.
+  it("keeps the site logo a plain black wordmark", () => {
     const svg = readFileSync(join(process.cwd(), "public", "logo.svg"), "utf8");
     expect(svg).toContain(".cls-2{fill:#000000;}");
-    expect(svg).toContain(
-      "@media (prefers-color-scheme:dark){.cls-2{fill:#fff;}}",
-    );
+    expect(svg).not.toContain("prefers-color-scheme");
+    expect(svg).not.toContain('class="bg"');
   });
 
-  // The flip above is only safe on the site because the app pins itself light.
-  // Drop this and the header wordmark turns white on white for dark-mode users.
-  it("pins the site to a light colour scheme so the site wordmark stays black", () => {
+  it("pins the site to a light colour scheme so native controls stay light", () => {
     const css = readFileSync(
       join(process.cwd(), "src", "app", "globals.css"),
       "utf8",
@@ -105,6 +136,18 @@ describe("body copy colour", () => {
     const html = await reservationHtml();
     expect(html).toContain("color:#000000;font-size:14px");
     expect(html).not.toContain("#524552");
+  });
+
+  // The expiry notes sit inside the card body, not the footer, so they need the
+  // neutral muted grey. The plum-tinted footerText would come back pink.
+  it("inks in-body fine print neutral, never the plum-tinted footer grey", async () => {
+    await email.sendInviteEmail("ada@example.com", "tok_invite");
+    await email.sendPasswordResetEmail("ada@example.com", "tok_reset");
+    for (const html of [htmlOf(0), htmlOf(1)]) {
+      expect(html).toContain('color:#767676;font-size:12px">This link expires');
+      // #a59ba5 survives only as the footer chrome, below the card body.
+      expect(html.split("This link expires")[0]).not.toContain("#a59ba5");
+    }
   });
 
   it("inks the invite and reset link fallbacks the same way", async () => {
@@ -145,5 +188,85 @@ describe("send guards", () => {
     );
     expect(send).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe("linkified body", () => {
+  it("links a bare email address in the brand colour, not Gmail's blue", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "Email: info@innospacetirana.com",
+    );
+    expect(htmlOf()).toContain(
+      '<a href="mailto:info@innospacetirana.com" style="color:#25bdad">info@innospacetirana.com</a>',
+    );
+  });
+
+  it("gives URLs and addresses the same colour", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "See https://maps.google.com/?q=x or mail info@innospacetirana.com",
+    );
+    const html = htmlOf();
+    const colours = [
+      ...html.matchAll(/<a href="[^"]*" style="color:(#[0-9a-f]{6})"/g),
+    ].map((m) => m[1]);
+    expect(colours.length).toBe(2);
+    expect(new Set(colours).size).toBe(1);
+  });
+
+  it("leaves trailing sentence punctuation outside the link", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "Write to info@innospacetirana.com.",
+    );
+    expect(htmlOf()).toContain(">info@innospacetirana.com</a>.");
+  });
+
+  it("links a phone number as tel: in the brand colour, not the client's blue", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "Phone: +355 69 219 2666",
+    );
+    expect(htmlOf()).toContain(
+      '<a href="tel:+355692192666" style="color:#25bdad">+355 69 219 2666</a>',
+    );
+  });
+
+  it("leaves years, prices and street numbers alone", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "15 EUR per day on 4 August 2026 at Nd 10, H 5, Apt 1",
+    );
+    expect(htmlOf()).not.toContain("tel:");
+  });
+
+  it("does not mistake the + separators in a maps URL for a phone number", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "https://maps.google.com/?q=Rr.+Pjeter+Bogdani+Tirana",
+    );
+    const html = htmlOf();
+    expect(html).not.toContain("tel:");
+    expect(html).toContain(
+      'href="https://maps.google.com/?q=Rr.+Pjeter+Bogdani+Tirana"',
+    );
+  });
+
+  it("treats a URL containing an @ as one URL, not a stray address", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "Open https://example.com/p?e=a@b.com now",
+    );
+    const html = htmlOf();
+    expect(html).toContain('href="https://example.com/p?e=a@b.com"');
+    expect(html).not.toContain("mailto:");
   });
 });

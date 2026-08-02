@@ -22,18 +22,44 @@ function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
 
-// Logo is an app asset (public/logo.svg, the same file the site UI uses) served
-// under APP_BASE_URL. In dev that's localhost (unfetchable by mail clients), but
-// dev normally skips sending. The wordmark is black, so it reads poorly where a
-// client dark-mode-inverts the shell; clients that refuse SVG show the alt text.
+// Gmail proxies every image through googleusercontent and rasterises SVG to PNG
+// on its own servers (verified: the proxy responds content-type image/png). It
+// can recolour HTML for dark mode but never the inside of an image, so a wordmark
+// shipped as artwork is stuck on one fixed colour and loses either light or dark.
+//
+// So only the teal mark stays an image (teal reads on both backgrounds) and the
+// wordmark is HTML text: a dark-mode client then inverts it exactly as it does
+// the body copy, black on a white card and white on a dark shell.
+//
+// Served under APP_BASE_URL. In dev that's localhost (unfetchable by mail
+// clients), but dev normally skips sending.
+//
+// The proxy caches per source URL, so an edit to the file alone never reaches a
+// recipient already sent the old one. Bump this whenever the artwork changes.
+const LOGO_VERSION = "6";
+
 function emailLogoUrl(): string {
-  return `${baseUrl().replace(/\/$/, "")}/logo.svg`;
+  return `${baseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
-// The artwork is 1340x320, so a 30px-tall render is 126px wide. Mail clients that
+// logo-mark.svg is 329x308, so a 32px-tall render is 34px wide. Mail clients that
 // ignore CSS need the width attribute or they reserve the full intrinsic size.
-const LOGO_HEIGHT = 30;
-const LOGO_WIDTH = 126;
+const MARK_HEIGHT = 32;
+const MARK_WIDTH = 34;
+
+const FONT_STACK =
+  "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
+
+// The wordmark text is the brand lockup, not the configurable BUSINESS_NAME, for
+// the same reason the mark is fixed artwork: both are the logo.
+//
+// Built from inline spans rather than a table or nested divs. Gmail cut the card
+// container in two at the table version of this, and the header sits inside a
+// bordered, rounded wrapper that renders badly when split, so keep the markup
+// here as flat as the plain <img> it replaced.
+function logoLockup(org: string): string {
+  return `<img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
+}
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
 // import, so tests/dev with no key never construct it). RESEND_API_KEY is an
@@ -62,7 +88,19 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs.
+// URLs, bare email addresses and international phone numbers, matched in one pass
+// so the URL branch claims a URL carrying an "@" or a "+" rather than letting the
+// later branches half-eat it. The address branch needs a word character after
+// every dot and the phone branch must end on a digit, so trailing sentence
+// punctuation stays outside the link. Phones require a leading "+" so years,
+// prices and street numbers are never mistaken for one.
+const LINKABLE =
+  /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(\+\d[\d\s().-]{7,}\d)/g;
+
+// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs, email
+// addresses and phone numbers. The last two must be linked here rather than left
+// bare: Gmail and iOS auto-link them and paint them their own default blue, which
+// clashes with the brand-coloured URLs alongside.
 function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
@@ -70,8 +108,17 @@ function textToHtml(text: string): string {
       const safe = escapeHtml(para)
         .replace(/\n/g, "<br/>")
         .replace(
-          /(https?:\/\/[^\s<]+)/g,
-          `<a href="$1" style="color:${BRAND}">$1</a>`,
+          LINKABLE,
+          (match, url?: string, mail?: string, phone?: string) => {
+            const link = (href: string, label: string) =>
+              `<a href="${href}" style="color:${BRAND}">${label}</a>`;
+            if (url) return link(url, url);
+            if (mail) return link(`mailto:${mail}`, mail);
+            // tel: wants digits only; the visible text keeps its spacing.
+            if (phone)
+              return link(`tel:${phone.replace(/[^\d+]/g, "")}`, phone);
+            return match;
+          },
         );
       return `<p style="margin:0 0 14px;color:${INK};font-size:14px;line-height:1.6">${safe}</p>`;
     })
@@ -90,12 +137,11 @@ function shell(opts: {
   const footerLink = ` · <a href="${url}" style="color:${BRAND};text-decoration:none">${url
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "")}</a>`;
-  const logo = emailLogoUrl();
   const header = `<div style="padding:22px 28px;border-bottom:1px solid ${COLORS.divider}">
-        <img src="${logo}" alt="${org}" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" style="height:${LOGO_HEIGHT}px;width:${LOGO_WIDTH}px;display:block" />
+        ${logoLockup(org)}
       </div>`;
   return `
-  <div style="background:${COLORS.accentBg};padding:28px 12px;font-family:'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif">
+  <div style="background:${COLORS.accentBg};padding:28px 12px;font-family:${FONT_STACK}">
     <div style="max-width:560px;margin:0 auto;background:${COLORS.background};border-radius:14px;overflow:hidden;border:1px solid ${COLORS.border}">
       ${header}
       <div style="height:4px;background:${accent}"></div>
@@ -178,7 +224,7 @@ export async function sendInviteEmail(
     <p style="margin:0 0 14px;color:${INK};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
   // Same sign-off as every other email, then the expiry note as fine print.
   const closing = textToHtml(signOff(contact).join("\n"));
-  const finePrint = `<p style="margin:0;color:${COLORS.footerText};font-size:12px">This link expires in ${inviteTtlDays()} days. If you weren't expecting this, you can ignore this email.</p>`;
+  const finePrint = `<p style="margin:0;color:${COLORS.emailMuted};font-size:12px">This link expires in ${inviteTtlDays()} days. If you weren't expecting this, you can ignore this email.</p>`;
 
   await resend.emails.send({
     from: from(),
@@ -222,7 +268,7 @@ export async function sendPasswordResetEmail(
     </p>
     <p style="margin:0 0 14px;color:${INK};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
   const closing = textToHtml(signOff(contact).join("\n"));
-  const finePrint = `<p style="margin:0;color:${COLORS.footerText};font-size:12px">This link expires in ${minutes} minutes and can be used once. If you didn't request a reset, you can safely ignore this email: your password stays unchanged.</p>`;
+  const finePrint = `<p style="margin:0;color:${COLORS.emailMuted};font-size:12px">This link expires in ${minutes} minutes and can be used once. If you didn't request a reset, you can safely ignore this email: your password stays unchanged.</p>`;
 
   await resend.emails.send({
     from: from(),

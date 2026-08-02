@@ -18,6 +18,10 @@ export const COLORS = {
   // zero-saturation grey comes back white. Saturated brand colours (brand, the
   // status accents) survive inversion untouched and stay as they are.
   emailText: "#000000",
+  // Fine print sitting inside the body (link expiry notes). Neutral for the same
+  // inversion reason as emailText, and darker than footerText because 12px body
+  // copy needs the contrast; footerText stays as-is for the footer chrome.
+  emailMuted: "#767676",
   // Email-only chrome (dividers/footer); not mapped into the Tailwind theme.
   divider: "#eee",
   footerBg: "#fafafa",
