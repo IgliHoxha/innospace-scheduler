@@ -22,11 +22,18 @@ function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
 
-// Logo is an app asset (public/email-logo.png) served under APP_BASE_URL. In dev
-// that's localhost (unfetchable by mail clients), but dev normally skips sending.
+// Logo is an app asset (public/logo.svg, the same file the site UI uses) served
+// under APP_BASE_URL. In dev that's localhost (unfetchable by mail clients), but
+// dev normally skips sending. The wordmark is black, so it reads poorly where a
+// client dark-mode-inverts the shell; clients that refuse SVG show the alt text.
 function emailLogoUrl(): string {
-  return `${baseUrl().replace(/\/$/, "")}/email-logo.png`;
+  return `${baseUrl().replace(/\/$/, "")}/logo.svg`;
 }
+
+// The artwork is 1340x320, so a 30px-tall render is 126px wide. Mail clients that
+// ignore CSS need the width attribute or they reserve the full intrinsic size.
+const LOGO_HEIGHT = 30;
+const LOGO_WIDTH = 126;
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
 // import, so tests/dev with no key never construct it). RESEND_API_KEY is an
@@ -85,7 +92,7 @@ function shell(opts: {
     .replace(/\/$/, "")}</a>`;
   const logo = emailLogoUrl();
   const header = `<div style="padding:22px 28px;border-bottom:1px solid ${COLORS.divider}">
-        <img src="${logo}" alt="${org}" height="30" style="height:30px;width:auto;display:block" />
+        <img src="${logo}" alt="${org}" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" style="height:${LOGO_HEIGHT}px;width:${LOGO_WIDTH}px;display:block" />
       </div>`;
   return `
   <div style="background:${COLORS.accentBg};padding:28px 12px;font-family:'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif">
