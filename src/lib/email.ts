@@ -15,7 +15,7 @@ import {
 export { getContactFromEnv };
 
 const BRAND = COLORS.brand;
-const PLUM = COLORS.plum;
+const INK = COLORS.emailText;
 
 // Base URL for email links (invite/activation); required, or links break.
 function baseUrl(): string {
@@ -73,7 +73,7 @@ function textToHtml(text: string): string {
           /(https?:\/\/[^\s<]+)/g,
           `<a href="$1" style="color:${BRAND}">$1</a>`,
         );
-      return `<p style="margin:0 0 14px;color:${PLUM};font-size:14px;line-height:1.6">${safe}</p>`;
+      return `<p style="margin:0 0 14px;color:${INK};font-size:14px;line-height:1.6">${safe}</p>`;
     })
     .join("");
 }
@@ -175,7 +175,7 @@ export async function sendInviteEmail(
     <p style="margin:22px 0">
       <a href="${link}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Set up my account</a>
     </p>
-    <p style="margin:0 0 14px;color:${PLUM};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
+    <p style="margin:0 0 14px;color:${INK};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
   // Same sign-off as every other email, then the expiry note as fine print.
   const closing = textToHtml(signOff(contact).join("\n"));
   const finePrint = `<p style="margin:0;color:${COLORS.footerText};font-size:12px">This link expires in ${inviteTtlDays()} days. If you weren't expecting this, you can ignore this email.</p>`;
@@ -220,7 +220,7 @@ export async function sendPasswordResetEmail(
     <p style="margin:22px 0">
       <a href="${link}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Reset my password</a>
     </p>
-    <p style="margin:0 0 14px;color:${PLUM};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
+    <p style="margin:0 0 14px;color:${INK};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
   const closing = textToHtml(signOff(contact).join("\n"));
   const finePrint = `<p style="margin:0;color:${COLORS.footerText};font-size:12px">This link expires in ${minutes} minutes and can be used once. If you didn't request a reset, you can safely ignore this email: your password stays unchanged.</p>`;
 

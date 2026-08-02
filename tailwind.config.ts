@@ -13,6 +13,11 @@ export const COLORS = {
   // Email header-bar accents per status (the UI badges mirror these in globals.css).
   statusPending: "#b45309",
   statusCancelled: "#b91c1c",
+  // Email body copy: a neutral ink, not `plum`. Clients that dark-mode invert
+  // flip lightness but keep hue, so a plum-tinted grey comes back pink, while a
+  // zero-saturation grey comes back white. Saturated brand colours (brand, the
+  // status accents) survive inversion untouched and stay as they are.
+  emailText: "#000000",
   // Email-only chrome (dividers/footer); not mapped into the Tailwind theme.
   divider: "#eee",
   footerBg: "#fafafa",
