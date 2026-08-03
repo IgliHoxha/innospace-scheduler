@@ -74,15 +74,14 @@ function firstName(r: Reservation): string {
   return r.fullName?.trim() ? r.fullName.trim().split(" ")[0] : "there";
 }
 
-// The canonical email sign-off: "Best regards," + who signs off, the org, and the
-// contact rows. Shared by every email so they all close the same way. Every field
-// is required (from env), so the whole block always renders.
+// The canonical email sign-off: "Best regards," + who signs off, then the contact
+// rows. Shared by every email so they all close the same way. The org is not
+// repeated here: EMAIL_SIGNOFF_NAME already carries it, and the shell's footer
+// prints it a third time.
 export function signOff(contact: ContactInfo): string[] {
   return [
     "Best regards,",
     contact.name,
-    "",
-    contact.org,
     "",
     `Phone: ${contact.phone}`,
     `Email: ${contact.email}`,
@@ -106,7 +105,7 @@ function confirmedBody(
   if (r.note?.trim()) lines.push(`Note: ${r.note.trim()}`);
   lines.push(
     "",
-    "If you need to change or cancel, just reply to this email.",
+    "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
     "",
   );
   lines.push(...signOff(contact));

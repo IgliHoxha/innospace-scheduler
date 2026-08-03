@@ -51,14 +51,6 @@ export function adminToken(name = "admin"): string {
   return createSessionToken({ role: "admin", sub: "admin", name });
 }
 
-export function userToken(
-  sub: string,
-  name = "Member",
-  email = "member@example.com",
-): string {
-  return createSessionToken({ role: "user", sub, name, email });
-}
-
 export function token(session: Session): string {
   return createSessionToken(session);
 }

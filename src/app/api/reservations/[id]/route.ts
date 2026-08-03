@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getReservation, updateReservationStatus } from "@/lib/db";
 import { sendReservationEmail } from "@/lib/email";
-import { requireSession } from "@/lib/api-auth";
+import { requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import {
   RESERVATION_STATUSES,
@@ -12,8 +12,8 @@ import {
 export const runtime = "nodejs";
 
 /**
- * Update a reservation's status. Admin can cancel or delete any reservation;
- * a member may only cancel their own.
+ * Admin-only: approve, cancel or delete any reservation. Whoever booked cancels
+ * through the signed link in their email instead (see ../cancel).
  */
 export async function PATCH(
   req: NextRequest,
@@ -22,8 +22,8 @@ export async function PATCH(
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
 
-  const session = requireSession(req);
-  if (session instanceof NextResponse) return session;
+  const admin = requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
 
   const { id } = await params;
   const { status, emailBody } = (await req.json().catch(() => ({}))) as {
@@ -50,16 +50,6 @@ export async function PATCH(
       { ok: false, error: "Not found." },
       { status: 404 },
     );
-  }
-
-  // Members can only cancel their own reservations; admins can do anything.
-  if (session.role !== "admin") {
-    if (existing.userId !== session.sub || status !== "cancelled") {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden." },
-        { status: 403 },
-      );
-    }
   }
 
   const reservation = await updateReservationStatus(id, status);

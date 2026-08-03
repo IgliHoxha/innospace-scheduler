@@ -139,16 +139,20 @@ describe("email copy", () => {
 });
 
 describe("contact footer", () => {
-  it("signOff is the canonical closing: Best regards, name, org, phone, email", () => {
+  it("signOff is the canonical closing: Best regards, name, phone, email", () => {
     expect(t.signOff(contact)).toEqual([
       "Best regards,",
       "Alex",
       "",
-      "Test Org",
-      "",
       "Phone: +000 1",
       "Email: hi@test.co",
     ]);
+  });
+
+  // EMAIL_SIGNOFF_NAME already carries the org ("... Team"), and the mail shell
+  // prints it again in the footer, so the sign-off must not repeat it.
+  it("does not repeat the org inside the sign-off", () => {
+    expect(t.signOff(contact)).not.toContain("Test Org");
   });
 
   it("every email renders the full contact block", () => {
@@ -156,7 +160,6 @@ describe("contact footer", () => {
       const body = t.emailBodyText(base, status, contact, boothName);
       expect(body).toContain("Best regards,");
       expect(body).toContain("Alex");
-      expect(body).toContain("Test Org");
       expect(body).toContain("Phone: +000 1");
       expect(body).toContain("Email: hi@test.co");
     }

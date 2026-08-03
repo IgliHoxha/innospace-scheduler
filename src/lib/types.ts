@@ -23,11 +23,11 @@ export const MAX_NOTE = 500;
 export const MAX_NAME = 80;
 export const MAX_EMAIL = 254; // RFC 5321
 export const MAX_PASSWORD = 200;
-export const MIN_PASSWORD = 6;
 export const MAX_EMAIL_BODY = 5000;
 
-/** The slot fields a reservation submits (identity is taken from the session). */
+/** The fields a reservation submits: the slot, plus who is booking it. */
 export interface ReservationInput {
+  /** The booker's first and last name joined (see guest.ts). */
   fullName?: string;
   email?: string;
   phoneNumber?: string;
@@ -38,7 +38,7 @@ export interface ReservationInput {
   /** Local end datetime, exclusive (e.g. "2026-07-16T11:00"). */
   endsAt?: string;
   note?: string;
-  /** Id of the user (member) who reserved, or "admin". */
+  /** Legacy column from the account era; unset for every new booking. */
   userId?: string;
 }
 
@@ -47,26 +47,6 @@ export interface Reservation extends ReservationInput {
   createdAt: string;
   updatedAt: string;
   status: ReservationStatus;
-}
-
-/**
- * A member who can log in and schedule booths. The admin invites them by email;
- * the member sets their own name + password from the invite link. Until then
- * `name` is empty and `activated` is false (no password on file yet).
- */
-export interface User {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  name: string;
-  email: string;
-  /** True once the member has completed the invite (set name + password). */
-  activated: boolean;
-}
-
-/** User plus its stored password hash (empty until activated): never sent to the client. */
-export interface UserRecord extends User {
-  passwordHash: string;
 }
 
 // The email-footer contact fields, every one required and read from env

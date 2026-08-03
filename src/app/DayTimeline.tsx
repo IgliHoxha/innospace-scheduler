@@ -9,7 +9,6 @@ interface Reserved {
   end: string;
   label: string;
   by: string | null;
-  mine: boolean;
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -22,7 +21,7 @@ const TAG_FITS_PX = 96;
 
 /**
  * Read-only availability graph for one booth+day: the open window as a bar,
- * reservations as blocks (teal = yours, red = others), your pick highlighted.
+ * reservations as blocks, your pick highlighted.
  * A preview only: the range is chosen in the fields above, so no click handling.
  */
 export default function DayTimeline({
@@ -51,11 +50,6 @@ export default function DayTimeline({
     closesMin,
     reserved.map((r) => ({ start: toMin(r.start), end: toMin(r.end), src: r })),
   );
-
-  const bookedMin = segments
-    .filter((s) => s.reserved)
-    .reduce((sum, s) => sum + (s.toMin - s.fromMin), 0);
-  const freePct = Math.round(((span - bookedMin) / span) * 100);
 
   const ticks: number[] = [];
   for (let h = Math.ceil(opensMin / 60) * 60; h <= closesMin; h += 60) {
@@ -114,7 +108,6 @@ export default function DayTimeline({
     <div className="daycal">
       <div className="daycal-head">
         <span className="daycal-title">Availability</span>
-        <span className="daycal-freepct">{freePct}% free</span>
       </div>
 
       <div
@@ -143,19 +136,17 @@ export default function DayTimeline({
             s.reserved ? (
               <div
                 key={i}
-                className={`daycal-block ${s.reserved.src.mine ? "mine" : ""}`}
+                className="daycal-block"
                 style={{
                   left: `${pct(s.fromMin)}%`,
                   width: `${pct(s.toMin) - pct(s.fromMin)}%`,
                 }}
                 title={`${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · ${
-                  s.reserved.src.mine ? "You" : s.reserved.src.by || "Reserved"
+                  s.reserved.src.by || "Reserved"
                 }`}
               >
                 <span className="daycal-block-label">
-                  {s.reserved.src.mine
-                    ? "You"
-                    : s.reserved.src.by || "Reserved"}
+                  {s.reserved.src.by || "Reserved"}
                 </span>
               </div>
             ) : null,
@@ -193,9 +184,6 @@ export default function DayTimeline({
         </span>
         <span>
           <i className="sw booked" /> Booked
-        </span>
-        <span>
-          <i className="sw you" /> You
         </span>
         <span>
           <i className="sw pick" /> Your pick

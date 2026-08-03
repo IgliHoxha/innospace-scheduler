@@ -22,9 +22,7 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { role?: string };
-      // Admins go to the dashboard; members go to the reservation screen.
-      router.replace(data.role === "admin" ? "/dashboard" : "/");
+      router.replace("/dashboard");
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
@@ -37,13 +35,13 @@ export default function LoginPage() {
       <form className="login-card" onSubmit={onSubmit}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="login-logo" src="/logo.svg" alt="Innospace Tirana" />
-        <p>Sign in to reserve a meeting booth.</p>
+        <p>Admin sign in. Booking a booth needs no account.</p>
         {error && <p className="error">{error}</p>}
         <input
           id="login"
           name="login"
           type="text"
-          placeholder="Email"
+          placeholder="Username"
           value={login}
           onChange={(e) => setLogin(e.target.value)}
           autoComplete="username"
@@ -63,8 +61,8 @@ export default function LoginPage() {
         <button className="btn" type="submit" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
         </button>
-        <a className="login-alt" href="/forgot">
-          Forgot your password?
+        <a className="login-alt" href="/">
+          Back to booking
         </a>
       </form>
     </div>

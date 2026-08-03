@@ -1,15 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  adminToken,
-  makeRequest,
-  params,
-  resetApp,
-  userToken,
-} from "../helpers/app";
+import { adminToken, makeRequest, params, resetApp } from "../helpers/app";
 
 vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue(undefined),
-  sendInviteEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
 type Route = typeof import("@/app/api/reservations/[id]/route");
@@ -28,14 +21,13 @@ beforeEach(async () => {
   email = await import("@/lib/email");
 });
 
-const seed = (userId = "u1", status: "confirmed" | "pending" = "confirmed") =>
+const seed = (status: "confirmed" | "pending" = "confirmed") =>
   db.createReservation(
     {
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
-      userId,
-      fullName: "Ada",
+      fullName: "Ada Lovelace",
       email: "ada@example.com",
     },
     status,
@@ -52,7 +44,7 @@ const patch = (id: string, body: unknown, tok?: string) =>
   );
 
 describe("PATCH /api/reservations/[id]", () => {
-  it("401 without a session", async () => {
+  it("401 without an admin session", async () => {
     const r = await seed();
     expect((await patch(r.id, { status: "cancelled" })).status).toBe(401);
   });
@@ -91,23 +83,9 @@ describe("PATCH /api/reservations/[id]", () => {
     ).toBe(404);
   });
 
-  it("403 when a member cancels someone else's reservation", async () => {
-    const r = await seed("u2");
-    expect(
-      (await patch(r.id, { status: "cancelled" }, userToken("u1"))).status,
-    ).toBe(403);
-  });
-
-  it("403 when a member sets any status other than cancelled", async () => {
-    const r = await seed("u1");
-    expect(
-      (await patch(r.id, { status: "confirmed" }, userToken("u1"))).status,
-    ).toBe(403);
-  });
-
-  it("lets a member cancel their own reservation and emails a cancellation", async () => {
-    const r = await seed("u1");
-    const res = await patch(r.id, { status: "cancelled" }, userToken("u1"));
+  it("lets an admin cancel a reservation and emails the booker", async () => {
+    const r = await seed();
+    const res = await patch(r.id, { status: "cancelled" }, adminToken());
     expect(res.status).toBe(200);
     expect(vi.mocked(email.sendReservationEmail).mock.calls[0][1]).toBe(
       "cancelled",
@@ -115,7 +93,7 @@ describe("PATCH /api/reservations/[id]", () => {
   });
 
   it("lets an admin confirm a pending reservation and emails a confirmation", async () => {
-    const r = await seed("u1", "pending");
+    const r = await seed("pending");
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reservation: { status: string } };
@@ -126,7 +104,7 @@ describe("PATCH /api/reservations/[id]", () => {
   });
 
   it("does not email on a deleted status change", async () => {
-    const r = await seed("u1");
+    const r = await seed();
     await patch(r.id, { status: "deleted" }, adminToken());
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });

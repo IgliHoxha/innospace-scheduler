@@ -159,3 +159,55 @@ describe("clientKey", () => {
     expect(rl.clientKey(new Headers())).toBe("unknown");
   });
 });
+
+describe("booking throttle (public form)", () => {
+  const bookN = (ip: string, n: number) => {
+    let s = rl.checkBookingBlocked(ip);
+    for (let i = 0; i < n; i++) s = rl.registerBooking(ip);
+    return s;
+  };
+
+  it("reports a fresh client as unblocked", () => {
+    expect(rl.checkBookingBlocked(IP)).toEqual({
+      blocked: false,
+      banned: false,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it("blocks once the per-IP attempt limit is reached", () => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "3");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    expect(bookN(IP, 2).blocked).toBe(false);
+    const s = bookN(IP, 1);
+    expect(s.blocked).toBe(true);
+    expect(s.retryAfterSeconds).toBe(60);
+    expect(rl.checkBookingBlocked(IP).blocked).toBe(true);
+  });
+
+  it("frees the client again once the lockout expires", () => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    bookN(IP, 2);
+    vi.advanceTimersByTime(60_001);
+    expect(rl.checkBookingBlocked(IP).blocked).toBe(false);
+  });
+
+  it("never bans: a shared office IP must not lose booking for good", () => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "1");
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "1");
+    for (let i = 0; i < 10; i++) {
+      rl.registerBooking(IP);
+      vi.advanceTimersByTime(10_000);
+    }
+    expect(rl.checkBookingBlocked(IP).banned).toBe(false);
+  });
+
+  it("keys per IP, and never touches that IP's login bucket", () => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
+    bookN(IP, 2);
+    expect(rl.checkBookingBlocked("9.9.9.9").blocked).toBe(false);
+    expect(rl.checkLoginBlocked(IP, "admin").blocked).toBe(false);
+  });
+});

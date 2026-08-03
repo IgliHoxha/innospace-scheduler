@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reservation } from "@/lib/types";
+import { verifyCancelToken } from "@/lib/auth";
 
 // Resend is stubbed at the class level so no request ever leaves the process;
 // `send` is shared across instances so the lazy singleton is still observable.
@@ -72,15 +73,6 @@ describe("email logo", () => {
     expect(await reservationHtml()).toContain('alt="Innospace Tirana"');
   });
 
-  // The invite and reset mails share the same shell, so the logo must follow.
-  it("appears in the invite and password-reset mails too", async () => {
-    await email.sendInviteEmail("ada@example.com", "tok_invite");
-    await email.sendPasswordResetEmail("ada@example.com", "tok_reset");
-    const url = "https://scheduler.example.test/logo-mark.svg?v=6";
-    expect(htmlOf(0)).toContain(url);
-    expect(htmlOf(1)).toContain(url);
-  });
-
   // Gmail can recolour HTML but never the inside of an image, so the mark is the
   // only part shipped as artwork: teal, which reads on either background.
   it("ships a teal-only mark asset with no wordmark and no media query", () => {
@@ -138,25 +130,6 @@ describe("body copy colour", () => {
     expect(html).not.toContain("#524552");
   });
 
-  // The expiry notes sit inside the card body, not the footer, so they need the
-  // neutral muted grey. The plum-tinted footerText would come back pink.
-  it("inks in-body fine print neutral, never the plum-tinted footer grey", async () => {
-    await email.sendInviteEmail("ada@example.com", "tok_invite");
-    await email.sendPasswordResetEmail("ada@example.com", "tok_reset");
-    for (const html of [htmlOf(0), htmlOf(1)]) {
-      expect(html).toContain('color:#767676;font-size:12px">This link expires');
-      // #a59ba5 survives only as the footer chrome, below the card body.
-      expect(html.split("This link expires")[0]).not.toContain("#a59ba5");
-    }
-  });
-
-  it("inks the invite and reset link fallbacks the same way", async () => {
-    await email.sendInviteEmail("ada@example.com", "tok_invite");
-    await email.sendPasswordResetEmail("ada@example.com", "tok_reset");
-    expect(htmlOf(0)).toContain("color:#000000;font-size:13px");
-    expect(htmlOf(1)).toContain("color:#000000;font-size:13px");
-  });
-
   it("keeps the saturated brand colour on links, which inverts cleanly", async () => {
     await email.sendReservationEmail(
       RESERVATION,
@@ -165,6 +138,57 @@ describe("body copy colour", () => {
     );
     expect(htmlOf()).toContain(
       '<a href="https://example.com" style="color:#25bdad"',
+    );
+  });
+});
+
+describe("cancel link", () => {
+  // It only renders while the slot is still ahead, so pin "now" before it.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-16T08:00:00"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const tokenIn = (html: string) =>
+    decodeURIComponent(/cancel\?token=([^"]+)/.exec(html)![1]);
+
+  it("adds a cancel link to a confirmation", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain("https://scheduler.example.test/cancel?token=");
+    expect(html).toContain("Cancel this reservation");
+  });
+
+  it("signs the link for that one reservation", async () => {
+    expect(verifyCancelToken(tokenIn(await reservationHtml()))).toBe("rs_1");
+  });
+
+  it("adds it to a pending request too: the slot is held, so it can be released", async () => {
+    await email.sendReservationEmail(RESERVATION, "pending");
+    expect(verifyCancelToken(tokenIn(htmlOf()))).toBe("rs_1");
+  });
+
+  it("omits it on a cancellation: there is nothing left to cancel", async () => {
+    await email.sendReservationEmail(RESERVATION, "cancelled");
+    expect(htmlOf()).not.toContain("/cancel?token=");
+  });
+
+  it("omits it once the reservation has already ended", async () => {
+    vi.setSystemTime(new Date("2026-07-16T11:01:00"));
+    expect(await reservationHtml()).not.toContain("/cancel?token=");
+  });
+
+  // Same inversion rule as the body copy: neutral ink, never the plum-tinted
+  // footer grey, which a dark-mode client would bring back pink.
+  it("inks the fine print neutral", async () => {
+    expect(await reservationHtml()).toContain(
+      'color:#767676;font-size:12px">Only you have this link',
+    );
+  });
+
+  it("inks the button label neutral", async () => {
+    expect(await reservationHtml()).toContain(
+      "color:#000000;text-decoration:none",
     );
   });
 });

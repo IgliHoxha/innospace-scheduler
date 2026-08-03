@@ -11,8 +11,15 @@ import {
   MAX_NOTE,
   type ReservationStatus,
 } from "@/lib/types";
-import { requireSession, requireAdmin } from "@/lib/api-auth";
+import { requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
+import { validateGuest } from "@/lib/guest";
+import { verifyTurnstile } from "@/lib/turnstile";
+import {
+  checkBookingBlocked,
+  clientKey,
+  registerBooking,
+} from "@/lib/rate-limit";
 import { boothName, isBoothId } from "@/lib/booths";
 import {
   isReservableDate,
@@ -35,13 +42,23 @@ import { meetsMinDuration } from "@/lib/reservation-rules";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Members reserve a booth slot. Identity comes from the session, not the body. */
+/** Anyone can reserve a booth slot: no account, so the body carries the identity. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
 
-  const session = requireSession(req);
-  if (session instanceof NextResponse) return session;
+  // Public endpoint, so throttle per IP before doing any work.
+  const ip = clientKey(req.headers);
+  const gate = checkBookingBlocked(ip);
+  if (gate.blocked) {
+    return NextResponse.json(
+      { ok: false, error: "Too many reservations from here. Try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(gate.retryAfterSeconds) },
+      },
+    );
+  }
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const boothId = typeof body.boothId === "string" ? body.boothId : "";
@@ -50,6 +67,15 @@ export async function POST(req: NextRequest) {
   const end = typeof body.end === "string" ? body.end : "";
   const note =
     typeof body.note === "string" ? body.note.trim() || undefined : undefined;
+
+  // Who's booking. Same validator the form runs, so the messages match exactly.
+  const guest = validateGuest(body);
+  if (!guest.ok) {
+    return NextResponse.json(
+      { ok: false, error: guest.error, field: guest.field },
+      { status: 400 },
+    );
+  }
 
   if (!isBoothId(boothId)) {
     return NextResponse.json(
@@ -129,6 +155,22 @@ export async function POST(req: NextRequest) {
   // Reservations over the limit need admin approval; shorter ones confirm instantly.
   const status = needsApproval(startsAt, endsAt) ? "pending" : "confirmed";
 
+  // Last gate before anything is written: prove a browser sent this. Checked
+  // after the cheap validation so a malformed request never costs a round-trip
+  // to Cloudflare, and so a rejected form doesn't spend its single-use token.
+  if (!(await verifyTurnstile(body.turnstileToken, ip))) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "We couldn't verify that you're human. Please reload and retry.",
+      },
+      { status: 403 },
+    );
+  }
+
+  // Count it once the request is good, so a typo'd form doesn't burn the quota.
+  registerBooking(ip);
+
   try {
     const reservation = await createReservation(
       {
@@ -136,9 +178,7 @@ export async function POST(req: NextRequest) {
         startsAt,
         endsAt,
         note,
-        fullName: session.name,
-        email: session.email,
-        userId: session.sub,
+        ...guest.guest,
       },
       status,
     );
@@ -179,13 +219,10 @@ export async function POST(req: NextRequest) {
 
 const VALID_FILTERS: readonly string[] = ["all", ...RESERVATION_STATUSES];
 
-/**
- * List reservations. Admin sees everything; a member is scoped to their own
- * reservations (their "my reservations" list).
- */
+/** Admin-only: the dashboard list. Nobody else can read who booked what. */
 export async function GET(req: NextRequest) {
-  const session = requireSession(req);
-  if (session instanceof NextResponse) return session;
+  const admin = requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
 
   const sp = req.nextUrl.searchParams;
   const filterParam = sp.get("status") ?? "all";
@@ -197,7 +234,6 @@ export async function GET(req: NextRequest) {
     search: sp.get("q") ?? "",
     page: Number(sp.get("page")) || 1,
     pageSize: Number(sp.get("pageSize")) || 25,
-    userId: session.role === "admin" ? undefined : session.sub,
   });
 
   return NextResponse.json({ ok: true, ...page });

@@ -30,6 +30,34 @@ describe("datetime string primitives", () => {
   });
 });
 
+describe("minutesToTime", () => {
+  it("is the inverse of minutesOfDay", () => {
+    expect(t.minutesToTime(570)).toBe("09:30");
+    expect(t.minutesToTime(0)).toBe("00:00");
+    expect(t.minutesToTime(t.minutesOfDay("2026-07-16T15:25"))).toBe("15:25");
+  });
+});
+
+describe("epochMsOf", () => {
+  it("reads a wall-clock string in the server's own timezone", () => {
+    expect(t.epochMsOf("2026-07-16T14:30")).toBe(
+      new Date(2026, 6, 16, 14, 30).getTime(),
+    );
+  });
+
+  it("orders as the strings do, so it can drive a token expiry", () => {
+    expect(t.epochMsOf("2026-07-16T15:00")).toBeGreaterThan(
+      t.epochMsOf("2026-07-16T14:00"),
+    );
+  });
+
+  it("is NaN for anything malformed", () => {
+    for (const v of ["", "2026-07-16", "2026-07-16T25:00", "nope"]) {
+      expect(Number.isNaN(t.epochMsOf(v))).toBe(true);
+    }
+  });
+});
+
 describe("clock-based helpers", () => {
   it("ymd formats a Date as YYYY-MM-DD (local, month 1-based)", () => {
     expect(t.ymd(new Date(2026, 6, 14))).toBe("2026-07-14");

@@ -2,14 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   checkAdminCredentials,
   createSessionToken,
-  verifyPassword,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   type Session,
 } from "@/lib/auth";
 import { requireSession } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
-import { findUserByEmail } from "@/lib/db";
 import { requireEnv } from "@/lib/env-app";
 import { MAX_EMAIL, MAX_PASSWORD } from "@/lib/types";
 import {
@@ -51,10 +49,7 @@ function lockedResponse(retryAfterSeconds: number) {
   );
 }
 
-/**
- * Login for both roles. The admin signs in with the env username; members sign
- * in with their email. Both use the same form field ("login").
- */
+/** Admin login (env credentials). Booking needs no account, so this is the only one. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -90,25 +85,12 @@ export async function POST(req: NextRequest) {
   }
 
   let session: Session | null = null;
-
-  // Admin first (env credentials).
   if (checkAdminCredentials(login, password)) {
     session = {
       role: "admin",
       sub: "admin",
       name: requireEnv("DASHBOARD_USERNAME"),
     };
-  } else {
-    // Otherwise a member, keyed by email.
-    const user = await findUserByEmail(login);
-    if (user && verifyPassword(password, user.passwordHash)) {
-      session = {
-        role: "user",
-        sub: user.id,
-        name: user.name,
-        email: user.email,
-      };
-    }
   }
 
   if (!session) {

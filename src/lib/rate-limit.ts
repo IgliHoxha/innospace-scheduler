@@ -1,6 +1,7 @@
-// In-memory login brute-force guard (module-level Map on one long-lived Fly
-// machine). Two buckets so one attacker can't lock everyone out: per-account
-// (escalating, never banned) and per-IP (lenient, shared office IP).
+// In-memory brute-force / abuse guard (module-level Map on one long-lived Fly
+// machine). Separate buckets so one attacker can't lock everyone out: per-account
+// (escalating, never banned), per-IP (lenient, shared office IP), and per-IP for
+// the public booking form.
 
 import { requireIntEnv } from "./env-app";
 
@@ -30,7 +31,7 @@ function posIntEnv(name: string): number {
   return n;
 }
 
-/** Per-account: strict, but never a permanent ban (avoids member lockout DoS). */
+/** Per-account: strict, but never a permanent ban (never lock the admin out for good). */
 function accountPolicy(): Policy {
   return {
     maxAttempts: posIntEnv("LOGIN_MAX_ATTEMPTS"),
@@ -49,11 +50,11 @@ function ipPolicy(): Policy {
 }
 
 /**
- * Per-IP throttle for password-reset requests, so the endpoint can't be used to
- * spam a member's inbox. Reuses the per-IP login thresholds but never bans (it
- * would be a self-inflicted DoS on the shared office IP for a public form).
+ * Per-IP throttle for the public booking form, so nobody can flood the calendar
+ * or the mailer. Reuses the per-IP login thresholds but never bans (it would be
+ * a self-inflicted DoS on the shared office IP everyone books from).
  */
-function resetPolicy(): Policy {
+function bookingPolicy(): Policy {
   return {
     maxAttempts: posIntEnv("LOGIN_IP_MAX_ATTEMPTS"),
     blockBaseSeconds: posIntEnv("LOGIN_IP_BLOCK_SECONDS"),
@@ -157,9 +158,9 @@ function acctKey(loginId: string): string {
 function ipKey(ip: string): string {
   return `ip:${ip}`;
 }
-// Own namespace so reset throttling can never lock a member's real login bucket.
-function resetKey(ip: string): string {
-  return `reset:${ip}`;
+// Own namespace so booking throttling can never lock the admin's login bucket.
+function bookingKey(ip: string): string {
+  return `booking:${ip}`;
 }
 
 /** Is this client currently blocked by either bucket? Read-only. */
@@ -181,14 +182,14 @@ export function registerLoginSuccess(ip: string, loginId: string): void {
   buckets.delete(acctKey(loginId));
 }
 
-/** Is this IP currently throttled for password-reset requests? Read-only. */
-export function checkResetBlocked(ip: string): RateStatus {
-  return peek(resetKey(ip));
+/** Is this IP currently throttled from booking? Read-only. */
+export function checkBookingBlocked(ip: string): RateStatus {
+  return peek(bookingKey(ip));
 }
 
-/** Record a password-reset request against the per-IP reset throttle. */
-export function registerResetRequest(ip: string): RateStatus {
-  return hit(resetKey(ip), resetPolicy());
+/** Record a booking attempt against the per-IP booking throttle. */
+export function registerBooking(ip: string): RateStatus {
+  return hit(bookingKey(ip), bookingPolicy());
 }
 
 /**

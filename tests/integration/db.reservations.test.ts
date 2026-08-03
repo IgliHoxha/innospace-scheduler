@@ -17,7 +17,7 @@ async function reserve(
     boothId: "booth-1",
     startsAt: at(start),
     endsAt: at(end),
-    userId: "u1",
+    email: "ada@example.com",
     fullName: "Ada",
     ...over,
   });
@@ -38,7 +38,6 @@ describe("createReservation + overlap", () => {
     expect(ranges[0]).toMatchObject({
       startsAt: at("10:00"),
       endsAt: at("11:00"),
-      userId: "u1",
       reservedBy: "Ada",
     });
   });
@@ -57,25 +56,38 @@ describe("createReservation + overlap", () => {
     await expect(reserve("11:00", "12:00")).resolves.toBeTruthy();
   });
 
-  it("does not clash across different booths (different members)", async () => {
+  it("does not clash across different booths (different people)", async () => {
     await reserve("10:00", "11:00");
     await expect(
-      reserve("10:00", "11:00", { boothId: "booth-2", userId: "u2" }),
+      reserve("10:00", "11:00", {
+        boothId: "booth-2",
+        email: "bob@example.com",
+      }),
     ).resolves.toBeTruthy();
   });
 
-  it("rejects the same member overlapping in another booth (no being in two at once)", async () => {
-    await reserve("10:00", "11:00"); // u1, booth-1
+  it("rejects the same email overlapping in another booth (no being in two at once)", async () => {
+    await reserve("10:00", "11:00"); // ada, booth-1
     await expect(
-      reserve("10:30", "11:30", { boothId: "booth-2" }), // u1, booth-2, overlaps
+      reserve("10:30", "11:30", { boothId: "booth-2" }), // ada, booth-2, overlaps
     ).rejects.toBeInstanceOf(db.UserBusyError);
-    // adjacent, half-open ranges in another booth are fine for the same member
+    // adjacent, half-open ranges in another booth are fine for the same person
     await expect(
       reserve("11:00", "12:00", { boothId: "booth-2" }),
     ).resolves.toBeTruthy();
   });
 
-  it("a cancelled reservation does not block the member's new booking", async () => {
+  it("matches the email case-insensitively, so casing can't dodge the rule", async () => {
+    await reserve("10:00", "11:00", { email: "Ada@Example.com" });
+    await expect(
+      reserve("10:30", "11:30", {
+        boothId: "booth-2",
+        email: "ada@example.COM",
+      }),
+    ).rejects.toBeInstanceOf(db.UserBusyError);
+  });
+
+  it("a cancelled reservation does not block a new booking", async () => {
     const r = await reserve("10:00", "11:00");
     await db.updateReservationStatus(r.id, "cancelled");
     await expect(
@@ -83,10 +95,10 @@ describe("createReservation + overlap", () => {
     ).resolves.toBeTruthy();
   });
 
-  it("does not apply the self-overlap rule when there is no userId", async () => {
-    await reserve("10:00", "11:00", { userId: undefined });
+  it("does not apply the self-overlap rule when there is no email", async () => {
+    await reserve("10:00", "11:00", { email: undefined });
     await expect(
-      reserve("10:30", "11:30", { boothId: "booth-2", userId: undefined }),
+      reserve("10:30", "11:30", { boothId: "booth-2", email: undefined }),
     ).resolves.toBeTruthy();
   });
 
@@ -97,7 +109,7 @@ describe("createReservation + overlap", () => {
         boothId: "booth-1",
         startsAt: at("15:00"),
         endsAt: at("17:00"),
-        userId: "u1",
+        email: "ada@example.com",
       },
       "pending",
     );
@@ -108,15 +120,18 @@ describe("createReservation + overlap", () => {
 });
 
 describe("queryReservations", () => {
-  it("paginates, counts, filters and scopes by user", async () => {
-    await reserve("09:00", "09:30", { userId: "u1" });
-    await reserve("10:00", "10:30", { userId: "u2", fullName: "Bob" });
+  it("paginates, counts, filters and searches", async () => {
+    await reserve("09:00", "09:30");
+    await reserve("10:00", "10:30", {
+      email: "bob@example.com",
+      fullName: "Bob",
+    });
     await db.createReservation(
       {
         boothId: "booth-2",
         startsAt: at("11:00"),
         endsAt: at("13:30"),
-        userId: "u1",
+        email: "ada@example.com",
       },
       "pending",
     );
@@ -127,11 +142,6 @@ describe("queryReservations", () => {
 
     const pendingOnly = await db.queryReservations({ filter: "pending" });
     expect(pendingOnly.total).toBe(1);
-
-    const mine = await db.queryReservations({ userId: "u1" });
-    expect(mine.total).toBe(2);
-    // Member-scoped list omits the global tallies (no info-disclosure, no scan).
-    expect(mine.counts).toBeUndefined();
 
     const searchBob = await db.queryReservations({ search: "bob" });
     expect(searchBob.total).toBe(1);

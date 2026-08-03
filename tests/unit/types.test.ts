@@ -6,7 +6,6 @@ import {
   MAX_NAME,
   MAX_NOTE,
   MAX_PASSWORD,
-  MIN_PASSWORD,
   RESERVATION_STATUSES,
 } from "@/lib/types";
 
@@ -32,7 +31,6 @@ describe("reservation statuses + caps", () => {
     expect(MAX_NAME).toBe(80);
     expect(MAX_EMAIL).toBe(254);
     expect(MAX_PASSWORD).toBe(200);
-    expect(MIN_PASSWORD).toBe(6);
     expect(MAX_EMAIL_BODY).toBe(5000);
   });
 });

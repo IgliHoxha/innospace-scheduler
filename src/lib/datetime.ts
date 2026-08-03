@@ -11,6 +11,17 @@ export function isDateTime(value: string | undefined): boolean {
   return !!m && Number(m[2]) <= 23 && Number(m[3]) <= 59;
 }
 
+/** Epoch ms for a local "YYYY-MM-DDTHH:MM", read in the server's TZ. NaN if malformed. */
+export function epochMsOf(dt: string): number {
+  // Range-checked, not just shaped: "T25:00" would otherwise roll silently into
+  // the next day instead of being refused.
+  if (!isDateTime(dt)) return NaN;
+  const m = DATETIME_RE.exec(dt);
+  if (!m) return NaN;
+  const [y, mo, d] = m[1].split("-").map(Number);
+  return new Date(y, mo - 1, d, Number(m[2]), Number(m[3])).getTime();
+}
+
 /** "2026-07-16" from "2026-07-16T09:30". */
 export function dateOf(dt: string): string {
   return dt.slice(0, 10);
@@ -34,6 +45,11 @@ export function toDateTime(date: string, time: string): string {
 /** Minutes since midnight for a datetime, e.g. 570 for "…T09:30". */
 export function minutesOfDay(dt: string): number {
   return Number(dt.slice(11, 13)) * 60 + Number(dt.slice(14, 16));
+}
+
+/** The inverse: 570 -> "09:30". */
+export function minutesToTime(minutes: number): string {
+  return `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`;
 }
 
 /** Length of a reservation in minutes. Assumes start/end are the same day. */

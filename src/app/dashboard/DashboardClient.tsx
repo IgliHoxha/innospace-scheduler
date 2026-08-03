@@ -62,14 +62,7 @@ export default function DashboardClient({
   } | null>(null);
 
   const reservations = data.reservations;
-  // Admin responses always carry counts; the fallback only satisfies the optional type.
-  const counts = data.counts ?? {
-    total: 0,
-    pending: 0,
-    confirmed: 0,
-    cancelled: 0,
-    deleted: 0,
-  };
+  const counts = data.counts;
   const total = data.total;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -171,14 +164,7 @@ export default function DashboardClient({
 
   return (
     <>
-      <Topbar
-        username={username}
-        nav={
-          <a className="nav-link" href="/users">
-            Users
-          </a>
-        }
-      />
+      <Topbar username={username} />
 
       <div className="container">
         <div className="page-head">
@@ -186,9 +172,6 @@ export default function DashboardClient({
             <span className="eyebrow">Innospace Tirana</span>
             <h1 className="page-title">Reservations</h1>
           </div>
-          <a className="btn" href="/users">
-            + Add / manage members
-          </a>
         </div>
         <div className="stats">
           <Stat

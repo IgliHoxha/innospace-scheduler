@@ -71,6 +71,9 @@ export default function TimeRangePicker({
         <div className="tp-inputs">
           <TimePickerInput
             picker="hours"
+            id="start-hours"
+            name="start-hours"
+            aria-label="Start hour"
             date={fromDate}
             setDate={setFrom}
             ref={fromH}
@@ -80,6 +83,9 @@ export default function TimeRangePicker({
           <span className="tp-colon">:</span>
           <TimePickerInput
             picker="minutes"
+            id="start-minutes"
+            name="start-minutes"
+            aria-label="Start minute"
             date={fromDate}
             setDate={setFrom}
             ref={fromM}
@@ -97,6 +103,9 @@ export default function TimeRangePicker({
         <div className="tp-inputs">
           <TimePickerInput
             picker="hours"
+            id="end-hours"
+            name="end-hours"
+            aria-label="End hour"
             date={toDate_}
             setDate={setTo}
             ref={toH}
@@ -107,6 +116,9 @@ export default function TimeRangePicker({
           <span className="tp-colon">:</span>
           <TimePickerInput
             picker="minutes"
+            id="end-minutes"
+            name="end-minutes"
+            aria-label="End minute"
             date={toDate_}
             setDate={setTo}
             ref={toM}

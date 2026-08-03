@@ -1,14 +1,14 @@
 import { Resend } from "resend";
 import { COLORS } from "../../tailwind.config";
-import { inviteTtlDays, resetTtlMinutes } from "./auth";
+import { createCancelToken } from "./auth";
 import { boothName } from "./booths";
+import { epochMsOf } from "./datetime";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
 import type { Reservation } from "./types";
 import {
   emailBodyText,
   emailHeading,
   emailSubject,
-  signOff,
   type EmailStatus,
 } from "./templates";
 
@@ -17,7 +17,7 @@ export { getContactFromEnv };
 const BRAND = COLORS.brand;
 const INK = COLORS.emailText;
 
-// Base URL for email links (invite/activation); required, or links break.
+// Base URL for email links (the cancel link); required, or links break.
 function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
@@ -156,9 +156,27 @@ function shell(opts: {
   </div>`;
 }
 
+// Self-service cancel link. Booking needs no account, so this token is the only
+// proof of ownership there is: it names one reservation and expires when that
+// slot ends, since a passed booking can't be cancelled anyway.
+function cancelButton(r: Reservation): string {
+  if (!r.id || !r.endsAt) return "";
+  const expiresAt = epochMsOf(r.endsAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return "";
+
+  const token = createCancelToken(r.id, expiresAt);
+  const link = `${baseUrl().replace(/\/$/, "")}/cancel?token=${encodeURIComponent(token)}`;
+  // Sits below the sign-off, ruled off as utility chrome rather than letter copy.
+  return `
+    <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
+      <a href="${link}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Cancel this reservation</a>
+      <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">Only you have this link, and it stops working once the reservation has passed.</p>
+    </div>`;
+}
+
 /**
  * Send a confirmation (on reservation) or cancellation (from the dashboard) email
- * to the member who reserved. customBody (dashboard edit) overrides the template.
+ * to whoever booked. customBody (dashboard edit) overrides the template.
  */
 export async function sendReservationEmail(
   reservation: Reservation,
@@ -189,96 +207,11 @@ export async function sendReservationEmail(
             ? COLORS.statusPending
             : COLORS.statusCancelled,
       heading: emailHeading(status),
-      bodyHtml: textToHtml(body),
+      // No cancel link on a cancellation: there's nothing left to cancel.
+      bodyHtml:
+        textToHtml(body) +
+        (status === "cancelled" ? "" : cancelButton(reservation)),
       org: contact.org,
-      url: contact.url,
-    }),
-  });
-}
-
-/**
- * Email a new member their invite link. They click it to set their own name +
- * password and activate the account.
- */
-export async function sendInviteEmail(
-  email: string,
-  token: string,
-): Promise<void> {
-  const resend = client();
-  if (!resend) return;
-
-  const contact = getContactFromEnv();
-  const org = contact.org;
-  const link = `${baseUrl()}/activate?token=${encodeURIComponent(token)}`;
-  const intro = textToHtml(
-    [
-      "Hi there,",
-      "",
-      `You've been invited to reserve meeting booths at ${org}. To finish setting up your account, choose your name and a password using the button below.`,
-    ].join("\n"),
-  );
-  const button = `
-    <p style="margin:22px 0">
-      <a href="${link}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Set up my account</a>
-    </p>
-    <p style="margin:0 0 14px;color:${INK};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
-  // Same sign-off as every other email, then the expiry note as fine print.
-  const closing = textToHtml(signOff(contact).join("\n"));
-  const finePrint = `<p style="margin:0;color:${COLORS.emailMuted};font-size:12px">This link expires in ${inviteTtlDays()} days. If you weren't expecting this, you can ignore this email.</p>`;
-
-  await resend.emails.send({
-    from: from(),
-    to: [email],
-    subject: `You're invited to ${org} Scheduler`,
-    html: shell({
-      accent: BRAND,
-      heading: "Set up your account",
-      bodyHtml: intro + button + closing + finePrint,
-      org,
-      url: contact.url,
-    }),
-  });
-}
-
-/**
- * Email a member a password-reset link. Sent only for an existing, activated
- * account; the generic response elsewhere avoids revealing whether one exists.
- */
-export async function sendPasswordResetEmail(
-  email: string,
-  token: string,
-): Promise<void> {
-  const resend = client();
-  if (!resend) return;
-
-  const contact = getContactFromEnv();
-  const org = contact.org;
-  const link = `${baseUrl()}/reset?token=${encodeURIComponent(token)}`;
-  const minutes = resetTtlMinutes();
-  const intro = textToHtml(
-    [
-      "Hi there,",
-      "",
-      `We received a request to reset the password for your ${org} Scheduler account. Choose a new password using the button below.`,
-    ].join("\n"),
-  );
-  const button = `
-    <p style="margin:22px 0">
-      <a href="${link}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;font-size:14px">Reset my password</a>
-    </p>
-    <p style="margin:0 0 14px;color:${INK};font-size:13px;line-height:1.6">Or paste this link into your browser:<br/><a href="${link}" style="color:${BRAND}">${link}</a></p>`;
-  const closing = textToHtml(signOff(contact).join("\n"));
-  const finePrint = `<p style="margin:0;color:${COLORS.emailMuted};font-size:12px">This link expires in ${minutes} minutes and can be used once. If you didn't request a reset, you can safely ignore this email: your password stays unchanged.</p>`;
-
-  await resend.emails.send({
-    from: from(),
-    to: [email],
-    subject: `Reset your ${org} Scheduler password`,
-    html: shell({
-      accent: BRAND,
-      heading: "Reset your password",
-      bodyHtml: intro + button + closing + finePrint,
-      org,
       url: contact.url,
     }),
   });

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Script from "next/script";
 import TimeRangePicker from "./TimeRangePicker";
 import DayTimeline from "./DayTimeline";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { boothNameIn, type Booth } from "@/lib/booths";
-import { MAX_NOTE, type Reservation } from "@/lib/types";
+import { type Booth } from "@/lib/booths";
+import { MAX_EMAIL, MAX_NAME, MAX_NOTE, type Reservation } from "@/lib/types";
+import { validateGuest, type GuestField } from "@/lib/guest";
 import {
   approvalRequiredFor,
   findOverlap,
@@ -15,8 +16,7 @@ import {
   noteRequiredFor,
 } from "@/lib/reservation-rules";
 import { suggestedEndMin } from "@/lib/timeline";
-import { boothLabel, timeText, dateOfReservation } from "@/lib/templates";
-import { formatDateLong, formatDateMedium } from "@/lib/datetime";
+import { formatDateLong } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
 import { pad2 } from "@/lib/utils";
 
@@ -27,7 +27,6 @@ interface Reserved {
   label: string;
   /** Who holds it. Null only if the reservation never carried a name. */
   by: string | null;
-  mine: boolean;
 }
 
 interface Availability {
@@ -47,27 +46,29 @@ const toMinutes = (t: string) =>
 
 const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 
+/** Turnstile manages its own widget; we only ever ask it for a fresh token. */
+declare global {
+  interface Window {
+    turnstile?: { reset: (widget?: string) => void };
+  }
+}
+
 export default function ReservationClient({
   booths,
   dates,
-  userName,
-  initialMine,
   autoApproveMaxHours,
   minReservationMinutes,
+  turnstileSiteKey,
 }: {
   booths: Booth[];
   dates: DateOption[];
-  userName: string;
-  initialMine: Reservation[];
   /** Reservations longer than this need approval; at this length or longer they need a note. */
   autoApproveMaxHours: number;
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
+  /** Cloudflare widget key. Undefined when Turnstile is switched off. */
+  turnstileSiteKey?: string;
 }) {
-  // Resolve booth names from the props we already hold, never from env (this is a
-  // client bundle, where the env-backed lookup would throw).
-  const boothName = (id: string | undefined) => boothNameIn(booths, id);
-
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [avail, setAvail] = useState<Availability | null>(null);
@@ -79,8 +80,13 @@ export default function ReservationClient({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [mine, setMine] = useState<Reservation[]>(initialMine);
-  const [cancelTarget, setCancelTarget] = useState<Reservation | null>(null);
+  // Who's booking. No account, so these come with every reservation.
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [guestError, setGuestError] = useState<{
+    field: GuestField;
+    error: string;
+  } | null>(null);
 
   // Reload what's taken whenever booth or date changes. A request id guards
   // against a slow response overwriting a newer selection.
@@ -106,15 +112,6 @@ export default function ReservationClient({
   useEffect(() => {
     loadAvailability();
   }, [loadAvailability]);
-
-  async function refreshMine() {
-    const res = await fetch("/api/reservations?pageSize=100");
-    const json = (await res.json()) as {
-      ok: boolean;
-      reservations?: Reservation[];
-    };
-    if (json.ok && json.reservations) setMine(json.reservations);
-  }
 
   const startMin = start ? toMinutes(start) : null;
   const endMin = end ? toMinutes(end) : null;
@@ -161,26 +158,6 @@ export default function ReservationClient({
       })),
     );
     if (clash) return `That overlaps an existing reservation (${clash.label}).`;
-    // Self-overlap: you can't hold two booths at once. Check your own active
-    // reservations on this day, across every booth (the booth clash above only
-    // covers the selected booth).
-    const selfClash = findOverlap(
-      startMin,
-      endMin,
-      mine
-        .filter(
-          (r) =>
-            (r.status === "confirmed" || r.status === "pending") &&
-            r.startsAt?.slice(0, 10) === date,
-        )
-        .map((r) => ({
-          start: toMinutes(r.startsAt!.slice(11)),
-          end: toMinutes(r.endsAt!.slice(11)),
-          boothId: r.boothId,
-        })),
-    );
-    if (selfClash)
-      return `You already have a reservation in ${boothName(selfClash.boothId)} at that time.`;
     if (mustNote && !note.trim())
       return `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
     return "";
@@ -189,20 +166,57 @@ export default function ReservationClient({
   const problem = validate();
   const canReserve = !!start && !!end && !problem && !reservation;
 
+  /** Clear a field's error as soon as it's edited, so it can't linger. */
+  const onGuestEdit = (field: GuestField, set: (v: string) => void) => {
+    return (value: string) => {
+      set(value);
+      setError("");
+      if (guestError?.field === field) setGuestError(null);
+    };
+  };
+
   async function reserve() {
     if (!canReserve) return;
+
+    // Same validator the route handler runs, so the client can't submit
+    // something the server would only reject afterwards.
+    const guest = validateGuest({ fullName, email });
+    if (!guest.ok) {
+      setGuestError({ field: guest.field, error: guest.error });
+      document.getElementById(guest.field)?.focus();
+      return;
+    }
+    setGuestError(null);
+
     setReservation(true);
     setError("");
     setSuccess(null);
     try {
+      // Turnstile injects its own hidden input and owns the token's lifecycle,
+      // so read it at submit time rather than mirroring it into React state.
+      const turnstileToken = (
+        document.querySelector(
+          'input[name="cf-turnstile-response"]',
+        ) as HTMLInputElement | null
+      )?.value;
+
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ boothId, date, start, end, note }),
+        body: JSON.stringify({
+          boothId,
+          date,
+          start,
+          end,
+          note,
+          turnstileToken,
+          ...guest.guest,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok: boolean;
         error?: string;
+        field?: GuestField;
         reservation?: Reservation;
       };
       if (res.ok && json.ok) {
@@ -211,42 +225,38 @@ export default function ReservationClient({
         setSuccess(
           json.reservation?.status === "pending"
             ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. The slot is held for you meanwhile.`
-            : `Reserved ${when}.`,
+            : `Reserved ${when}. We've emailed ${guest.guest.email} a confirmation, with a link to cancel if your plans change.`,
         );
         setNote("");
-        await Promise.all([loadAvailability(), refreshMine()]);
+        await loadAvailability();
       } else {
+        if (json.field)
+          setGuestError({ field: json.field, error: json.error! });
         setError(json.error || "Could not reserve that time.");
         loadAvailability(); // someone may have just taken it
       }
     } finally {
       setReservation(false);
+      // A token is single-use, so the widget needs a fresh one either way:
+      // without this a second booking (or a retry after an error) is refused.
+      window.turnstile?.reset();
     }
   }
 
-  async function cancel(r: Reservation) {
-    setCancelTarget(null);
-    await fetch(`/api/reservations/${r.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "cancelled" }),
-    });
-    await Promise.all([refreshMine(), loadAvailability()]);
-  }
-
-  const upcoming = mine.filter((r) => r.status !== "deleted");
   const selectedBooth = booths.find((b) => b.id === boothId);
+  const fieldError = (field: GuestField) =>
+    guestError?.field === field ? guestError.error : "";
 
   return (
     <>
-      <Topbar
-        username={userName}
-        brandHref="/"
-        brandLabel="Innospace Scheduler"
-      />
+      <Topbar brandHref="/" brandLabel="Innospace Scheduler" />
 
       <div className="container">
         <h1 className="page-title">Reserve a meeting booth</h1>
+        <p className="page-subtitle">
+          No account needed. Pick a booth and a time, tell us who you are, and
+          we&apos;ll email you the confirmation.
+        </p>
 
         {/* Step 1: booth */}
         <div className="field-label">Booth</div>
@@ -341,8 +351,52 @@ export default function ReservationClient({
           )}
         </div>
 
+        {/* Step 4: who's booking */}
+        <div className="field-label">Your details</div>
+        <div className="card guest-card">
+          <div className="guest-row">
+            <label className="guest-field">
+              <span>Full name</span>
+              <input
+                id="fullName"
+                name="fullName"
+                type="text"
+                autoComplete="name"
+                placeholder="First and last name"
+                maxLength={MAX_NAME}
+                required
+                aria-invalid={!!fieldError("fullName")}
+                className={fieldError("fullName") ? "invalid" : ""}
+                value={fullName}
+                onChange={(e) =>
+                  onGuestEdit("fullName", setFullName)(e.target.value)
+                }
+              />
+            </label>
+            <label className="guest-field">
+              <span>Email</span>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                maxLength={MAX_EMAIL}
+                required
+                aria-invalid={!!fieldError("email")}
+                className={fieldError("email") ? "invalid" : ""}
+                value={email}
+                onChange={(e) => onGuestEdit("email", setEmail)(e.target.value)}
+              />
+            </label>
+          </div>
+          {guestError && <p className="error">{guestError.error}</p>}
+        </div>
+
         {/* Note + submit */}
         <textarea
+          id="note"
+          name="note"
+          aria-label="Note"
           className={`note-box ${mustNote && !note.trim() ? "required" : ""}`}
           placeholder={
             mustNote
@@ -358,6 +412,23 @@ export default function ReservationClient({
           }}
           aria-required={mustNote}
         />
+
+        {/* Cloudflare renders itself in here and drops a hidden token input
+            alongside. interaction-only keeps it invisible unless it wants a
+            challenge, so an ordinary booking sees nothing. */}
+        {turnstileSiteKey && (
+          <>
+            <Script
+              src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+              strategy="afterInteractive"
+            />
+            <div
+              className="cf-turnstile"
+              data-sitekey={turnstileSiteKey}
+              data-appearance="interaction-only"
+            />
+          </>
+        )}
 
         {problem && <p className="error">{problem}</p>}
         {error && <p className="error">{error}</p>}
@@ -383,67 +454,8 @@ export default function ReservationClient({
             {reservation ? "Reservation…" : "Reserve"}
           </button>
         </div>
-
-        {/* My reservations */}
-        <h2 className="section-title">My reservations</h2>
-        <div className="card">
-          {upcoming.length === 0 ? (
-            <div className="empty">You have no reservations yet.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Booth</th>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {upcoming.map((r) => (
-                  <tr key={r.id}>
-                    <td>{boothLabel(r, boothName)}</td>
-                    <td className="dates">
-                      {formatDateMedium(dateOfReservation(r))}
-                    </td>
-                    <td className="dates">{timeText(r)}</td>
-                    <td>
-                      <span className={`badge ${r.status}`}>{r.status}</span>
-                    </td>
-                    <td>
-                      {(r.status === "confirmed" || r.status === "pending") && (
-                        <button
-                          className="btn ghost sm"
-                          onClick={() => setCancelTarget(r)}
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
       </div>
 
-      {cancelTarget && (
-        <ConfirmDialog
-          title="Cancel reservation?"
-          onClose={() => setCancelTarget(null)}
-          onConfirm={() => cancel(cancelTarget)}
-          confirmLabel="Yes, cancel"
-          cancelLabel="Keep it"
-        >
-          <p>
-            Cancel <strong>{boothLabel(cancelTarget, boothName)}</strong> on{" "}
-            {formatDateLong(dateOfReservation(cancelTarget))} (
-            {timeText(cancelTarget)})? The slot will be freed for others.
-          </p>
-        </ConfirmDialog>
-      )}
       <SiteFooter />
     </>
   );

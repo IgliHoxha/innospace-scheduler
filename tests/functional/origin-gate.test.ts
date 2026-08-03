@@ -2,13 +2,7 @@
 // refused 403 before any work. The valid token on authenticated routes proves
 // the 403 comes from the origin gate running first, not from the auth guard.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  adminToken,
-  makeRequest,
-  params,
-  resetApp,
-  userToken,
-} from "../helpers/app";
+import { adminToken, makeRequest, params, resetApp } from "../helpers/app";
 
 const BAD_ORIGIN = { origin: "https://evil.test" };
 
@@ -43,14 +37,14 @@ describe("origin gate on mutating handlers", () => {
     await expectForbidden(await route.DELETE(req("DELETE", adminToken())));
   });
 
-  it("activate POST is refused from a disallowed origin", async () => {
-    const route = await import("@/app/api/activate/route");
+  it("cancel POST is refused from a disallowed origin", async () => {
+    const route = await import("@/app/api/cancel/route");
     await expectForbidden(await route.POST(req("POST")));
   });
 
   it("reservations POST is refused from a disallowed origin", async () => {
     const route = await import("@/app/api/reservations/route");
-    await expectForbidden(await route.POST(req("POST", userToken("u1"))));
+    await expectForbidden(await route.POST(req("POST")));
   });
 
   it("reservations DELETE is refused from a disallowed origin", async () => {
@@ -61,22 +55,8 @@ describe("origin gate on mutating handlers", () => {
   it("reservation PATCH is refused from a disallowed origin", async () => {
     const route = await import("@/app/api/reservations/[id]/route");
     const res = await route.PATCH(
-      req("PATCH", userToken("u1")),
+      req("PATCH", adminToken()),
       params({ id: "res-1" }),
-    );
-    await expectForbidden(res);
-  });
-
-  it("users POST (invite) is refused from a disallowed origin", async () => {
-    const route = await import("@/app/api/users/route");
-    await expectForbidden(await route.POST(req("POST", adminToken())));
-  });
-
-  it("user DELETE is refused from a disallowed origin", async () => {
-    const route = await import("@/app/api/users/[id]/route");
-    const res = await route.DELETE(
-      req("DELETE", adminToken()),
-      params({ id: "user-1" }),
     );
     await expectForbidden(res);
   });

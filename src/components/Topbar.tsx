@@ -1,14 +1,15 @@
 import type { ReactNode } from "react";
 import { UserMenu } from "@/components/UserMenu";
 
-/** Signed-in app header: brand, optional right-side nav links, and the user menu. */
+/** App header: brand, optional right-side nav links, and the admin's user menu. */
 export function Topbar({
   username,
   brandHref = "/dashboard",
   brandLabel = "Scheduler dashboard",
   nav,
 }: {
-  username: string;
+  /** Omitted on the public booking screen, which has nobody signed in. */
+  username?: string;
   brandHref?: string;
   brandLabel?: string;
   /** Right-side nav links rendered before the user menu; omitted on the member screen. */
@@ -22,14 +23,12 @@ export function Topbar({
           <img className="topbar-logo" src="/logo.svg" alt="Innospace Tirana" />
           <span className="brand-sub">Scheduler</span>
         </a>
-        {nav ? (
+        {nav || username ? (
           <div className="topbar-right">
             {nav}
-            <UserMenu username={username} />
+            {username ? <UserMenu username={username} /> : null}
           </div>
-        ) : (
-          <UserMenu username={username} />
-        )}
+        ) : null}
       </div>
     </div>
   );

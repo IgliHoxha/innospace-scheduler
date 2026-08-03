@@ -9,10 +9,7 @@ import {
   type Reservation,
   type ReservationInput,
   type ReservationStatus,
-  type User,
-  type UserRecord,
 } from "./types";
-import { hashPassword } from "./auth";
 import { requireEnv } from "./env-app";
 
 const COLS =
@@ -32,8 +29,8 @@ const TABLE_BODY = `(
   userId TEXT
 )`;
 
-// name and passwordHash are null for an invited-but-not-yet-activated member;
-// they're filled in when the member completes the invite link.
+// From the account era, before booking went login-less. Nothing reads or writes
+// it now, but migration 1 has shipped, so the table stays exactly as it was.
 const USERS_TABLE_BODY = `(
   id TEXT PRIMARY KEY,
   createdAt TEXT NOT NULL,
@@ -55,7 +52,7 @@ export class SlotUnavailableError extends Error {
   }
 }
 
-/** The member already holds an active reservation overlapping this time (any booth). */
+/** This email already holds an active reservation overlapping this time (any booth). */
 export class UserBusyError extends Error {
   constructor(message = "You already have a reservation during that time.") {
     super(message);
@@ -194,7 +191,7 @@ export interface ReservationPage {
   total: number; // rows matching the current filter + search
   page: number; // 1-based
   pageSize: number;
-  counts?: ReservationCounts; // admin stat boxes only; omitted on the member-scoped list
+  counts: ReservationCounts; // global tallies for the admin stat boxes
 }
 
 export interface ReservationQuery {
@@ -202,8 +199,6 @@ export interface ReservationQuery {
   search?: string;
   page?: number;
   pageSize?: number;
-  /** Restrict to a single member's own reservations (the "my reservations" view). */
-  userId?: string;
 }
 
 const SEARCH_COLS = ["fullName", "email", "phoneNumber", "boothId", "note"];
@@ -246,11 +241,6 @@ export async function queryReservations(
     params.push(q.filter);
   }
 
-  if (q.userId) {
-    where.push("userId = ?");
-    params.push(q.userId);
-  }
-
   const search = (q.search ?? "").trim().toLowerCase();
   if (search) {
     const like = `%${search}%`;
@@ -282,9 +272,7 @@ export async function queryReservations(
     total,
     page,
     pageSize,
-    // Global tallies feed the admin stat boxes only; skip the full-table scan and
-    // the info-disclosure on the member-scoped ("my reservations") list.
-    ...(q.userId ? {} : { counts: reservationCounts() }),
+    counts: reservationCounts(),
   };
 }
 
@@ -300,23 +288,18 @@ export async function reservedRanges(
     startsAt: string;
     endsAt: string;
     reservedBy: string | null;
-    userId: string | null;
   }[]
 > {
   const rows = prep(
-    // The member's own name first: a reservation keeps the name it was made
-    // under, so a rename would leave the old one on the board.
-    `SELECT r.startsAt, r.endsAt, r.userId, COALESCE(u.name, r.fullName) AS reservedBy
-       FROM reservations r
-       LEFT JOIN users u ON u.id = r.userId
-       WHERE r.boothId = ? AND r.startsAt BETWEEN ? AND ? AND r.status IN (${ACTIVE_LIST})
-       ORDER BY r.startsAt`,
+    `SELECT startsAt, endsAt, fullName AS reservedBy
+       FROM reservations
+       WHERE boothId = ? AND startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
+       ORDER BY startsAt`,
   ).all(boothId, `${date}T00:00`, `${date}T23:59`) as Row[];
   return rows.map((r) => ({
     startsAt: String(r.startsAt),
     endsAt: String(r.endsAt),
     reservedBy: r.reservedBy == null ? null : String(r.reservedBy),
-    userId: r.userId == null ? null : String(r.userId),
   }));
 }
 
@@ -350,15 +333,15 @@ export async function createReservation(
          LIMIT 1`,
     ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
-    // Self-overlap: a member can't hold two booths at once. Reject an active
-    // reservation of theirs that overlaps this time, in any booth.
-    if (r.userId) {
+    // Self-overlap: one person can't hold two booths at once. Keyed on the email
+    // they booked with, which is all the identity a login-less booking has.
+    if (r.email) {
       const selfClash = prep(
         `SELECT 1 FROM reservations
-           WHERE userId = ? AND status IN (${ACTIVE_LIST})
+           WHERE LOWER(email) = ? AND status IN (${ACTIVE_LIST})
              AND startsAt >= ? AND startsAt < ? AND endsAt > ?
            LIMIT 1`,
-      ).get(r.userId, dayStart, r.endsAt, r.startsAt);
+      ).get(r.email.toLowerCase(), dayStart, r.endsAt, r.startsAt);
       if (selfClash) throw new UserBusyError();
     }
     insert(r);
@@ -396,156 +379,4 @@ export async function updateReservationStatus(
     "UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ? RETURNING *",
   ).get(status, new Date().toISOString(), id) as Row | undefined;
   return row ? fromRow(row) : null;
-}
-
-// ---- Users (members) ------------------------------------------------------
-
-function userFromRow(r: Row): User {
-  return {
-    id: String(r.id),
-    createdAt: String(r.createdAt),
-    updatedAt: String(r.updatedAt ?? r.createdAt),
-    name: r.name == null ? "" : String(r.name),
-    email: String(r.email),
-    activated: r.passwordHash != null,
-  };
-}
-
-/** Thrown when the email is already taken by an active member. */
-export class DuplicateEmailError extends Error {
-  constructor(message = "That email is already a member.") {
-    super(message);
-    this.name = "DuplicateEmailError";
-  }
-}
-
-/** Thrown when trying to activate an invite that's already been completed. */
-export class AlreadyActivatedError extends Error {
-  constructor(message = "This account is already set up. Please sign in.") {
-    super(message);
-    this.name = "AlreadyActivatedError";
-  }
-}
-
-export async function listUsers(): Promise<User[]> {
-  // Invited (not yet named) members sort last but stay visible.
-  const rows = prep(
-    "SELECT * FROM users ORDER BY (name IS NULL), name COLLATE NOCASE, email COLLATE NOCASE",
-  ).all() as Row[];
-  return rows.map(userFromRow);
-}
-
-/**
- * Invite a member by email. An un-activated duplicate is reused (re-invite); an
- * already-active email throws.
- */
-export async function inviteUser(emailRaw: string): Promise<User> {
-  const email = emailRaw.trim().toLowerCase();
-  const existing = prep("SELECT * FROM users WHERE email = ?").get(email) as
-    Row | undefined;
-
-  if (existing) {
-    if (existing.passwordHash != null) throw new DuplicateEmailError();
-    return userFromRow(existing); // re-invite the pending record
-  }
-
-  const now = new Date().toISOString();
-  const user: User = {
-    id: randomUUID(),
-    createdAt: now,
-    updatedAt: now,
-    name: "",
-    email,
-    activated: false,
-  };
-  prep(
-    "INSERT INTO users (id,createdAt,updatedAt,name,email,passwordHash) VALUES (@id,@createdAt,@updatedAt,NULL,@email,NULL)",
-  ).run({
-    id: user.id,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-    email,
-  });
-  return user;
-}
-
-/**
- * Complete an invite: set the member's name + password. Fails if the user is
- * gone (deleted) or already activated, so a link can't be used twice.
- */
-export async function activateUser(
-  userId: string,
-  name: string,
-  password: string,
-): Promise<User> {
-  const row = prep("SELECT * FROM users WHERE id = ?").get(userId) as
-    Row | undefined;
-  if (!row) throw new Error("This invite is no longer valid.");
-  if (row.passwordHash != null) throw new AlreadyActivatedError();
-
-  const updated = prep(
-    "UPDATE users SET name = ?, passwordHash = ?, updatedAt = ? WHERE id = ? RETURNING *",
-  ).get(name.trim(), hashPassword(password), new Date().toISOString(), userId);
-  return userFromRow(updated as Row);
-}
-
-export async function deleteUser(id: string): Promise<boolean> {
-  const res = prep("DELETE FROM users WHERE id = ?").run(id);
-  return res.changes > 0;
-}
-
-export async function getUserById(id: string): Promise<User | null> {
-  const row = prep("SELECT * FROM users WHERE id = ?").get(id) as
-    Row | undefined;
-  return row ? userFromRow(row) : null;
-}
-
-/** For login: returns the full record (incl. hash) matching an email. */
-export async function findUserByEmail(
-  email: string,
-): Promise<UserRecord | null> {
-  const row = prep("SELECT * FROM users WHERE email = ?").get(
-    email.trim().toLowerCase(),
-  ) as Row | undefined;
-  if (!row) return null;
-  // Empty hash for a not-yet-activated invite: verifyPassword will reject it.
-  return {
-    ...userFromRow(row),
-    passwordHash: row.passwordHash == null ? "" : String(row.passwordHash),
-  };
-}
-
-/** Full record (incl. hash) by id, for the password-reset fingerprint check. */
-export async function findUserRecordById(
-  id: string,
-): Promise<UserRecord | null> {
-  const row = prep("SELECT * FROM users WHERE id = ?").get(id) as
-    Row | undefined;
-  if (!row) return null;
-  return {
-    ...userFromRow(row),
-    passwordHash: row.passwordHash == null ? "" : String(row.passwordHash),
-  };
-}
-
-/**
- * Set a new password for an already-activated member (forgot-password flow).
- * Fails if the user is gone or was never activated: a not-yet-activated member
- * has no password to reset and should use their invite link instead.
- */
-export async function resetPassword(
-  userId: string,
-  password: string,
-): Promise<User> {
-  const row = prep("SELECT * FROM users WHERE id = ?").get(userId) as
-    Row | undefined;
-  // Gone, or never activated (no password to reset): treat both as a dead link.
-  if (!row || row.passwordHash == null) {
-    throw new Error("This reset link is no longer valid.");
-  }
-
-  const updated = prep(
-    "UPDATE users SET passwordHash = ?, updatedAt = ? WHERE id = ? RETURNING *",
-  ).get(hashPassword(password), new Date().toISOString(), userId);
-  return userFromRow(updated as Row);
 }

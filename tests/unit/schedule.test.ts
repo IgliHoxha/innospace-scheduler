@@ -59,6 +59,32 @@ describe("approval + note thresholds", () => {
   });
 });
 
+describe("ceilToStep", () => {
+  it("leaves a time already on the grid alone", () => {
+    expect(schedule.ceilToStep(9 * 60)).toBe(9 * 60);
+    expect(schedule.ceilToStep(9 * 60 + 5)).toBe(9 * 60 + 5);
+  });
+
+  it("rounds an arbitrary minute up to the next boundary", () => {
+    // The real case: "now" is 15:22, which nothing can reserve.
+    expect(schedule.ceilToStep(15 * 60 + 22)).toBe(15 * 60 + 25);
+    expect(schedule.ceilToStep(15 * 60 + 1)).toBe(15 * 60 + 5);
+    expect(schedule.ceilToStep(15 * 60 + 59)).toBe(16 * 60);
+  });
+
+  it("always lands on a time isValidTimeOfDay accepts", () => {
+    for (let m = 9 * 60; m < 18 * 60; m++) {
+      expect(schedule.isValidTimeOfDay(schedule.ceilToStep(m))).toBe(true);
+    }
+  });
+
+  it("follows TIME_STEP_MINUTES", () => {
+    vi.stubEnv("TIME_STEP_MINUTES", "15");
+    expect(schedule.ceilToStep(9 * 60 + 1)).toBe(9 * 60 + 15);
+    expect(schedule.ceilToStep(9 * 60 + 16)).toBe(9 * 60 + 30);
+  });
+});
+
 describe("isValidTimeOfDay", () => {
   it("enforces the step grid and opening window (defaults 09-18, step 5)", () => {
     expect(schedule.isValidTimeOfDay(9 * 60)).toBe(true); // 09:00 opening

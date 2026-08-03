@@ -20,17 +20,36 @@ function tableNames(file: string): string[] {
   return rows.map((r) => r.name);
 }
 
+function emailsInUsers(file: string): string[] {
+  const d = new Database(file);
+  const rows = d.prepare("SELECT email FROM users").all() as {
+    email: string;
+  }[];
+  d.close();
+  return rows.map((r) => r.email);
+}
+
 const now = () => new Date().toISOString();
+
+const seed = {
+  boothId: "booth-1",
+  startsAt: "2026-07-16T14:00",
+  endsAt: "2026-07-16T15:00",
+  fullName: "Ada Lovelace",
+  email: "ada@example.com",
+};
 
 describe("schema migrations", () => {
   it("brings a fresh DB up to SCHEMA_VERSION with the expected tables", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
 
-    await db.listUsers(); // first query opens the DB and runs migrate()
+    await db.queryReservations({}); // first query opens the DB and runs migrate()
 
     expect(db.SCHEMA_VERSION).toBeGreaterThanOrEqual(1);
     expect(userVersion(file)).toBe(db.SCHEMA_VERSION);
+    // `users` is dead weight from the account era, but migration 1 has shipped,
+    // so it must still be created exactly as before.
     expect(tableNames(file)).toEqual(
       expect.arrayContaining(["reservations", "users"]),
     );
@@ -39,21 +58,15 @@ describe("schema migrations", () => {
   it("re-running migrations is a no-op and preserves existing rows", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
-    await db.listUsers(); // migrate once
+    await db.createReservation(seed);
 
-    // Write a row, then rebind the module to the SAME file (a fresh "boot").
-    const d = new Database(file);
-    d.prepare(
-      "INSERT INTO users (id, createdAt, updatedAt, name, email, passwordHash) VALUES (?,?,?,?,?,?)",
-    ).run("u1", now(), now(), "Ada", "ada@example.com", "scrypt$aa$bb");
-    d.close();
-
+    // Rebind the module to the SAME file (a fresh "boot").
     vi.resetModules();
-    process.env.DATA_FILE = file; // same file, new module instance
+    process.env.DATA_FILE = file;
     const db2 = await import("@/lib/db");
 
-    const users = await db2.listUsers();
-    expect(users.map((u) => u.email)).toContain("ada@example.com");
+    const page = await db2.queryReservations({});
+    expect(page.reservations.map((r) => r.email)).toContain("ada@example.com");
     expect(userVersion(file)).toBe(db2.SCHEMA_VERSION); // not re-bumped/reset
   });
 
@@ -76,12 +89,12 @@ describe("schema migrations", () => {
     expect(userVersion(file)).toBe(0);
 
     const db = await import("@/lib/db");
-    const users = await db.listUsers(); // migrate() runs on first access
+    await db.queryReservations({}); // migrate() runs on first access
 
     expect(userVersion(file)).toBe(db.SCHEMA_VERSION); // bumped
     expect(tableNames(file)).toEqual(
       expect.arrayContaining(["reservations", "users"]),
     ); // reservations created
-    expect(users.map((u) => u.email)).toContain("old@example.com"); // kept
+    expect(emailsInUsers(file)).toContain("old@example.com"); // nothing dropped
   });
 });

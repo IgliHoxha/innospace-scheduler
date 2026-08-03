@@ -1,21 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { adminToken, makeRequest, resetApp } from "../helpers/app";
-import {
-  CORRECT,
-  DEFAULT_ADMIN_PASS,
-  DEFAULT_ADMIN_USER,
-} from "../helpers/fixtures";
+import { DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_USER } from "../helpers/fixtures";
 import { SESSION_COOKIE } from "@/lib/auth";
 
 type LoginRoute = typeof import("@/app/api/login/route");
-type Db = typeof import("@/lib/db");
 
 let route: LoginRoute;
-let db: Db;
 
 beforeEach(async () => {
   resetApp();
-  db = await import("@/lib/db");
   route = await import("@/app/api/login/route");
 });
 
@@ -37,19 +30,6 @@ describe("POST /api/login", () => {
     });
     expect(res.status).toBe(200);
     expect(json).toEqual({ ok: true, role: "admin" });
-    expect(res.cookies.get(SESSION_COOKIE)?.value).toBeTruthy();
-  });
-
-  it("signs in an activated member by email + password", async () => {
-    const u = await db.inviteUser("member@example.com");
-    await db.activateUser(u.id, "Ada Lovelace", CORRECT);
-
-    const { res, json } = await post({
-      login: "member@example.com",
-      password: CORRECT,
-    });
-    expect(res.status).toBe(200);
-    expect(json).toEqual({ ok: true, role: "user" });
     expect(res.cookies.get(SESSION_COOKIE)?.value).toBeTruthy();
   });
 
@@ -77,20 +57,12 @@ describe("POST /api/login", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a member with the right email but wrong password", async () => {
-    const u = await db.inviteUser("member@example.com");
-    await db.activateUser(u.id, "Ada", CORRECT);
+  it("401s any non-admin login: booking needs no account, so none exists", async () => {
     const { res } = await post({
       login: "member@example.com",
-      password: "nope",
+      password: "whatever",
     });
     expect(res.status).toBe(401);
-  });
-
-  it("rejects an invited-but-not-activated member (empty password hash)", async () => {
-    await db.inviteUser("pending@example.com");
-    const { res } = await post({ login: "pending@example.com", password: "" });
-    expect(res.status).toBe(400); // empty password fails the presence check first
   });
 });
 

@@ -426,12 +426,6 @@ a {
   font-weight: 600;
   color: var(--muted);
 }
-.daycal-freepct {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--brand-dark);
-  font-variant-numeric: tabular-nums;
-}
 .daycal-plot {
   /* Anchors the pick tag. */
   position: relative;
@@ -479,15 +473,10 @@ a {
   padding: 0 8px;
   border-radius: 9px;
   overflow: hidden;
-  /* Others' reservations read muted red, yours read teal (.mine). */
+  /* Taken time reads muted red against the free bar. */
   background: #fdeeee;
   border: 1px solid #f3c9c9;
   color: #b02525;
-}
-.daycal-block.mine {
-  background: #e4f6f3;
-  border-color: #a9e6dd;
-  color: #0f5b52;
 }
 .daycal-block-label {
   font-size: 11px;
@@ -570,13 +559,50 @@ a {
   background: #fdeeee;
   border-color: #f3c9c9;
 }
-.daycal-legend .sw.you {
-  background: #e4f6f3;
-  border-color: #a9e6dd;
-}
 .daycal-legend .sw.pick {
   background: rgba(56, 189, 248, 0.18);
   border-color: #38bdf8;
+}
+
+/* Who's booking: name and email side by side, stacking on narrow screens. */
+.guest-card {
+  padding: 16px;
+}
+.guest-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.guest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.guest-field span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.guest-field input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--card);
+}
+.guest-field input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
+}
+.guest-field input.invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+.guest-card .error {
+  margin: 12px 0 0;
 }
 
 .note-box {

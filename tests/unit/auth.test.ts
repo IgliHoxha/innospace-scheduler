@@ -4,21 +4,13 @@ import {
   ADMIN_USER,
   DEFAULT_ADMIN_PASS,
   DEFAULT_ADMIN_USER,
-  PLAINTEXT,
   SIGNING_ALT,
 } from "../helpers/fixtures";
 import {
   checkAdminCredentials,
-  createInviteToken,
-  createResetToken,
+  createCancelToken,
   createSessionToken,
-  hashPassword,
-  inviteTtlDays,
-  passwordFingerprint,
-  resetTtlMinutes,
-  verifyInviteToken,
-  verifyPassword,
-  verifyResetToken,
+  verifyCancelToken,
   verifySessionToken,
   type Session,
 } from "@/lib/auth";
@@ -26,20 +18,22 @@ import {
 afterEach(() => vi.unstubAllEnvs());
 
 const adminSession: Session = { role: "admin", sub: "admin", name: "admin" };
-const userSession: Session = {
-  role: "user",
-  sub: "u1",
+const withEmail: Session = {
+  role: "admin",
+  sub: "admin",
   name: "Ada",
   email: "ada@example.com",
 };
 
+const inAnHour = () => Date.now() + 60 * 60 * 1000;
+
 describe("session tokens", () => {
-  it("round-trips admin and user sessions", () => {
+  it("round-trips an admin session, with and without an email", () => {
     expect(verifySessionToken(createSessionToken(adminSession))).toEqual(
       adminSession,
     );
-    expect(verifySessionToken(createSessionToken(userSession))).toEqual(
-      userSession,
+    expect(verifySessionToken(createSessionToken(withEmail))).toEqual(
+      withEmail,
     );
   });
 
@@ -50,100 +44,64 @@ describe("session tokens", () => {
   });
 
   it("rejects a tampered payload (signature no longer matches)", () => {
-    const tok = createSessionToken(userSession);
+    const tok = createSessionToken(adminSession);
     const [body, sig] = tok.split(".");
     const flipped = (body[0] === "a" ? "b" : "a") + body.slice(1);
     expect(verifySessionToken(`${flipped}.${sig}`)).toBeNull();
   });
 
   it("rejects an expired token", () => {
-    expect(verifySessionToken(createSessionToken(userSession, -10))).toBeNull();
+    expect(
+      verifySessionToken(createSessionToken(adminSession, -10)),
+    ).toBeNull();
+  });
+
+  it("rejects any role but admin, so an old member cookie is dead", () => {
+    // Minted by hand: the current API can't express the retired "user" role.
+    const forged = createSessionToken({
+      ...adminSession,
+      role: "user",
+    } as unknown as Session);
+    expect(verifySessionToken(forged)).toBeNull();
   });
 
   it("is scoped by AUTH_SECRET (a token minted under a different secret fails)", () => {
-    const tok = createSessionToken(userSession);
+    const tok = createSessionToken(adminSession);
     vi.stubEnv("AUTH_SECRET", SIGNING_ALT);
     expect(verifySessionToken(tok)).toBeNull();
   });
 });
 
-describe("invite tokens", () => {
-  it("round-trips the invited user id", () => {
-    expect(verifyInviteToken(createInviteToken("u42"))).toBe("u42");
+describe("cancel tokens", () => {
+  it("round-trips the reservation id", () => {
+    expect(verifyCancelToken(createCancelToken("r42", inAnHour()))).toBe("r42");
   });
 
-  it("cannot be replayed as a session, nor a session as an invite", () => {
-    expect(verifySessionToken(createInviteToken("u42"))).toBeNull();
-    expect(verifyInviteToken(createSessionToken(userSession))).toBeNull();
+  it("cannot be replayed as a session, nor a session as a cancel link", () => {
+    expect(verifySessionToken(createCancelToken("r42", inAnHour()))).toBeNull();
+    expect(verifyCancelToken(createSessionToken(adminSession))).toBeNull();
   });
 
-  it("rejects an expired invite", () => {
-    expect(verifyInviteToken(createInviteToken("u42", -10))).toBeNull();
+  it("expires at the moment it was minted for (the reservation's end)", () => {
+    expect(verifyCancelToken(createCancelToken("r42", Date.now() - 1))).toBe(
+      null,
+    );
+    expect(verifyCancelToken(createCancelToken("r42", inAnHour()))).toBe("r42");
   });
 
-  it("reads INVITE_TTL_DAYS and rejects invalid values", () => {
-    expect(inviteTtlDays()).toBe(2); // baseline
-    vi.stubEnv("INVITE_TTL_DAYS", "5");
-    expect(inviteTtlDays()).toBe(5);
-    vi.stubEnv("INVITE_TTL_DAYS", "0");
-    expect(() => inviteTtlDays()).toThrow();
-    vi.stubEnv("INVITE_TTL_DAYS", "abc");
-    expect(() => inviteTtlDays()).toThrow();
-  });
-});
-
-describe("password-reset tokens", () => {
-  const HASH_A = "scrypt$aaaa$bbbb";
-  const HASH_B = "scrypt$cccc$dddd";
-
-  it("round-trips the user id plus the hash fingerprint", () => {
-    expect(verifyResetToken(createResetToken("u42", HASH_A))).toEqual({
-      userId: "u42",
-      fp: passwordFingerprint(HASH_A),
-    });
-  });
-
-  it("cannot be replayed as a session or invite (and vice versa)", () => {
-    const reset = createResetToken("u42", HASH_A);
-    expect(verifySessionToken(reset)).toBeNull();
-    expect(verifyInviteToken(reset)).toBeNull();
-    expect(verifyResetToken(createSessionToken(userSession))).toBeNull();
-    expect(verifyResetToken(createInviteToken("u42"))).toBeNull();
-  });
-
-  it("rejects a missing, malformed, expired, or tampered token", () => {
-    expect(verifyResetToken(null)).toBeNull();
-    expect(verifyResetToken("no-dot-here")).toBeNull();
-    expect(verifyResetToken(createResetToken("u42", HASH_A, -10))).toBeNull();
-    const tok = createResetToken("u42", HASH_A);
-    const [body, sig] = tok.split(".");
+  it("rejects a missing, malformed or tampered token", () => {
+    expect(verifyCancelToken(null)).toBeNull();
+    expect(verifyCancelToken("")).toBeNull();
+    expect(verifyCancelToken("no-dot-here")).toBeNull();
+    const [body, sig] = createCancelToken("r42", inAnHour()).split(".");
     const flipped = (body[0] === "a" ? "b" : "a") + body.slice(1);
-    expect(verifyResetToken(`${flipped}.${sig}`)).toBeNull();
-  });
-
-  it("binds the fingerprint to the hash, so it changes when the password does", () => {
-    // The caller compares the embedded fp against the *current* hash; once the
-    // password changes the fingerprints diverge and the link is spent.
-    expect(passwordFingerprint(HASH_A)).not.toBe(passwordFingerprint(HASH_B));
-    const { fp } = verifyResetToken(createResetToken("u42", HASH_A))!;
-    expect(fp).toBe(passwordFingerprint(HASH_A));
-    expect(fp).not.toBe(passwordFingerprint(HASH_B));
+    expect(verifyCancelToken(`${flipped}.${sig}`)).toBeNull();
   });
 
   it("is scoped by AUTH_SECRET", () => {
-    const tok = createResetToken("u42", HASH_A);
+    const tok = createCancelToken("r42", inAnHour());
     vi.stubEnv("AUTH_SECRET", SIGNING_ALT);
-    expect(verifyResetToken(tok)).toBeNull();
-  });
-
-  it("reads PASSWORD_RESET_TTL_MINUTES and rejects invalid values", () => {
-    expect(resetTtlMinutes()).toBe(30); // baseline
-    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "45");
-    expect(resetTtlMinutes()).toBe(45);
-    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "0");
-    expect(() => resetTtlMinutes()).toThrow();
-    vi.stubEnv("PASSWORD_RESET_TTL_MINUTES", "abc");
-    expect(() => resetTtlMinutes()).toThrow();
+    expect(verifyCancelToken(tok)).toBeNull();
   });
 });
 
@@ -165,23 +123,5 @@ describe("admin credentials", () => {
     expect(() =>
       checkAdminCredentials(DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS),
     ).toThrow();
-  });
-});
-
-describe("password hashing (scrypt)", () => {
-  it("verifies a correct password and rejects a wrong one", () => {
-    const stored = hashPassword(PLAINTEXT);
-    expect(stored.startsWith("scrypt$")).toBe(true);
-    expect(verifyPassword(PLAINTEXT, stored)).toBe(true);
-    expect(verifyPassword("wrong", stored)).toBe(false);
-  });
-
-  it("salts: the same password hashes differently each time", () => {
-    expect(hashPassword("pw")).not.toBe(hashPassword("pw"));
-  });
-
-  it("rejects a malformed stored value", () => {
-    expect(verifyPassword("pw", "not-a-valid-hash")).toBe(false);
-    expect(verifyPassword("pw", "")).toBe(false);
   });
 });

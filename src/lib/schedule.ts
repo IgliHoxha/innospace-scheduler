@@ -66,6 +66,16 @@ export function noteRequired(startsAt: string, endsAt: string): boolean {
   );
 }
 
+/**
+ * Round a minute-of-day up onto the step grid. "Now" is an arbitrary minute, and
+ * anything off the grid is unreservable, so the next bookable moment is the next
+ * boundary, never the current minute.
+ */
+export function ceilToStep(minutes: number): number {
+  const step = stepMinutes();
+  return Math.ceil(minutes / step) * step;
+}
+
 /** Is this time-of-day on the step grid and inside the opening window? */
 export function isValidTimeOfDay(minutes: number): boolean {
   if (!Number.isInteger(minutes)) return false;
