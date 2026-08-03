@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDaySegments,
+  dragRange,
   endForStart,
   snapToStep,
   suggestedEndMin,
@@ -114,5 +115,77 @@ describe("endForStart", () => {
 
   it("returns null when the remaining stretch is shorter than the minimum", () => {
     expect(endForStart(895, gaps, 15, 60)).toBeNull(); // only 5 min left
+  });
+});
+
+describe("dragRange", () => {
+  // 09:00-17:00 free, the shape a drag is confined to.
+  const stretch = { from: 540, to: 1020 };
+
+  it("snaps both ends to the step, not to the hour", () => {
+    // 14:02 -> 14:00, 15:38 -> 15:40 on a 5 minute grid.
+    expect(dragRange(842, 938, stretch, 5, 15)).toEqual({ from: 840, to: 940 });
+  });
+
+  it("reads the same dragged backwards", () => {
+    expect(dragRange(938, 842, stretch, 5, 15)).toEqual({ from: 840, to: 940 });
+  });
+
+  it("grows forwards to the shortest bookable length", () => {
+    // A 5 minute drag would be refused by the form, so it opens at 15.
+    expect(dragRange(600, 605, stretch, 5, 15)).toEqual({ from: 600, to: 615 });
+  });
+
+  it("grows backwards when the drag went left", () => {
+    expect(dragRange(600, 595, stretch, 5, 15)).toEqual({ from: 585, to: 600 });
+  });
+
+  it("never leaves the free stretch, however far the pointer goes", () => {
+    expect(dragRange(1000, 1400, stretch, 5, 15)).toEqual({
+      from: 1000,
+      to: 1020,
+    });
+    expect(dragRange(560, 100, stretch, 5, 15)).toEqual({
+      from: 540,
+      to: 560,
+    });
+  });
+
+  it("backs off the far end rather than overrun it to reach the minimum", () => {
+    // 5 minutes short of closing: the range has to extend backwards instead.
+    expect(dragRange(1015, 1020, stretch, 5, 15)).toEqual({
+      from: 1005,
+      to: 1020,
+    });
+  });
+
+  it("gives the whole stretch when even the minimum will not fit", () => {
+    const tiny = { from: 600, to: 610 };
+    expect(dragRange(600, 605, tiny, 5, 15)).toEqual({ from: 600, to: 610 });
+  });
+
+  it("rounds a minimum that does not sit on the grid up onto it", () => {
+    expect(dragRange(600, 600, stretch, 5, 12)).toEqual({ from: 600, to: 615 });
+  });
+
+  it("keeps a whole-hour drag exactly an hour", () => {
+    expect(dragRange(600, 660, stretch, 5, 15)).toEqual({ from: 600, to: 660 });
+  });
+
+  // Pressing at 09:58 and dragging right used to round the anchor to 10:00, so the
+  // range was born on the hour line and looked like it had jumped a box along.
+  it("does not let a press just shy of the hour snap forward onto it", () => {
+    expect(dragRange(598, 602, stretch, 5, 15)).toEqual({ from: 595, to: 610 });
+  });
+
+  it("snaps outward, so the range covers everything dragged over", () => {
+    // 10:01 -> 11:29 must not shrink to 10:00 -> 11:30's inside.
+    expect(dragRange(601, 689, stretch, 5, 15)).toEqual({ from: 600, to: 690 });
+  });
+
+  it("grows leftward for a leftward drag, still without rounding inward", () => {
+    // Anchor 10:02 ceils to 10:05 and the minimum is made up going back, not
+    // forward, because that is the way the pointer was travelling.
+    expect(dragRange(602, 598, stretch, 5, 15)).toEqual({ from: 590, to: 605 });
   });
 });

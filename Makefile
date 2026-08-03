@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install install-local setup dev build start lint lint-fix format format-check fmt check typecheck typecheck-tests test test-watch coverage verify clean secret purge docker-build docker-up docker-down docker-logs
+.PHONY: help install install-local setup dev kill-dev build start lint lint-fix format format-check fmt check typecheck typecheck-tests test test-watch coverage verify clean secret purge docker-build docker-up docker-down docker-logs
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -18,8 +18,23 @@ setup: ## First-time dev setup: copy .env and install deps (no build)
 	npm install
 	@echo "Done. Run 'make dev' to launch on http://localhost:4001"
 
-dev: ## Run the dev server (http://localhost:4001)
+dev: kill-dev ## Run the dev server (http://localhost:4001), replacing any running one
 	npm run dev
+
+# Next picks a different port when 4001 is busy, so a forgotten server leaves you
+# testing one app while editing another. Kill by port: pkill misses next-server.
+kill-dev: ## Stop whatever is listening on port 4001
+	@pids=$$(lsof -t -i:4001 2>/dev/null); \
+	if [ -z "$$pids" ]; then echo "port 4001 is free"; exit 0; fi; \
+	echo "stopping pid(s) on :4001: $$pids"; \
+	kill $$pids 2>/dev/null || true; \
+	for i in 1 2 3 4 5; do \
+	  sleep 1; \
+	  [ -z "$$(lsof -t -i:4001 2>/dev/null)" ] && break; \
+	done; \
+	pids=$$(lsof -t -i:4001 2>/dev/null); \
+	if [ -n "$$pids" ]; then kill -9 $$pids 2>/dev/null || true; sleep 1; fi; \
+	echo "port 4001 freed"
 
 build: ## Production build
 	npm run build

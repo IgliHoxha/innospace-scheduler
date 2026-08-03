@@ -3,6 +3,7 @@ import {
   reservableDates,
   autoApproveMaxHours,
   minReservationMinutes,
+  stepMinutes,
 } from "@/lib/schedule";
 import { formatDateMedium, todayYMD } from "@/lib/datetime";
 import { turnstileSiteKey } from "@/lib/turnstile";
@@ -23,6 +24,7 @@ export default async function Home() {
       dates={dates}
       autoApproveMaxHours={autoApproveMaxHours()}
       minReservationMinutes={minReservationMinutes()}
+      stepMinutes={stepMinutes()}
       // Public by design, but read server-side so it never needs NEXT_PUBLIC_.
       turnstileSiteKey={turnstileSiteKey()}
     />

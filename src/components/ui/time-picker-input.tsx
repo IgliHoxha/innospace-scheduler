@@ -7,6 +7,7 @@ import {
   getArrowByType,
   getDateByType,
   isCompleteEntry,
+  nextDigits,
   setDateByType,
   type TimePickerType,
 } from "@/lib/time-picker-utils";
@@ -24,9 +25,9 @@ export interface TimePickerInputProps extends Omit<
 
 /**
  * One editable time field (hours or minutes). A real text box: it shows a caret,
- * takes a single digit as readily as two, and selects itself on focus so typing
- * replaces. Arrow up/down steps; left/right cross to the sibling only from the
- * edge, leaving the caret free to move inside the field.
+ * takes a single digit as readily as two, and puts the caret after the digits on
+ * entry, where the first keystroke then replaces what is there. Arrow up/down
+ * steps; left/right cross to the sibling only from the edge.
  */
 const TimePickerInput = React.forwardRef<
   HTMLInputElement,
@@ -46,6 +47,7 @@ const TimePickerInput = React.forwardRef<
       onKeyDown,
       onFocus,
       onBlur,
+      onMouseUp,
       ...props
     },
     ref,
@@ -54,6 +56,17 @@ const TimePickerInput = React.forwardRef<
     // holding the raw text lets a lone "1" stay "1" instead of snapping to "01"
     // under the caret, while the committed date is always the padded one.
     const [draft, setDraft] = React.useState<string | null>(null);
+
+    // True from the moment the field is entered until its first keystroke, which
+    // is the one that replaces rather than appends.
+    const freshRef = React.useRef(true);
+
+    // The field is two digits wide, so there is nowhere useful to put the caret
+    // but the end: a click landing left of a digit would otherwise type behind it.
+    const caretToEnd = (el: HTMLInputElement) => {
+      const n = el.value.length;
+      el.setSelectionRange(n, n);
+    };
 
     const shown = React.useMemo(
       () => getDateByType(date, picker),
@@ -65,7 +78,13 @@ const TimePickerInput = React.forwardRef<
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const digits = e.target.value.replace(/\D/g, "").slice(0, 2);
+      const el = e.target;
+      const digits = nextDigits(
+        el.value,
+        el.selectionStart ?? el.value.length,
+        freshRef.current,
+      );
+      freshRef.current = false;
       setDraft(digits);
       commit(digits);
       if (isCompleteEntry(digits, picker)) onRightFocus?.();
@@ -75,6 +94,7 @@ const TimePickerInput = React.forwardRef<
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
         setDraft(null);
+        freshRef.current = true; // the stepped value is the one a digit replaces
         setDate(
           setDateByType(
             new Date(date),
@@ -110,12 +130,18 @@ const TimePickerInput = React.forwardRef<
         value={draft ?? shown}
         type={type}
         inputMode="decimal"
-        maxLength={2}
         onChange={handleChange}
-        // Select on entry so typing replaces; a second click still places a caret.
+        // Caret to the end on entry, and again after the click that follows, which
+        // the browser would otherwise drop wherever it landed.
         onFocus={(e) => {
-          e.currentTarget.select();
+          freshRef.current = true;
+          caretToEnd(e.currentTarget);
           onFocus?.(e);
+        }}
+        onMouseUp={(e) => {
+          freshRef.current = true;
+          caretToEnd(e.currentTarget);
+          onMouseUp?.(e);
         }}
         // Drop the draft so an empty or single digit renders back as "09".
         onBlur={(e) => {

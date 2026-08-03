@@ -63,6 +63,43 @@ export function suggestedEndMin(
 }
 
 /**
+ * The range a drag covers: from where it started to where the pointer is now,
+ * snapped outward onto the step grid and never leaving the free stretch it began
+ * in. Grows away from the anchor to the shortest bookable length, so a drag can't
+ * hand the form a range it would only reject, and stops at the stretch's end when
+ * that is all there is.
+ */
+export function dragRange(
+  anchorMin: number,
+  atMin: number,
+  stretch: { from: number; to: number },
+  stepMin: number,
+  minDurationMin: number,
+): { from: number; to: number } {
+  const clamp = (m: number) => Math.min(stretch.to, Math.max(stretch.from, m));
+  // Outward, not to the nearest mark: a press 2 minutes shy of the hour would
+  // otherwise round forward onto it and the range would appear to start in the
+  // next box. Expanding both ways keeps everything swept over inside the range.
+  let from = clamp(Math.floor(Math.min(anchorMin, atMin) / stepMin) * stepMin);
+  let to = clamp(Math.ceil(Math.max(anchorMin, atMin) / stepMin) * stepMin);
+
+  const shortest = Math.min(
+    Math.ceil(Math.max(stepMin, minDurationMin) / stepMin) * stepMin,
+    stretch.to - stretch.from,
+  );
+  if (to - from < shortest) {
+    if (atMin >= anchorMin) {
+      to = Math.min(from + shortest, stretch.to);
+      from = to - shortest;
+    } else {
+      from = Math.max(to - shortest, stretch.from);
+      to = from + shortest;
+    }
+  }
+  return { from, to };
+}
+
+/**
  * The end to pair with a start that just moved, clamped to whichever free stretch
  * the start landed in. Null when it landed in none of them, so the caller can
  * leave the end untouched and let validation do the talking.

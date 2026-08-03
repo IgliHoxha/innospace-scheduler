@@ -79,6 +79,7 @@ export default function ReservationClient({
   dates,
   autoApproveMaxHours,
   minReservationMinutes,
+  stepMinutes,
   turnstileSiteKey,
 }: {
   booths: Booth[];
@@ -87,6 +88,8 @@ export default function ReservationClient({
   autoApproveMaxHours: number;
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
+  /** The minute grid every time snaps to. */
+  stepMinutes: number;
   /** Cloudflare widget key. Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
 }) {
@@ -216,6 +219,10 @@ export default function ReservationClient({
   const dayIsOver =
     !!avail && toMinutes(avail.earliest) >= toMinutes(avail.closes);
 
+  // Named, because this one problem is shown at the note box rather than down by
+  // the button, and both places have to mean the same string.
+  const noteRequiredMessage = `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
+
   function validate(): string {
     if (!avail || !start || !end || startMin == null || endMin == null)
       return "";
@@ -232,12 +239,13 @@ export default function ReservationClient({
       })),
     );
     if (clash) return `That overlaps an existing reservation (${clash.label}).`;
-    if (mustNote && !note.trim())
-      return `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
+    if (mustNote && !note.trim()) return noteRequiredMessage;
     return "";
   }
 
   const problem = validate();
+  // Sits above the note box; everything else stays by the reserve button.
+  const noteProblem = problem === noteRequiredMessage ? problem : "";
   const canReserve = !!start && !!end && !problem && !reservation;
 
   /** Clear a field's error as soon as it's edited, so it can't linger. */
@@ -438,9 +446,23 @@ export default function ReservationClient({
                 earliest={avail.earliest}
                 reserved={avail.reserved}
                 selection={start && end ? { start, end } : null}
+                step={stepMinutes}
+                minMinutes={minReservationMinutes}
                 // The graph is the other way to choose a range, so it writes the
                 // same state the fields do rather than a parallel one.
                 onPick={(from, to) => {
+                  // TEMPORARY: paired with the [daycal] logs, this shows whether
+                  // what the graph sends is what the form ends up holding.
+                  console.log(
+                    "[form] onPick",
+                    from,
+                    "-",
+                    to,
+                    "| state was",
+                    start,
+                    "-",
+                    end,
+                  );
                   setStart(from);
                   setEnd(to);
                   setError("");
@@ -492,6 +514,7 @@ export default function ReservationClient({
         </div>
 
         {/* Note + submit */}
+        {noteProblem && <p className="error for-note">{noteProblem}</p>}
         <textarea
           id="note"
           name="note"
@@ -529,7 +552,7 @@ export default function ReservationClient({
           </>
         )}
 
-        {problem && <p className="error">{problem}</p>}
+        {problem && !noteProblem && <p className="error">{problem}</p>}
         {error && <p className="error">{error}</p>}
         {success && <p className="success">{success}</p>}
 

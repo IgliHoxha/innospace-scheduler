@@ -76,3 +76,33 @@ describe("isCompleteEntry", () => {
     expect(u.isCompleteEntry("", "hours")).toBe(false);
   });
 });
+
+describe("nextDigits", () => {
+  // Clicking a field puts the caret after "09"; the digit typed replaces it
+  // rather than landing beside it and reading as 95 or 09.
+  it("replaces the whole field on the first keystroke after entering it", () => {
+    expect(u.nextDigits("095", 3, true)).toBe("5");
+    expect(u.nextDigits("509", 1, true)).toBe("5");
+  });
+
+  it("appends once the field is no longer fresh", () => {
+    expect(u.nextDigits("53", 2, false)).toBe("53");
+  });
+
+  it("keeps the newest two digits, so a full field still accepts input", () => {
+    expect(u.nextDigits("1234", 4, false)).toBe("34");
+  });
+
+  it("strips anything that is not a digit", () => {
+    expect(u.nextDigits("0:9", 3, false)).toBe("09");
+  });
+
+  it("survives a caret at the very start", () => {
+    expect(u.nextDigits("09", 0, true)).toBe("9");
+  });
+
+  it("returns empty for an emptied field", () => {
+    expect(u.nextDigits("", 0, true)).toBe("");
+    expect(u.nextDigits("", 0, false)).toBe("");
+  });
+});
