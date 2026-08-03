@@ -30,7 +30,6 @@ export interface ReservationInput {
   /** The booker's first and last name joined (see guest.ts). */
   fullName?: string;
   email?: string;
-  phoneNumber?: string;
   /** A booth id from booths.ts, e.g. "booth-1". */
   boothId?: string;
   /** Local start datetime, "YYYY-MM-DDTHH:MM" (e.g. "2026-07-16T09:30"). */
@@ -38,8 +37,6 @@ export interface ReservationInput {
   /** Local end datetime, exclusive (e.g. "2026-07-16T11:00"). */
   endsAt?: string;
   note?: string;
-  /** Legacy column from the account era; unset for every new booking. */
-  userId?: string;
 }
 
 export interface Reservation extends ReservationInput {

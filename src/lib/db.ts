@@ -13,7 +13,7 @@ import {
 import { requireEnv } from "./env-app";
 
 const COLS =
-  "id,createdAt,updatedAt,status,fullName,email,phoneNumber,boothId,startsAt,endsAt,note,userId";
+  "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note";
 
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 const TABLE_BODY = `(
@@ -21,23 +21,11 @@ const TABLE_BODY = `(
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN (${inList(RESERVATION_STATUSES)})),
-  fullName TEXT, email TEXT, phoneNumber TEXT,
+  fullName TEXT, email TEXT,
   boothId TEXT NOT NULL,
   startsAt TEXT NOT NULL,
   endsAt TEXT NOT NULL,
-  note TEXT,
-  userId TEXT
-)`;
-
-// From the account era, before booking went login-less. Nothing reads or writes
-// it now, but migration 1 has shipped, so the table stays exactly as it was.
-const USERS_TABLE_BODY = `(
-  id TEXT PRIMARY KEY,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
-  name TEXT,
-  email TEXT NOT NULL UNIQUE,
-  passwordHash TEXT
+  note TEXT
 )`;
 
 type Row = Record<string, string | number | null>;
@@ -60,50 +48,20 @@ export class UserBusyError extends Error {
   }
 }
 
-// Ordered schema migrations keyed by target `PRAGMA user_version`: each runs once,
-// in a transaction, on any DB below its version, then bumps it. To change the
-// schema, append a new { version: N+1, up } entry - never edit a shipped one.
-type Migration = { version: number; up: (db: Database.Database) => void };
-
-const MIGRATIONS: Migration[] = [
-  {
-    version: 1,
-    up: (db) => {
-      db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
-      db.exec(`CREATE TABLE IF NOT EXISTS users ${USERS_TABLE_BODY};`);
-      // Serves the dashboard list's ORDER BY startsAt DESC, createdAt DESC: an
-      // ascending composite is reverse-scanned, so LIMIT stops early (no sort).
-      db.exec(
-        `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
-      );
-      db.exec(
-        `CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);`,
-      );
-      db.exec(
-        `CREATE INDEX IF NOT EXISTS idx_reservations_userId ON reservations(userId);`,
-      );
-    },
-  },
-];
-
-/** The schema version this build expects - the highest migration defined. */
-export const SCHEMA_VERSION = MIGRATIONS.reduce(
-  (max, m) => Math.max(max, m.version),
-  0,
-);
-
-/** Apply any migrations newer than the DB's current `user_version`. */
-function migrate(db: Database.Database): void {
-  const current = db.pragma("user_version", { simple: true }) as number;
-  for (const m of MIGRATIONS) {
-    if (m.version <= current) continue;
-    // DDL + the version bump in one transaction: a failed migration rolls back
-    // wholesale, so we never leave the DB half-migrated.
-    db.transaction(() => {
-      m.up(db);
-      db.pragma(`user_version = ${m.version}`);
-    })();
-  }
+// The whole schema, declared once and created on connect. There is no migration
+// runner: every statement is IF NOT EXISTS, so a fresh volume and a populated one
+// take the same path. Changing a column means editing here AND wiping the DB file,
+// because nothing rewrites a table that already exists.
+function initSchema(db: Database.Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
+  // Serves the dashboard list's ORDER BY startsAt DESC, createdAt DESC: an
+  // ascending composite is reverse-scanned, so LIMIT stops early (no sort).
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);`,
+  );
 }
 
 // Lazy singleton: opened on the first query, not at import (never runs at build).
@@ -118,7 +76,7 @@ function getDb(): Database.Database {
   const db = new Database(dbFile);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
-  migrate(db);
+  initSchema(db);
   _db = db;
   _stmts = new Map();
   return db;
@@ -139,7 +97,7 @@ function prep(sql: string): Database.Statement {
 
 function insert(r: Reservation) {
   prep(
-    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@phoneNumber,@boothId,@startsAt,@endsAt,@note,@userId)`,
+    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@boothId,@startsAt,@endsAt,@note)`,
   ).run(toRow(r));
 }
 
@@ -151,12 +109,10 @@ function toRow(r: Reservation): Row {
     status: r.status,
     fullName: r.fullName ?? null,
     email: r.email ?? null,
-    phoneNumber: r.phoneNumber ?? null,
     boothId: r.boothId ?? "",
     startsAt: r.startsAt ?? "",
     endsAt: r.endsAt ?? "",
     note: r.note ?? null,
-    userId: r.userId ?? null,
   };
 }
 
@@ -169,12 +125,10 @@ function fromRow(r: Row): Reservation {
     status: String(r.status) as ReservationStatus,
     fullName: s(r.fullName),
     email: s(r.email),
-    phoneNumber: s(r.phoneNumber),
     boothId: s(r.boothId),
     startsAt: s(r.startsAt),
     endsAt: s(r.endsAt),
     note: s(r.note),
-    userId: s(r.userId),
   };
 }
 
@@ -201,7 +155,7 @@ export interface ReservationQuery {
   pageSize?: number;
 }
 
-const SEARCH_COLS = ["fullName", "email", "phoneNumber", "boothId", "note"];
+const SEARCH_COLS = ["fullName", "email", "boothId", "note"];
 
 function reservationCounts(): ReservationCounts {
   const r = prep(

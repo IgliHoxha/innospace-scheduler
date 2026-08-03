@@ -164,12 +164,12 @@ To read or change a value later, use `fly secrets list` (names only) and
 `[env]` to edit. Pushing to `master` also deploys via GitHub Actions, which needs
 a `FLY_API_TOKEN` repository secret.
 
-The SQLite schema is versioned with `PRAGMA user_version` and applied by an
-ordered list of migrations in `src/lib/db.ts` (`MIGRATIONS`). On first query the
-DB runs every migration newer than its current version, each in a transaction, so
-a fresh DB is built and an existing one is upgraded in place: no manual step, no
-data loss. To change the schema, **append** a new `{ version, up }` entry with the
-`ALTER`/`CREATE` statements; never edit one that has already shipped.
+The SQLite schema is declared once in `src/lib/db.ts` (`initSchema`) and created
+on the first query. Every statement is `IF NOT EXISTS`, so opening a fresh volume
+and opening a populated one take the same path. There is no migration runner: to
+change a column, edit `initSchema` **and delete the DB file**, because nothing
+rewrites a table that already exists. Bookings are short-lived, so a wipe costs
+nothing; if that stops being true, add a migration runner before the next change.
 
 ## Project layout
 
