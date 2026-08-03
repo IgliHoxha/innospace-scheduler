@@ -48,9 +48,8 @@ export class UserBusyError extends Error {
   }
 }
 
-// The whole schema, declared once and created on connect. There is no migration
-// runner: every statement is IF NOT EXISTS, so a fresh volume and a populated one
-// take the same path. Changing a column means editing here AND wiping the DB file,
+// The whole schema, created on connect. No migration runner: every statement is
+// IF NOT EXISTS, so changing a column means editing here AND wiping the DB file,
 // because nothing rewrites a table that already exists.
 function initSchema(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);

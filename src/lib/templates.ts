@@ -10,9 +10,8 @@ export type EmailStatus = Extract<
 >;
 
 /**
- * Resolves a booth id to its display name. Passed in, not imported, so these
- * helpers stay browser-safe: the env-backed lookup reads SCHEDULER_BOOTHS and
- * would throw in a client bundle.
+ * Booth id to display name. Injected rather than imported, because the env-backed
+ * lookup would throw in a client bundle and these helpers run in one.
  */
 export type BoothNamer = (boothId: string | undefined) => string;
 
@@ -74,10 +73,8 @@ function firstName(r: Reservation): string {
   return r.fullName?.trim() ? r.fullName.trim().split(" ")[0] : "there";
 }
 
-// The canonical email sign-off: "Best regards," + who signs off, then the contact
-// rows. Shared by every email so they all close the same way. The org is not
-// repeated here: EMAIL_SIGNOFF_NAME already carries it, and the shell's footer
-// prints it a third time.
+// The one sign-off every email closes with. The org is deliberately absent:
+// EMAIL_SIGNOFF_NAME already carries it and the shell's footer prints it again.
 export function signOff(contact: ContactInfo): string[] {
   return [
     "Best regards,",

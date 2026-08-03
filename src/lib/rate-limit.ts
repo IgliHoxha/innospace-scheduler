@@ -1,7 +1,6 @@
-// In-memory brute-force / abuse guard (module-level Map on one long-lived Fly
-// machine). Separate buckets so one attacker can't lock everyone out: per-account
-// (escalating, never banned), per-IP (lenient, shared office IP), and per-IP for
-// the public booking form.
+// In-memory brute-force guard: a module-level Map, which holds because one
+// long-lived Fly machine serves everything. Buckets are separate so one attacker
+// can't lock everyone out.
 
 import { requireIntEnv } from "./env-app";
 
@@ -50,9 +49,8 @@ function ipPolicy(): Policy {
 }
 
 /**
- * Per-IP throttle for the public booking form, so nobody can flood the calendar
- * or the mailer. Reuses the per-IP login thresholds but never bans (it would be
- * a self-inflicted DoS on the shared office IP everyone books from).
+ * Public booking form: the login thresholds, but banning is off. A ban would be a
+ * self-inflicted DoS on the shared office IP everyone books from.
  */
 function bookingPolicy(): Policy {
   return {
@@ -193,9 +191,8 @@ export function registerBooking(ip: string): RateStatus {
 }
 
 /**
- * Best-effort client IP. Behind Cloudflare → Fly, the real IP is in
- * `cf-connecting-ip` / `fly-client-ip`; fall back to the first `x-forwarded-for`
- * hop. Returns a stable string so unknown clients still share one bucket.
+ * Best-effort client IP: behind Cloudflare then Fly, the real one is in their own
+ * headers. Always a string, so unknown clients still share a bucket.
  */
 export function clientKey(headers: Headers): string {
   return (

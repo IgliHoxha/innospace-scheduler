@@ -89,9 +89,8 @@ export function verifySessionToken(
 }
 
 // ---- Cancel tokens ---------------------------------------------------------
-// The link in a confirmation email, letting the person who booked cancel without
-// an account. Same HMAC scheme as sessions but purpose-scoped, so a session
-// cookie can't be replayed as a cancel link or the other way round.
+// The same HMAC scheme as sessions but purpose-scoped, so a session cookie can
+// never be replayed as a cancel link, or the other way round.
 
 interface CancelPayload {
   sub: string; // the reservation id

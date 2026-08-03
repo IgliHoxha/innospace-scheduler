@@ -17,25 +17,13 @@ export { getContactFromEnv };
 const BRAND = COLORS.brand;
 const INK = COLORS.emailText;
 
-// Base URL for email links (the cancel link); required, or links break.
 function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
 
-// Gmail proxies every image through googleusercontent and rasterises SVG to PNG
-// on its own servers (verified: the proxy responds content-type image/png). It
-// can recolour HTML for dark mode but never the inside of an image, so a wordmark
-// shipped as artwork is stuck on one fixed colour and loses either light or dark.
-//
-// So only the teal mark stays an image (teal reads on both backgrounds) and the
-// wordmark is HTML text: a dark-mode client then inverts it exactly as it does
-// the body copy, black on a white card and white on a dark shell.
-//
-// Served under APP_BASE_URL. In dev that's localhost (unfetchable by mail
-// clients), but dev normally skips sending.
-//
-// The proxy caches per source URL, so an edit to the file alone never reaches a
-// recipient already sent the old one. Bump this whenever the artwork changes.
+// Gmail rasterises SVG through its image proxy and can't recolour inside an
+// image, so only the teal mark stays artwork and the wordmark is HTML text that
+// dark-mode clients invert. The proxy caches per URL: bump on any artwork edit.
 const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
@@ -50,20 +38,15 @@ const MARK_WIDTH = 34;
 const FONT_STACK =
   "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
 
-// The wordmark text is the brand lockup, not the configurable BUSINESS_NAME, for
-// the same reason the mark is fixed artwork: both are the logo.
-//
-// Built from inline spans rather than a table or nested divs. Gmail cut the card
-// container in two at the table version of this, and the header sits inside a
-// bordered, rounded wrapper that renders badly when split, so keep the markup
-// here as flat as the plain <img> it replaced.
+// The wordmark is the fixed brand lockup, not the configurable BUSINESS_NAME.
+// Flat inline spans, never a table: Gmail cut the rounded card in two at the
+// table version of this.
 function logoLockup(org: string): string {
   return `<img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
 
-// Lazy singleton: one Resend client for the process, built on first send (not at
-// import, so tests/dev with no key never construct it). RESEND_API_KEY is an
-// optional feature-flag: unset skips email. A null isn't cached, so a later key works.
+// Built on first send, not at import, so a keyless dev/test run never constructs
+// one. The null isn't cached, so a key set later still takes effect.
 let _resend: Resend | null = null;
 function client(): Resend | null {
   if (_resend) return _resend;
@@ -88,19 +71,15 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// URLs, bare email addresses and international phone numbers, matched in one pass
-// so the URL branch claims a URL carrying an "@" or a "+" rather than letting the
-// later branches half-eat it. The address branch needs a word character after
-// every dot and the phone branch must end on a digit, so trailing sentence
-// punctuation stays outside the link. Phones require a leading "+" so years,
-// prices and street numbers are never mistaken for one.
+// One pass, so the URL branch claims a URL carrying "@" or "+" instead of a later
+// branch half-eating it. Each tail ends on a word character or digit to keep
+// punctuation out; phones need a leading "+" so years and prices aren't linked.
 const LINKABLE =
   /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(\+\d[\d\s().-]{7,}\d)/g;
 
-// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs, email
-// addresses and phone numbers. The last two must be linked here rather than left
-// bare: Gmail and iOS auto-link them and paint them their own default blue, which
-// clashes with the brand-coloured URLs alongside.
+// Plain text -> safe HTML. Addresses and phones are linked here rather than left
+// bare: Gmail and iOS auto-link them in their own blue, clashing with the
+// brand-coloured URLs alongside.
 function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)

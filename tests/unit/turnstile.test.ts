@@ -102,10 +102,15 @@ describe("verifyTurnstile", () => {
 
   it("rejects a missing or non-string token without calling out", async () => {
     bothKeys();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (const bad of [undefined, "", null, 42, { t: "x" }]) {
       await expect(verifyTurnstile(bad)).resolves.toBe(false);
     }
     expect(fetchMock).not.toHaveBeenCalled();
+    // Logged every time: this path never reaches Cloudflare, so without the
+    // warning a widget that won't solve is invisible in siteverify analytics.
+    expect(warn).toHaveBeenCalledTimes(5);
+    warn.mockRestore();
   });
 
   // Fails closed: an attacker must not get in by breaking the check itself.

@@ -8,9 +8,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Cancel a reservation from the link in its confirmation email. The signed token
- * is the only proof of ownership, so it is the whole authorisation: it names one
- * reservation and expires when that slot ends.
+ * Cancel from the link in a confirmation email. The signed token is the whole
+ * authorisation: it names one reservation and expires when that slot ends.
  */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);

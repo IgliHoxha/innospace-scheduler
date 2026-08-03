@@ -4,9 +4,8 @@ import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
 /**
- * Confirm modal shared by every screen. Closes on overlay click or Escape and
- * moves focus to the safe (cancel) action on open, so keyboard users are not
- * stranded behind the overlay: the hand-rolled markup it replaces had neither.
+ * Shared confirm modal. Escape and overlay clicks close it, and focus moves to
+ * the safe action on open, so keyboard users aren't stranded behind the overlay.
  */
 export function ConfirmDialog({
   title,

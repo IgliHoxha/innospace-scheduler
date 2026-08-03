@@ -1,6 +1,5 @@
-// Datetime-string helpers for the app's "YYYY-MM-DDTHH:MM" local wall-clock format:
-// extract, compose, validate, convert, diff, format, plus "now"/"today" from the
-// system clock. No env or domain types, so mailer, dashboard, and picker share one.
+// Helpers for the app's "YYYY-MM-DDTHH:MM" local wall-clock format. No env or
+// domain types, so the mailer, dashboard and picker can all share them.
 import { pad2 } from "./utils";
 
 const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;

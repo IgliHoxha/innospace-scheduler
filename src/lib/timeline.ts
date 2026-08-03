@@ -10,8 +10,7 @@ export interface DaySegment<T> {
 
 /**
  * Split the open day [opensMin, closesMin) into consecutive reserved and free
- * segments from the booth's (non-overlapping) reservations. Ranges are clamped to
- * the open window and anything fully outside it is dropped.
+ * segments. Reservations are clamped to the window, and dropped if fully outside.
  */
 export function buildDaySegments<T extends { start: number; end: number }>(
   opensMin: number,
@@ -50,9 +49,8 @@ export function snapToStep(min: number, stepMin: number): number {
 }
 
 /**
- * A sensible end when the member picks a start inside a free stretch: the start
- * plus a preferred length, never past the stretch's limit and never shorter than
- * the minimum. Returns null when even the minimum can't fit before the limit.
+ * A sensible end for a start picked inside a free stretch: the preferred length,
+ * clamped to the stretch. Null when even the minimum won't fit before its limit.
  */
 export function suggestedEndMin(
   startMin: number,
@@ -62,4 +60,20 @@ export function suggestedEndMin(
 ): number | null {
   if (limitMin - startMin < minDurationMin) return null;
   return Math.min(limitMin, startMin + Math.max(minDurationMin, preferredMin));
+}
+
+/**
+ * The end to pair with a start that just moved, clamped to whichever free stretch
+ * the start landed in. Null when it landed in none of them, so the caller can
+ * leave the end untouched and let validation do the talking.
+ */
+export function endForStart(
+  startMin: number,
+  gaps: readonly { from: number; to: number }[],
+  minDurationMin: number,
+  preferredMin: number,
+): number | null {
+  const gap = gaps.find((g) => startMin >= g.from && startMin < g.to);
+  if (!gap) return null;
+  return suggestedEndMin(startMin, gap.to, minDurationMin, preferredMin);
 }

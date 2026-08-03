@@ -21,9 +21,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * What's already taken for a booth on a day, so the reservation screen can show it
- * and pre-empt a clash. `earliest` is the first time still reservable that day.
- * Public, like the booking screen it feeds.
+ * What's taken for a booth on a day, plus `earliest`, the first time still
+ * reservable. Public, like the booking screen it feeds.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -53,9 +52,8 @@ export async function GET(req: NextRequest) {
   }));
 
   const opens = `${pad2(openHour())}:00`;
-  // Today, anything before "now" is already gone. Rounded up onto the step grid:
-  // "now" is an arbitrary minute (15:22), and the picker seeds its default range
-  // from this, so an off-grid value would hand back a time nothing can reserve.
+  // Today, anything before "now" is gone. Rounded onto the step grid because the
+  // picker seeds from this, and 15:22 would seed a time nothing can reserve.
   const earliest =
     date === todayYMD()
       ? minutesToTime(

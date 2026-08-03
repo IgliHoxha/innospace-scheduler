@@ -15,7 +15,7 @@ import {
   meetsMinDuration,
   noteRequiredFor,
 } from "@/lib/reservation-rules";
-import { suggestedEndMin } from "@/lib/timeline";
+import { endForStart, suggestedEndMin } from "@/lib/timeline";
 import { formatDateLong } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
 import { pad2 } from "@/lib/utils";
@@ -45,6 +45,9 @@ const toMinutes = (t: string) =>
   Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
 const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+
+// The length a booking opens on, and the one a moved start re-anchors its end to.
+const PREFERRED_MINUTES = 60;
 
 /** Turnstile manages its own widget; we only ever ask it for a fresh token. */
 declare global {
@@ -255,7 +258,11 @@ export default function ReservationClient({
         <h1 className="page-title">Reserve a meeting booth</h1>
         <p className="page-subtitle">
           No account needed. Pick a booth and a time, tell us who you are, and
-          we&apos;ll email you the confirmation.
+          we&apos;ll email you the confirmation. Reservations of{" "}
+          {autoApproveMaxHours} hours or more need a note saying what the booth
+          is for, and anything over {autoApproveMaxHours} hours needs admin
+          approval before it&apos;s confirmed (the slot is held for you
+          meanwhile).
         </p>
 
         {/* Step 1: booth */}
@@ -315,8 +322,19 @@ export default function ReservationClient({
                   <TimeRangePicker
                     value={start && end ? { from: start, to: end } : null}
                     onChange={({ from, to }) => {
+                      // A moved start drags the end an hour after it, so the pair
+                      // stays bookable instead of leaving a stale end behind.
+                      const reanchored =
+                        from === start
+                          ? null
+                          : endForStart(
+                              toMinutes(from),
+                              freeGaps,
+                              minReservationMinutes,
+                              PREFERRED_MINUTES,
+                            );
                       setStart(from);
-                      setEnd(to);
+                      setEnd(reanchored == null ? to : toTime(reanchored));
                       setError("");
                     }}
                     defaultRange={{
@@ -326,7 +344,7 @@ export default function ReservationClient({
                           freeGaps[0].from,
                           freeGaps[0].to,
                           minReservationMinutes,
-                          60,
+                          PREFERRED_MINUTES,
                         ) ?? freeGaps[0].to,
                       ),
                     }}
@@ -426,6 +444,7 @@ export default function ReservationClient({
               className="cf-turnstile"
               data-sitekey={turnstileSiteKey}
               data-appearance="interaction-only"
+              data-action="turnstile-spin-v2"
             />
           </>
         )}

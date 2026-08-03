@@ -33,7 +33,14 @@ export async function verifyTurnstile(
 ): Promise<boolean> {
   const secret = optionalEnv("TURNSTILE_SECRET_KEY");
   if (!secret) return true; // switched off: nothing to verify against
-  if (typeof token !== "string" || !token) return false;
+  // Logged because it never reaches siteverify: without this, a widget failing
+  // to solve looks exactly like nobody booking at all in Cloudflare's analytics.
+  if (typeof token !== "string" || !token) {
+    console.warn(
+      "[turnstile] booking rejected: no widget token in the request",
+    );
+    return false;
+  }
 
   const form = new URLSearchParams({ secret, response: token });
   // Binds the token to the client that solved it, so a stolen one is less useful.

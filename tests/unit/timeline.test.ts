@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildDaySegments, snapToStep, suggestedEndMin } from "@/lib/timeline";
+import {
+  buildDaySegments,
+  endForStart,
+  snapToStep,
+  suggestedEndMin,
+} from "@/lib/timeline";
 
 // Reserved ranges as minutes-since-midnight (09:00 = 540, etc.).
 const r = (start: number, end: number, who = "") => ({ start, end, who });
@@ -75,5 +80,39 @@ describe("suggestedEndMin", () => {
 
   it("returns null when even the minimum does not fit", () => {
     expect(suggestedEndMin(600, 620, 30, 60)).toBeNull();
+  });
+});
+
+describe("endForStart", () => {
+  // 09:00-12:00 free, 12:00-14:00 taken, 14:00-15:00 free.
+  const gaps = [
+    { from: 540, to: 720 },
+    { from: 840, to: 900 },
+  ];
+
+  it("puts the end an hour after the start", () => {
+    expect(endForStart(600, gaps, 15, 60)).toBe(660); // 10:00 -> 11:00
+  });
+
+  it("clamps to the end of the stretch the start landed in", () => {
+    // 14:30 in the 14:00-15:00 gap: a full hour would overrun, so stop at 15:00.
+    expect(endForStart(870, gaps, 15, 60)).toBe(900);
+  });
+
+  it("picks the stretch containing the start, not the first one", () => {
+    expect(endForStart(845, gaps, 15, 60)).toBe(900);
+  });
+
+  it("returns null for a start inside a reservation", () => {
+    expect(endForStart(780, gaps, 15, 60)).toBeNull(); // 13:00 is taken
+  });
+
+  it("returns null for a start on a stretch's exclusive end", () => {
+    // Ranges are half-open, so 12:00 belongs to the reservation, not the gap.
+    expect(endForStart(720, gaps, 15, 60)).toBeNull();
+  });
+
+  it("returns null when the remaining stretch is shorter than the minimum", () => {
+    expect(endForStart(895, gaps, 15, 60)).toBeNull(); // only 5 min left
   });
 });

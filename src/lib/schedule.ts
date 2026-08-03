@@ -1,29 +1,25 @@
-// Time rules. A reservation is a start/end local datetime "YYYY-MM-DDTHH:MM" (no
-// TZ suffix: set TZ so the server matches the space). The format sorts as text,
-// so SQLite indexes it directly and the date is the first 10 chars.
+// Time rules. A reservation is a start/end local datetime "YYYY-MM-DDTHH:MM"
+// with no TZ suffix, so set TZ to make the server agree with the space.
 import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
 import { timeOf, durationMinutes, ymd } from "./datetime";
 
-/** First reservable hour of the day (24h). Required. Env: OPEN_HOUR. */
+/** First reservable hour of the day, 24h. */
 export function openHour(): number {
   return Math.min(23, Math.max(0, requireIntEnv("OPEN_HOUR")));
 }
 
-/** Closing hour: a reservation must end by this hour. Required. Env: CLOSE_HOUR. */
+/** Closing hour: a reservation must end by this, and it always beats openHour(). */
 export function closeHour(): number {
   return Math.min(24, Math.max(openHour() + 1, requireIntEnv("CLOSE_HOUR")));
 }
 
-/** How many days ahead (including today) can be reserved. Required. Env: RESERVATION_WINDOW_DAYS. */
+/** How many days ahead, including today, can be reserved. */
 export function reservationWindowDays(): number {
   return Math.max(0, requireIntEnv("RESERVATION_WINDOW_DAYS"));
 }
 
-/**
- * Times snap to this many minutes, so members can pick 09:10 but not 09:07.
- * Must divide 60 evenly (1/5/10/15/30/60). Required. Env: TIME_STEP_MINUTES.
- */
+/** Times snap to this many minutes (09:10 yes, 09:07 no). Must divide 60. */
 export function stepMinutes(): number {
   const v = requireIntEnv("TIME_STEP_MINUTES");
   if (!(v > 0 && v <= 60 && 60 % v === 0)) {
@@ -34,20 +30,17 @@ export function stepMinutes(): number {
   return v;
 }
 
-/** Shortest reservable length, in minutes. Required. Env: MIN_RESERVATION_MINUTES. */
+/** Shortest reservable length in minutes, never below one step. */
 export function minReservationMinutes(): number {
   return Math.max(stepMinutes(), requireIntEnv("MIN_RESERVATION_MINUTES"));
 }
 
-/**
- * Longest reservation (in hours) that is auto-confirmed. Anything longer is created
- * as "pending" and needs admin approval. Required. Env: AUTO_APPROVE_MAX_HOURS.
- */
+/** Longest reservation that auto-confirms; anything longer is created pending. */
 export function autoApproveMaxHours(): number {
   return Math.max(1, requireIntEnv("AUTO_APPROVE_MAX_HOURS"));
 }
 
-/** Does this reservation exceed the auto-approve limit (so needs admin approval)? */
+/** Over the auto-approve limit, so an admin must approve it. */
 export function needsApproval(startsAt: string, endsAt: string): boolean {
   return approvalRequiredFor(
     durationMinutes(startsAt, endsAt),
@@ -55,10 +48,7 @@ export function needsApproval(startsAt: string, endsAt: string): boolean {
   );
 }
 
-/**
- * Reservations this long need a note (admin context). Same threshold as auto-approve:
- * >= needs a note, > also needs approval.
- */
+/** Same threshold as approval, one step wider: `>=` needs a note, `>` also needs approval. */
 export function noteRequired(startsAt: string, endsAt: string): boolean {
   return noteRequiredFor(
     durationMinutes(startsAt, endsAt),
@@ -67,9 +57,8 @@ export function noteRequired(startsAt: string, endsAt: string): boolean {
 }
 
 /**
- * Round a minute-of-day up onto the step grid. "Now" is an arbitrary minute, and
- * anything off the grid is unreservable, so the next bookable moment is the next
- * boundary, never the current minute.
+ * Round a minute-of-day up onto the step grid: "now" is an arbitrary minute and
+ * anything off the grid is unreservable, so round up, never down.
  */
 export function ceilToStep(minutes: number): number {
   const step = stepMinutes();

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { optionalEnv } from "./env-app";
 
-/** ALLOWED_ORIGINS parsed; defaults to "*" (allow any) when unset (optional flag). */
+// An in-app origin gate, not CORS headers: those are browser-enforced, this
+// actually blocks. A missing Origin/Referer can't be checked, so it passes here
+// and is left to the session guard.
+
+/** ALLOWED_ORIGINS parsed; "*" (allow any) when the optional flag is unset. */
 function allowedOrigins(): string[] {
   return (optionalEnv("ALLOWED_ORIGINS") ?? "*")
     .split(",")
@@ -9,11 +13,7 @@ function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-/**
- * In-app origin gate (CORS headers are browser-enforced; this actually blocks).
- * "*" allows all; a disallowed Origin/Referer is rejected; a missing one can't
- * be enforced, so it's allowed and left to the session guard.
- */
+/** Is this origin on the allowlist? */
 export function isOriginAllowed(origin: string | null): boolean {
   const allowed = allowedOrigins();
   if (allowed.includes("*")) return true;
@@ -37,9 +37,8 @@ export function requestOrigin(headers: Headers): string | null {
 }
 
 /**
- * Is the Origin the host we're served from? Every page calling its own API is
- * same-origin by construction, never CSRF. ALLOWED_ORIGINS describes *other*
- * sites, so the app must not have to list itself there.
+ * Is the Origin the host we're served from? ALLOWED_ORIGINS describes *other*
+ * sites, so the app must never have to list itself there.
  */
 function isSameOrigin(origin: string, headers: Headers): boolean {
   const host = headers.get("host");
@@ -53,11 +52,7 @@ function isSameOrigin(origin: string, headers: Headers): boolean {
   }
 }
 
-/**
- * Should this request pass the origin gate? Same-origin always passes; a missing
- * Origin/Referer can't be enforced, so it's allowed and left to the session
- * guard; anything else must be on ALLOWED_ORIGINS.
- */
+/** Should this request pass the origin gate? */
 export function isRequestOriginAllowed(headers: Headers): boolean {
   const origin = requestOrigin(headers);
   if (!origin) return true;
@@ -66,9 +61,8 @@ export function isRequestOriginAllowed(headers: Headers): boolean {
 }
 
 /**
- * Origin guard for mutating handlers (CSRF defense in depth with the sameSite=lax
- * cookie): 403 when the request's origin isn't allowed, else null. No-op when
- * ALLOWED_ORIGINS is unset ("*").
+ * Guard for mutating handlers, CSRF defence in depth behind the sameSite=lax
+ * cookie: a 403 to return as-is, or null. A no-op while ALLOWED_ORIGINS is unset.
  */
 export function requireAllowedOrigin(headers: Headers): NextResponse | null {
   if (isRequestOriginAllowed(headers)) return null;

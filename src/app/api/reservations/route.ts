@@ -155,9 +155,8 @@ export async function POST(req: NextRequest) {
   // Reservations over the limit need admin approval; shorter ones confirm instantly.
   const status = needsApproval(startsAt, endsAt) ? "pending" : "confirmed";
 
-  // Last gate before anything is written: prove a browser sent this. Checked
-  // after the cheap validation so a malformed request never costs a round-trip
-  // to Cloudflare, and so a rejected form doesn't spend its single-use token.
+  // Last gate before anything is written. After the cheap validation, so a bad
+  // request neither costs a Cloudflare round-trip nor spends its one-use token.
   if (!(await verifyTurnstile(body.turnstileToken, ip))) {
     return NextResponse.json(
       {
