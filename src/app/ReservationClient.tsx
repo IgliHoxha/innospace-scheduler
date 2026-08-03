@@ -438,6 +438,13 @@ export default function ReservationClient({
                 earliest={avail.earliest}
                 reserved={avail.reserved}
                 selection={start && end ? { start, end } : null}
+                // The graph is the other way to choose a range, so it writes the
+                // same state the fields do rather than a parallel one.
+                onPick={(from, to) => {
+                  setStart(from);
+                  setEnd(to);
+                  setError("");
+                }}
               />
             </>
           )}

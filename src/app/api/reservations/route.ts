@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createReservation,
+  discardReservation,
   queryReservations,
   deleteReservations,
   SlotUnavailableError,
@@ -15,6 +16,7 @@ import { requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { validateGuest } from "@/lib/guest";
 import { verifyTurnstile } from "@/lib/turnstile";
+import { checkEmailDeliverable } from "@/lib/email-verify";
 import {
   checkBookingBlocked,
   clientKey,
@@ -167,6 +169,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Does the domain take mail at all? After Turnstile so only verified humans
+  // cost a DNS lookup, and before the insert so a dead address never holds a
+  // slot even briefly. Answers are cached per domain.
+  const deliverable = await checkEmailDeliverable(guest.guest.email);
+  if (!deliverable.ok) {
+    return NextResponse.json(
+      { ok: false, field: "email", error: deliverable.error },
+      { status: 400 },
+    );
+  }
+
   // Count it once the request is good, so a typo'd form doesn't burn the quota.
   registerBooking(ip);
 
@@ -182,13 +195,22 @@ export async function POST(req: NextRequest) {
       status,
     );
 
-    // Email the member: confirmation, or a "request received" note if pending.
-    // Never block the response on email.
+    // A booking only counts once the confirmation is on its way: an address
+    // Resend refuses would otherwise leave someone holding a slot they were
+    // never told about, and holding it against everybody else. "skipped" (no
+    // API key) is not a refusal, or dev and the tests could never book.
     if (reservation.email) {
-      try {
-        await sendReservationEmail(reservation, status);
-      } catch (err) {
-        console.error("[reservations] confirmation email failed:", err);
+      const outcome = await sendReservationEmail(reservation, status);
+      if (outcome === "failed") {
+        await discardReservation(reservation.id);
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "We couldn't send the confirmation to that address, so nothing was reserved. Please check it and try again.",
+          },
+          { status: 502 },
+        );
       }
     }
 

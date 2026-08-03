@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminToken, makeRequest, resetApp } from "../helpers/app";
 
+// DNS is stubbed: the suite must never do a real lookup.
+vi.mock("@/lib/email-verify", () => ({
+  checkEmailDeliverable: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 vi.mock("@/lib/email", () => ({
-  sendReservationEmail: vi.fn().mockResolvedValue(undefined),
+  sendReservationEmail: vi.fn().mockResolvedValue("sent"),
 }));
 
 type Route = typeof import("@/app/api/reservations/route");
 type Db = typeof import("@/lib/db");
 type Email = typeof import("@/lib/email");
+type Verify = typeof import("@/lib/email-verify");
 let route: Route;
 let db: Db;
 let email: Email;
+let verify: Verify;
 
 const DAY = "2026-07-16";
 
@@ -32,6 +39,7 @@ beforeEach(async () => {
   db = await import("@/lib/db");
   route = await import("@/app/api/reservations/route");
   email = await import("@/lib/email");
+  verify = await import("@/lib/email-verify");
 });
 
 afterEach(() => vi.useRealTimers());
@@ -152,6 +160,53 @@ describe("POST /api/reservations - success", () => {
       "pending",
     );
   });
+  it("502 and saves nothing when the confirmation cannot be sent", async () => {
+    vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("failed");
+    const res = await post(ok);
+    expect(res.status).toBe(502);
+    expect((await json(res)).error).toContain("nothing was reserved");
+
+    // Gone, not merely soft-deleted: a held slot nobody was told about is worse
+    // than no booking at all, so the row must not survive in any status.
+    expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
+  });
+
+  it("frees the slot again after a failed send", async () => {
+    vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("failed");
+    expect((await post(ok)).status).toBe(502);
+    // The very same slot must still be bookable by the next person.
+    expect((await post(ok)).status).toBe(201);
+  });
+
+  it("still books when email is switched off (no API key)", async () => {
+    vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("skipped");
+    expect((await post(ok)).status).toBe(201);
+    expect((await db.queryReservations({ filter: "all" })).total).toBe(1);
+  });
+
+  it("400 and saves nothing when the domain takes no mail", async () => {
+    vi.mocked(verify.checkEmailDeliverable).mockResolvedValueOnce({
+      ok: false,
+      error: "That email domain doesn't accept mail. Please check it.",
+    });
+    const res = await post(ok);
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.field).toBe("email"); // so the form can point at the right box
+    expect(body.error).toContain("accept mail");
+    expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
+  });
+
+  // Checked before the insert, so a dead address never holds a slot even briefly.
+  it("does not send anything when the domain is rejected", async () => {
+    vi.mocked(verify.checkEmailDeliverable).mockResolvedValueOnce({
+      ok: false,
+      error: "nope",
+    });
+    await post(ok);
+    expect(email.sendReservationEmail).not.toHaveBeenCalled();
+  });
+
   it("409 when the slot overlaps an existing active reservation", async () => {
     await post(ok);
     expect((await post({ ...ok, start: "14:30", end: "15:30" })).status).toBe(

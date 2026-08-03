@@ -75,3 +75,18 @@ export function getArrowByType(
     ? getValidArrowMinute(value, step)
     : getValidArrowHour(value, step);
 }
+
+export function maxOf(type: TimePickerType): number {
+  return type === "minutes" ? 59 : 23;
+}
+
+/**
+ * Has this entry finished, so focus can move on? Two digits always have. One has
+ * only when no second digit could follow it: "3" must be 03:00 because 30-39 is
+ * not an hour, while "1" waits, since 10-19 are.
+ */
+export function isCompleteEntry(digits: string, type: TimePickerType): boolean {
+  if (digits.length >= 2) return true;
+  if (digits.length !== 1) return false;
+  return Number(digits) * 10 > maxOf(type);
+}

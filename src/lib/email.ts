@@ -154,6 +154,13 @@ function cancelButton(r: Reservation): string {
 }
 
 /**
+ * "skipped" means nothing was attempted (no API key, no address), which is how
+ * dev and the tests run. Only "failed" means the address was refused, so callers
+ * can tell "we chose not to send" from "we could not".
+ */
+export type EmailOutcome = "sent" | "skipped" | "failed";
+
+/**
  * Send a confirmation (on reservation) or cancellation (from the dashboard) email
  * to whoever booked. customBody (dashboard edit) overrides the template.
  */
@@ -161,12 +168,12 @@ export async function sendReservationEmail(
   reservation: Reservation,
   status: EmailStatus,
   customBody?: string,
-): Promise<void> {
+): Promise<EmailOutcome> {
   const resend = client();
-  if (!resend) return;
+  if (!resend) return "skipped";
   if (!reservation.email) {
     console.warn("[email] reservation has no email: skipping.");
-    return;
+    return "skipped";
   }
 
   const contact = getContactFromEnv();
@@ -174,24 +181,38 @@ export async function sendReservationEmail(
     customBody ?? emailBodyText(reservation, status, contact, boothName)
   ).trim();
 
-  await resend.emails.send({
-    from: from(),
-    to: [reservation.email],
-    subject: emailSubject(status, contact, boothName, reservation),
-    html: shell({
-      accent:
-        status === "confirmed"
-          ? BRAND
-          : status === "pending"
-            ? COLORS.statusPending
-            : COLORS.statusCancelled,
-      heading: emailHeading(status),
-      // No cancel link on a cancellation: there's nothing left to cancel.
-      bodyHtml:
-        textToHtml(body) +
-        (status === "cancelled" ? "" : cancelButton(reservation)),
-      org: contact.org,
-      url: contact.url,
-    }),
-  });
+  // The SDK reports API-level refusals (bad address, suppressed recipient) in
+  // the resolved value, not by throwing, so the result has to be inspected.
+  let result: { error?: unknown } | undefined;
+  try {
+    result = await resend.emails.send({
+      from: from(),
+      to: [reservation.email],
+      subject: emailSubject(status, contact, boothName, reservation),
+      html: shell({
+        accent:
+          status === "confirmed"
+            ? BRAND
+            : status === "pending"
+              ? COLORS.statusPending
+              : COLORS.statusCancelled,
+        heading: emailHeading(status),
+        // No cancel link on a cancellation: there's nothing left to cancel.
+        bodyHtml:
+          textToHtml(body) +
+          (status === "cancelled" ? "" : cancelButton(reservation)),
+        org: contact.org,
+        url: contact.url,
+      }),
+    });
+  } catch (err) {
+    console.error("[email] send threw:", err);
+    return "failed";
+  }
+
+  if (result?.error) {
+    console.error("[email] Resend refused the send:", result.error);
+    return "failed";
+  }
+  return "sent";
 }

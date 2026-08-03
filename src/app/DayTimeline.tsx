@@ -20,8 +20,9 @@ const toHHMM = (m: number) =>
 const TAG_FITS_PX = 96;
 
 /**
- * Availability graph for one booth+day. A preview only: the range is chosen in
- * the fields above, so nothing here handles clicks.
+ * Availability graph for one booth+day. With `onPick` it also picks the range:
+ * click an hour, or drag across several. Without it the graph is read-only, so
+ * the same component still serves anywhere a plain preview is wanted.
  */
 export default function DayTimeline({
   opens,
@@ -29,12 +30,15 @@ export default function DayTimeline({
   earliest,
   reserved,
   selection,
+  onPick,
 }: {
   opens: string;
   closes: string;
   earliest: string;
   reserved: Reserved[];
   selection: { start: string; end: string } | null;
+  /** Called with "HH:MM" bounds as the pick changes. Omit for a read-only graph. */
+  onPick?: (start: string, end: string) => void;
 }) {
   const opensMin = toMin(opens);
   const closesMin = toMin(closes);
@@ -78,6 +82,52 @@ export default function DayTimeline({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // One box per hour. A box is pickable only if it is wholly free and not past,
+  // so a click can never land on somebody else's booking.
+  const cells: { from: number; to: number; free: boolean }[] = [];
+  for (let m = opensMin; m < closesMin; m += 60) {
+    const to = Math.min(m + 60, closesMin);
+    cells.push({
+      from: m,
+      to,
+      free:
+        m >= earliestMin &&
+        !segments.some((s) => s.reserved && s.fromMin < to && s.toMin > m),
+    });
+  }
+
+  // The box the drag started on. Null when no drag is in progress. The ref is
+  // what handlers read, so a drag started this render sees its own anchor.
+  const [anchor, setAnchor] = useState<number | null>(null);
+  const anchorRef = useRef<number | null>(null);
+  anchorRef.current = anchor;
+
+  /**
+   * Pick from the anchor out towards `i`, stopping at the first taken box. The
+   * span therefore always stays inside one free stretch, however far the pointer
+   * travels, so a drag can never swallow a reservation in the middle.
+   */
+  const pickTo = (i: number, a = anchorRef.current) => {
+    if (a == null || !onPick) return;
+    let from = a;
+    let to = a;
+    for (let k = a; k >= Math.min(a, i) && cells[k].free; k--) from = k;
+    for (let k = a; k <= Math.max(a, i) && cells[k].free; k++) to = k;
+    onPick(toHHMM(cells[from].from), toHHMM(cells[to].to));
+  };
+
+  // The pointer is very often released outside the bar, so end the drag globally.
+  useEffect(() => {
+    if (anchor == null) return;
+    const stop = () => setAnchor(null);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [anchor]);
 
   let tag: { className: string; style: React.CSSProperties } | null = null;
   if (hasPick) {
@@ -160,6 +210,35 @@ export default function DayTimeline({
               }}
             />
           )}
+
+          {/* Sits above everything so it can take the pointer. Taken hours opt
+              out of pointer events entirely, so their tooltips still work. */}
+          {onPick &&
+            cells.map((c, i) => (
+              <button
+                key={`c${c.from}`}
+                type="button"
+                className={`daycal-cell ${c.free ? "free" : "taken"}`}
+                style={{
+                  left: `${pct(c.from)}%`,
+                  width: `${pct(c.to) - pct(c.from)}%`,
+                }}
+                disabled={!c.free}
+                aria-label={`Reserve ${toHHMM(c.from)} to ${toHHMM(c.to)}`}
+                title={`${toHHMM(c.from)} - ${toHHMM(c.to)}`}
+                onPointerDown={(e) => {
+                  if (!c.free) return;
+                  e.preventDefault(); // no text selection while dragging
+                  setAnchor(i);
+                  pickTo(i, i);
+                }}
+                onPointerEnter={() => {
+                  if (anchorRef.current != null) pickTo(i);
+                }}
+                // Keyboard and assistive tech never send pointer events.
+                onClick={() => pickTo(i, i)}
+              />
+            ))}
         </div>
 
         {tag && (

@@ -51,3 +51,28 @@ describe("date <-> field helpers", () => {
     expect(u.getArrowByType("55", 5, "minutes")).toBe("00");
   });
 });
+
+describe("isCompleteEntry", () => {
+  // Two digits are always the whole value.
+  it("treats two digits as finished", () => {
+    expect(u.isCompleteEntry("13", "hours")).toBe(true);
+    expect(u.isCompleteEntry("00", "minutes")).toBe(true);
+  });
+
+  // One digit is finished only when nothing could legally follow it.
+  it("waits on a digit that could still take a second", () => {
+    expect(u.isCompleteEntry("1", "hours")).toBe(false); // 10-19 exist
+    expect(u.isCompleteEntry("2", "hours")).toBe(false); // 20-23 exist
+    expect(u.isCompleteEntry("5", "minutes")).toBe(false); // 50-59 exist
+  });
+
+  it("finishes on a digit no second digit could follow", () => {
+    expect(u.isCompleteEntry("3", "hours")).toBe(true); // 30-39 is not an hour
+    expect(u.isCompleteEntry("9", "hours")).toBe(true);
+    expect(u.isCompleteEntry("6", "minutes")).toBe(true); // 60-69 is not a minute
+  });
+
+  it("is not finished on an empty field", () => {
+    expect(u.isCompleteEntry("", "hours")).toBe(false);
+  });
+});

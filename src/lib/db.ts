@@ -304,6 +304,16 @@ export async function createReservation(
   return reservation;
 }
 
+/**
+ * Remove one reservation outright, whatever its status. Only for undoing a
+ * booking whose confirmation could not be sent: it has to leave no trace and
+ * free the slot at once, which the soft-delete path deliberately does not do.
+ */
+export async function discardReservation(id: string): Promise<boolean> {
+  const res = prep("DELETE FROM reservations WHERE id = ?").run(id);
+  return res.changes > 0;
+}
+
 /** Permanently remove rows, guarded to soft-deleted ones only. Returns the count removed. */
 export async function deleteReservations(ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;

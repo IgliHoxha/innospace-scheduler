@@ -177,3 +177,34 @@ describe("status update + delete guard", () => {
     expect(await db.deleteReservations([])).toBe(0);
   });
 });
+
+describe("discardReservation", () => {
+  it("removes the row outright and frees the slot", async () => {
+    const db = await loadDb();
+    const r = await db.createReservation({
+      boothId: "booth-1",
+      startsAt: "2026-07-16T14:00",
+      endsAt: "2026-07-16T15:00",
+      fullName: "Ada Lovelace",
+      email: "ada@example.com",
+    });
+    expect(await db.discardReservation(r.id)).toBe(true);
+    expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
+
+    // The whole point: the same slot books again, which a soft delete would block.
+    await expect(
+      db.createReservation({
+        boothId: "booth-1",
+        startsAt: "2026-07-16T14:00",
+        endsAt: "2026-07-16T15:00",
+        fullName: "Grace Hopper",
+        email: "grace@example.com",
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("returns false for an id that is not there", async () => {
+    const db = await loadDb();
+    expect(await db.discardReservation("nope")).toBe(false);
+  });
+});

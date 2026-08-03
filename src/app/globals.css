@@ -497,6 +497,33 @@ a {
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
   pointer-events: none;
 }
+/* One transparent hour box per cell, above everything so it takes the pointer.
+   A taken hour opts out entirely, leaving the block beneath it hoverable. */
+.daycal-cell {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  /* No tap highlight or text selection while dragging across the bar. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+.daycal-cell.taken {
+  pointer-events: none;
+  cursor: default;
+}
+.daycal-cell.free:hover {
+  background: rgba(56, 189, 248, 0.1);
+}
+.daycal-cell.free:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
 .daycal-pick-tag {
   position: absolute;
   white-space: nowrap;

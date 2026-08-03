@@ -294,3 +294,59 @@ describe("linkified body", () => {
     expect(html).not.toContain("mailto:");
   });
 });
+
+describe("send outcome", () => {
+  afterEach(() => send.mockResolvedValue({ data: null, error: null }));
+
+  it("reports 'sent' when Resend accepts it", async () => {
+    await expect(
+      email.sendReservationEmail(RESERVATION, "confirmed"),
+    ).resolves.toBe("sent");
+  });
+
+  // The SDK reports refusals in the resolved value rather than by throwing, so
+  // a caller that only catches would save a booking nobody was ever told about.
+  it("reports 'failed' when Resend refuses the address", async () => {
+    send.mockResolvedValueOnce({
+      data: null,
+      error: { name: "validation_error", message: "Invalid `to` field" },
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      email.sendReservationEmail(RESERVATION, "confirmed"),
+    ).resolves.toBe("failed");
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it("reports 'failed' when the call throws", async () => {
+    send.mockRejectedValueOnce(new Error("ECONNRESET"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      email.sendReservationEmail(RESERVATION, "confirmed"),
+    ).resolves.toBe("failed");
+    err.mockRestore();
+  });
+
+  it("reports 'skipped', not 'failed', when there is no API key", async () => {
+    vi.resetModules();
+    vi.stubEnv("RESEND_API_KEY", "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fresh = await import("@/lib/email");
+    await expect(
+      fresh.sendReservationEmail(RESERVATION, "confirmed"),
+    ).resolves.toBe("skipped");
+    warn.mockRestore();
+  });
+
+  it("reports 'skipped' when the reservation carries no address", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(
+      email.sendReservationEmail(
+        { ...RESERVATION, email: undefined },
+        "confirmed",
+      ),
+    ).resolves.toBe("skipped");
+    warn.mockRestore();
+  });
+});
