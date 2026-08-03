@@ -64,6 +64,8 @@ declare global {
           "error-callback"?: () => void;
           "expired-callback"?: () => void;
           "timeout-callback"?: () => void;
+          "before-interactive-callback"?: () => void;
+          "after-interactive-callback"?: () => void;
         },
       ) => string;
       reset: (widget?: string) => void;
@@ -107,10 +109,10 @@ export default function ReservationClient({
     error: string;
   } | null>(null);
 
-  // Rendered explicitly rather than by the `cf-turnstile` class: auto-render
-  // leaves a 69px placeholder standing even when the visitor is never
-  // challenged. Rendering into an empty box keeps the form closed up.
+  // Turnstile reserves its box whether or not it ever shows anything, so the slot
+  // stays collapsed and only opens while Cloudflare says it is being interactive.
   const [turnstileToken, setTurnstileToken] = useState("");
+  const [challenging, setChallenging] = useState(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
@@ -132,11 +134,17 @@ export default function ReservationClient({
         action: "turnstile-spin-v2",
         appearance: "interaction-only",
         theme: "light",
-        callback: (token) => setTurnstileToken(token),
+        callback: (token) => {
+          setTurnstileToken(token);
+          setChallenging(false);
+        },
         // A token that errored, expired or timed out is no longer spendable.
         "error-callback": () => setTurnstileToken(""),
         "expired-callback": () => setTurnstileToken(""),
         "timeout-callback": () => setTurnstileToken(""),
+        // The only reliable "I am about to show something" signal there is.
+        "before-interactive-callback": () => setChallenging(true),
+        "after-interactive-callback": () => setChallenging(false),
       });
       widgetIdRef.current = id;
     };
@@ -253,6 +261,14 @@ export default function ReservationClient({
       return;
     }
     setGuestError(null);
+
+    // Nothing to spend yet. Reveal the widget rather than letting the server
+    // refuse a token the visitor was never shown a way to earn.
+    if (turnstileSiteKey && !turnstileToken) {
+      setChallenging(true);
+      setError("Please complete the human check below, then reserve again.");
+      return;
+    }
 
     setReservation(true);
     setError("");
@@ -499,7 +515,10 @@ export default function ReservationClient({
               src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
               strategy="afterInteractive"
             />
-            <div ref={turnstileRef} className="turnstile-slot" />
+            <div
+              ref={turnstileRef}
+              className={`turnstile-slot ${challenging ? "is-challenging" : ""}`}
+            />
           </>
         )}
 

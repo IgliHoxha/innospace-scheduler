@@ -629,9 +629,15 @@ a {
   border-color: #b45309;
 }
 
-/* Holds the Turnstile widget. Zero height until Cloudflare puts an iframe in it,
-   so an unchallenged visitor sees no gap; :not(:empty) is what re-opens it. */
-.turnstile-slot:not(:empty) {
+/* Turnstile sizes its own box even when interaction-only never shows anything,
+   so keep the slot collapsed and let the interactive callbacks open it. */
+.turnstile-slot {
+  height: 0;
+  overflow: hidden;
+}
+.turnstile-slot.is-challenging {
+  height: auto;
+  overflow: visible;
   margin-top: 14px;
 }
 
