@@ -1,8 +1,8 @@
 .DEFAULT_GOAL := help
-.PHONY: help install install-local setup dev build start lint lint-fix format format-check fmt check typecheck typecheck-tests test test-watch coverage verify clean docker-build docker-up docker-down docker-logs
+.PHONY: help install install-local setup dev build start lint lint-fix format format-check fmt check typecheck typecheck-tests test test-watch coverage verify clean secret purge docker-build docker-up docker-down docker-logs
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 install: ## Install dependencies
 	npm install
@@ -63,6 +63,32 @@ test-watch: ## Run the tests in watch mode
 
 coverage: ## Run the tests with a V8 coverage report
 	npm run test:coverage
+
+## ---- Production config (Fly + Cloudflare) ----
+
+# Cloudflare credentials for the purge, from a gitignored file. Kept out of .env
+# because that one is the app's own config and is read by the dev server.
+-include .env.deploy
+
+# The only long-lived cached page. Availability expires on its own in 30s.
+PURGE_URL ?= https://scheduler.innospacetirana.com/
+
+secret: ## Set a Fly secret AND purge the edge: make secret KEY=CLOSE_HOUR VALUE=23
+	@test -n "$(KEY)" || { echo "Usage: make secret KEY=NAME VALUE=value"; exit 1; }
+	@test -n "$(VALUE)" || { echo "Usage: make secret KEY=NAME VALUE=value"; exit 1; }
+	flyctl secrets set $(KEY)="$(VALUE)" --config fly.toml.example
+	@$(MAKE) --no-print-directory purge
+
+purge: ## Purge the booking page from Cloudflare's edge cache
+	@test -n "$(CLOUDFLARE_ZONE_ID)" || { echo "CLOUDFLARE_ZONE_ID not set (see .env.deploy)"; exit 1; }
+	@test -n "$(CLOUDFLARE_API_TOKEN)" || { echo "CLOUDFLARE_API_TOKEN not set (see .env.deploy)"; exit 1; }
+	@umask 077; printf 'Authorization: Bearer %s\n' "$(CLOUDFLARE_API_TOKEN)" > .cf-hdr.tmp; \
+	  curl --fail-with-body -sS -X POST \
+	    "https://api.cloudflare.com/client/v4/zones/$(CLOUDFLARE_ZONE_ID)/purge_cache" \
+	    -H "@.cf-hdr.tmp" -H "Content-Type: application/json" \
+	    --data '{"files":["$(PURGE_URL)"]}' > /dev/null; \
+	  rc=$$?; rm -f .cf-hdr.tmp; \
+	  test $$rc -eq 0 && echo "purged $(PURGE_URL)" || { echo "purge failed"; exit $$rc; }
 
 ## ---- Docker ----
 

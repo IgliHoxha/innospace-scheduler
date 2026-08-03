@@ -15,6 +15,10 @@
 .env
 .env*.local
 
+# Cloudflare deploy credentials for `make secret` / `make purge`. Kept out of
+# .env because that file is loaded into the dev server's own process.
+.env.deploy
+
 # data: the SQLite DB (+ WAL/SHM sidecars), keep out of git
 /data/*.db
 /data/*.db-wal
