@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { buildDaySegments, dragRange } from "@/lib/timeline";
+import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
 
 /** A reservation already taken for the booth+day, times as "HH:MM". */
 interface Reserved {
   start: string;
   end: string;
   label: string;
-  by: string | null;
+  /** Booked from this browser; the board never learns who anyone else is. */
+  mine: boolean;
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -31,6 +33,9 @@ export default function DayTimeline({
   onPick,
   step,
   minMinutes,
+  contact,
+  boothName = "booth",
+  dateLabel = "that day",
 }: {
   opens: string;
   closes: string;
@@ -43,6 +48,10 @@ export default function DayTimeline({
   step: number;
   /** MIN_RESERVATION_MINUTES, so a drag can't return a range the form rejects. */
   minMinutes: number;
+  /** Where an enquiry about a taken slot goes. Omit and taken blocks stay inert. */
+  contact?: { phone: string; email: string };
+  boothName?: string;
+  dateLabel?: string;
 }) {
   const opensMin = toMin(opens);
   const closesMin = toMin(closes);
@@ -159,6 +168,39 @@ export default function DayTimeline({
     onPick(toHHMM(r.from), toHHMM(r.to));
   };
 
+  // Keyed on the range, not an index, so the popover closes itself if that booking
+  // is gone by the time availability reloads.
+  const [asking, setAsking] = useState<{ from: number; to: number } | null>(
+    null,
+  );
+  const askOn =
+    (asking &&
+      segments.find(
+        (s) => s.reserved && s.fromMin === asking.from && s.toMin === asking.to,
+      )) ||
+    null;
+  const askMessage = askOn
+    ? slotEnquiry(
+        boothName,
+        dateLabel,
+        toHHMM(askOn.fromMin),
+        toHHMM(askOn.toMin),
+      )
+    : "";
+  const askSubject = askOn
+    ? `Booking enquiry: ${boothName}, ${dateLabel} ${toHHMM(askOn.fromMin)} - ${toHHMM(askOn.toMin)}`
+    : "";
+
+  // Escape closes it; the overlay handles clicks outside.
+  useEffect(() => {
+    if (!askOn) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAsking(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [askOn]);
+
   // Ends whatever gesture is running, for an unmount mid-drag.
   const endRef = useRef<(() => void) | null>(null);
   useEffect(() => () => endRef.current?.(), []);
@@ -255,21 +297,25 @@ export default function DayTimeline({
 
           {segments.map((s, i) =>
             s.reserved ? (
-              <div
+              <button
                 key={i}
+                type="button"
                 className="daycal-block"
                 style={{
                   left: `${pct(s.fromMin)}%`,
                   width: `${pct(s.toMin) - pct(s.fromMin)}%`,
                 }}
                 title={`${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · ${
-                  s.reserved.src.by || "Reserved"
-                }`}
+                  s.reserved.src.mine ? "Your booking" : "Booked"
+                }${contact ? " - click to request information" : ""}`}
+                aria-haspopup={contact ? "dialog" : undefined}
+                disabled={!contact}
+                onClick={() => setAsking({ from: s.fromMin, to: s.toMin })}
               >
                 <span className="daycal-block-label">
-                  {s.reserved.src.by || "Reserved"}
+                  {s.reserved.src.mine ? "You" : "Booked"}
                 </span>
-              </div>
+              </button>
             ) : null,
           )}
 
@@ -337,6 +383,54 @@ export default function DayTimeline({
           <i className="sw pick" /> Your pick
         </span>
       </div>
+
+      {askOn && contact && (
+        <div
+          className="modal-overlay"
+          onClick={() => setAsking(null)}
+          role="presentation"
+        >
+          <div
+            className="modal ask-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Get in touch about this booking"
+          >
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setAsking(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <h2>Get in touch</h2>
+            <p className="modal-sub">
+              Choose how you&apos;d like to reach us about {boothName} on{" "}
+              {dateLabel}, {toHHMM(askOn.fromMin)} - {toHHMM(askOn.toMin)}:
+            </p>
+            <div className="ask-actions">
+              <a
+                className="btn"
+                href={mailtoLink(contact.email, askSubject, askMessage)}
+                onClick={() => setAsking(null)}
+              >
+                Email
+              </a>
+              <a
+                className="btn whatsapp"
+                href={whatsappLink(contact.phone, askMessage)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setAsking(null)}
+              >
+                WhatsApp
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

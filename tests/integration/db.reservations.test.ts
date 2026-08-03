@@ -35,10 +35,10 @@ describe("createReservation + overlap", () => {
 
     const ranges = await db.reservedRanges("booth-1", D);
     expect(ranges).toHaveLength(1);
-    expect(ranges[0]).toMatchObject({
+    // Times only: the name must not leave the row for the public board.
+    expect(ranges[0]).toEqual({
       startsAt: at("10:00"),
       endsAt: at("11:00"),
-      reservedBy: "Ada",
     });
   });
 

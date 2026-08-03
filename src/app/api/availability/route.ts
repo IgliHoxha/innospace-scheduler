@@ -39,12 +39,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Times only: the board says a slot is taken, never who by.
   const reserved = (await reservedRanges(boothId, date)).map((b) => ({
     start: timeOf(b.startsAt),
     end: timeOf(b.endsAt),
     label: rangeLabel(b.startsAt, b.endsAt),
-    // Everyone shares the booths, so the board shows the holder's name only, nothing else.
-    by: b.reservedBy,
   }));
 
   const opens = `${pad2(openHour())}:00`;

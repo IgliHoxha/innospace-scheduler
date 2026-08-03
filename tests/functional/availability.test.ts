@@ -44,7 +44,7 @@ describe("GET /api/availability", () => {
     expect((await get("booth=booth-1&date=1999-01-01")).status).toBe(400);
   });
 
-  it("returns reserved ranges, opening hours, and who holds each slot", async () => {
+  it("returns reserved ranges and opening hours", async () => {
     await seatOne("Ada");
     const res = await get(`booth=booth-1&date=${today}`);
     expect(res.status).toBe(200);
@@ -61,11 +61,10 @@ describe("GET /api/availability", () => {
       start: "14:00",
       end: "15:00",
       label: "14:00 - 15:00",
-      by: "Ada",
     });
   });
 
-  it("exposes the name only: never the email, note or id", async () => {
+  it("exposes times only: never a name, email, note or id", async () => {
     await db.createReservation({
       boothId: "booth-1",
       startsAt: `${today}T14:00`,
@@ -75,12 +74,13 @@ describe("GET /api/availability", () => {
       note: "Board meeting",
     });
     const body = await (await get(`booth=booth-1&date=${today}`)).json();
+    // The board is public, so a slot may say it is taken and nothing more.
     expect(Object.keys(body.reserved[0]).sort()).toEqual([
-      "by",
       "end",
       "label",
       "start",
     ]);
+    expect(JSON.stringify(body)).not.toContain("Ada");
   });
 });
 

@@ -25,8 +25,8 @@ interface Reserved {
   start: string;
   end: string;
   label: string;
-  /** Who holds it. Null only if the reservation never carried a name. */
-  by: string | null;
+  /** Booked from this browser, the only way a login-less screen can know it's yours. */
+  mine: boolean;
 }
 
 interface Availability {
@@ -48,6 +48,33 @@ const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
+
+// Bookings made from this browser, so the board can say "You" without the server
+// ever telling one visitor who another one is. Kept short: it is a convenience.
+const MINE_KEY = "innospace.mine";
+const MINE_MAX = 50;
+const slotKey = (boothId: string, startsAt: string) => `${boothId}|${startsAt}`;
+
+function readMine(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : [];
+  } catch {
+    return []; // private mode, or somebody else's data in the key
+  }
+}
+
+function rememberMine(key: string): void {
+  try {
+    const next = [key, ...readMine().filter((k) => k !== key)].slice(
+      0,
+      MINE_MAX,
+    );
+    localStorage.setItem(MINE_KEY, JSON.stringify(next));
+  } catch {
+    /* storage unavailable: the board just won't say "You" */
+  }
+}
 
 declare global {
   interface Window {
@@ -80,6 +107,7 @@ export default function ReservationClient({
   autoApproveMaxHours,
   minReservationMinutes,
   stepMinutes,
+  contact,
   turnstileSiteKey,
 }: {
   booths: Booth[];
@@ -90,6 +118,8 @@ export default function ReservationClient({
   minReservationMinutes: number;
   /** The minute grid every time snaps to. */
   stepMinutes: number;
+  /** Where an enquiry about somebody else's booking goes. */
+  contact: { phone: string; email: string };
   /** Cloudflare widget key. Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
 }) {
@@ -176,7 +206,18 @@ export default function ReservationClient({
       );
       const json = (await res.json()) as { ok: boolean } & Availability;
       if (id !== reqId.current) return;
-      setAvail(json.ok ? json : null);
+      const owned = readMine();
+      setAvail(
+        json.ok
+          ? {
+              ...json,
+              reserved: json.reserved.map((b) => ({
+                ...b,
+                mine: owned.includes(slotKey(boothId, `${date}T${b.start}`)),
+              })),
+            }
+          : null,
+      );
       setStart("");
       setEnd("");
     } finally {
@@ -304,6 +345,10 @@ export default function ReservationClient({
             : `Reserved ${when}. We've emailed ${guest.guest.email} a confirmation, with a link to cancel if your plans change.`,
         );
         setNote("");
+        // Recorded before the reload, so the block comes back labelled "You".
+        if (json.reservation?.startsAt) {
+          rememberMine(slotKey(boothId, json.reservation.startsAt));
+        }
         await loadAvailability();
       } else {
         if (json.field)
@@ -440,6 +485,9 @@ export default function ReservationClient({
                 selection={start && end ? { start, end } : null}
                 step={stepMinutes}
                 minMinutes={minReservationMinutes}
+                contact={contact}
+                boothName={selectedBooth?.name ?? "the booth"}
+                dateLabel={dates.find((d) => d.value === date)?.label ?? date}
                 // The graph is another way to choose a range, so it writes the same state the fields do.
                 onPick={(from, to) => {
                   setStart(from);

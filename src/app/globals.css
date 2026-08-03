@@ -512,13 +512,28 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 8px;
+  /* 6, not 8: "Booked" only just clears an hour-wide block at the default font. */
+  padding: 0 6px;
   border-radius: 9px;
   overflow: hidden;
   /* Taken time reads muted red against the free bar. */
   background: #fdeeee;
   border: 1px solid #f3c9c9;
   color: #b02525;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A <button>, so it stays styled when contact is unset and it can't be clicked. */
+.daycal-block:disabled {
+  cursor: default;
+  opacity: 1;
+  color: #b02525;
+}
+
+.daycal-block:not(:disabled):hover {
+  background: #fce4e4;
+  border-color: #eab3b3;
 }
 
 .daycal-block-label {
@@ -1249,6 +1264,51 @@ tr:last-child td {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* "Get in touch" about somebody else's booking, matching innospacetirana.com's. */
+.ask-modal {
+  position: relative;
+  max-width: 440px;
+}
+
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.modal-close:hover {
+  color: var(--text);
+  background: #f4f6f8;
+}
+
+.ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ask-actions .btn {
+  flex: 1 1 150px;
+}
+
+/* WhatsApp's own green, so the channel is recognisable before the label is read. */
+.btn.whatsapp {
+  background: #25d366;
+}
+
+.btn.whatsapp:hover {
+  background: #1eb85a;
+  box-shadow: 0 6px 18px rgba(37, 211, 102, 0.3);
 }
 
 @keyframes overlay-in {

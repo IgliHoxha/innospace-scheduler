@@ -226,15 +226,10 @@ export async function queryReservations(
 export async function reservedRanges(
   boothId: string,
   date: string,
-): Promise<
-  {
-    startsAt: string;
-    endsAt: string;
-    reservedBy: string | null;
-  }[]
-> {
+): Promise<{ startsAt: string; endsAt: string }[]> {
+  // Times only: this feeds the public board, so no name ever leaves the row.
   const rows = prep(
-    `SELECT startsAt, endsAt, fullName AS reservedBy
+    `SELECT startsAt, endsAt
        FROM reservations
        WHERE boothId = ? AND startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
        ORDER BY startsAt`,
@@ -242,7 +237,6 @@ export async function reservedRanges(
   return rows.map((r) => ({
     startsAt: String(r.startsAt),
     endsAt: String(r.endsAt),
-    reservedBy: r.reservedBy == null ? null : String(r.reservedBy),
   }));
 }
 
