@@ -629,6 +629,12 @@ a {
   border-color: #b45309;
 }
 
+/* Holds the Turnstile widget. Zero height until Cloudflare puts an iframe in it,
+   so an unchallenged visitor sees no gap; :not(:empty) is what re-opens it. */
+.turnstile-slot:not(:empty) {
+  margin-top: 14px;
+}
+
 .reserve-bar {
   display: flex;
   align-items: center;

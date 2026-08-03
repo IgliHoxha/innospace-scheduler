@@ -49,10 +49,26 @@ const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
 
-/** Turnstile manages its own widget; we only ever ask it for a fresh token. */
 declare global {
   interface Window {
-    turnstile?: { reset: (widget?: string) => void };
+    // Injected by the Cloudflare Turnstile script when the booking widget is on.
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          action?: string;
+          appearance?: "always" | "execute" | "interaction-only";
+          theme?: "light" | "dark" | "auto";
+          callback?: (token: string) => void;
+          "error-callback"?: () => void;
+          "expired-callback"?: () => void;
+          "timeout-callback"?: () => void;
+        },
+      ) => string;
+      reset: (widget?: string) => void;
+      remove: (widget?: string) => void;
+    };
   }
 }
 
@@ -90,6 +106,53 @@ export default function ReservationClient({
     field: GuestField;
     error: string;
   } | null>(null);
+
+  // Rendered explicitly rather than by the `cf-turnstile` class: auto-render
+  // leaves a 69px placeholder standing even when the visitor is never
+  // challenged. Rendering into an empty box keeps the form closed up.
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!turnstileSiteKey) return;
+    let cancelled = false;
+    let id: string | null = null;
+
+    // The script is lazy, so poll for it rather than racing its load event.
+    const render = () => {
+      if (cancelled) return;
+      const ts = window.turnstile;
+      if (!ts || !turnstileRef.current) {
+        window.setTimeout(render, 200);
+        return;
+      }
+      id = ts.render(turnstileRef.current, {
+        sitekey: turnstileSiteKey,
+        action: "turnstile-spin-v2",
+        appearance: "interaction-only",
+        theme: "light",
+        callback: (token) => setTurnstileToken(token),
+        // A token that errored, expired or timed out is no longer spendable.
+        "error-callback": () => setTurnstileToken(""),
+        "expired-callback": () => setTurnstileToken(""),
+        "timeout-callback": () => setTurnstileToken(""),
+      });
+      widgetIdRef.current = id;
+    };
+    render();
+
+    return () => {
+      cancelled = true;
+      try {
+        if (id && window.turnstile) window.turnstile.remove(id);
+      } catch {
+        /* widget already gone */
+      }
+      widgetIdRef.current = null;
+      setTurnstileToken("");
+    };
+  }, [turnstileSiteKey]);
 
   // Reload what's taken whenever booth or date changes. A request id guards
   // against a slow response overwriting a newer selection.
@@ -195,14 +258,6 @@ export default function ReservationClient({
     setError("");
     setSuccess(null);
     try {
-      // Turnstile injects its own hidden input and owns the token's lifecycle,
-      // so read it at submit time rather than mirroring it into React state.
-      const turnstileToken = (
-        document.querySelector(
-          'input[name="cf-turnstile-response"]',
-        ) as HTMLInputElement | null
-      )?.value;
-
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -242,7 +297,10 @@ export default function ReservationClient({
       setReservation(false);
       // A token is single-use, so the widget needs a fresh one either way:
       // without this a second booking (or a retry after an error) is refused.
-      window.turnstile?.reset();
+      if (turnstileSiteKey) {
+        setTurnstileToken("");
+        window.turnstile?.reset(widgetIdRef.current ?? undefined);
+      }
     }
   }
 
@@ -431,21 +489,17 @@ export default function ReservationClient({
           aria-required={mustNote}
         />
 
-        {/* Cloudflare renders itself in here and drops a hidden token input
-            alongside. interaction-only keeps it invisible unless it wants a
-            challenge, so an ordinary booking sees nothing. */}
+        {/* Empty until Cloudflare decides to challenge, and collapsed to nothing
+            while it stays that way, so an ordinary booking sees no gap here.
+            The script is loaded without render=explicit's usual onload hook: the
+            effect above polls for it instead. */}
         {turnstileSiteKey && (
           <>
             <Script
-              src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+              src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
               strategy="afterInteractive"
             />
-            <div
-              className="cf-turnstile"
-              data-sitekey={turnstileSiteKey}
-              data-appearance="interaction-only"
-              data-action="turnstile-spin-v2"
-            />
+            <div ref={turnstileRef} className="turnstile-slot" />
           </>
         )}
 
