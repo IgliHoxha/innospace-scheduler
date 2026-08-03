@@ -116,8 +116,7 @@ export async function POST(req: NextRequest) {
   return res;
 }
 
-// Session-guarded so a forged cross-site DELETE can't clear the cookie: sameSite
-// =lax withholds it cross-site, so requireSession rejects what a real logout passes.
+// Session-guarded so a forged cross-site DELETE can't clear the cookie sameSite already withholds.
 export async function DELETE(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;

@@ -11,10 +11,7 @@ import {
 
 export const runtime = "nodejs";
 
-/**
- * Admin-only: approve, cancel or delete any reservation. Whoever booked cancels
- * through the signed link in their email instead (see ../cancel).
- */
+/** Admin-only approve, cancel or delete; whoever booked uses the signed link in their email. */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

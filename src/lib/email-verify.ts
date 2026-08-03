@@ -1,15 +1,11 @@
-// Does this address's domain actually accept mail? Server-only (node:dns), so it
-// must never reach a client component: guest.ts holds the structural rules the
-// form shares. This catches the common real failure, a mistyped or dead domain,
-// without a paid third party. It cannot tell whether one mailbox exists.
+// Does the domain accept mail at all? Server-only (node:dns); guest.ts holds the rules the form shares.
 import { promises as dns } from "node:dns";
 
 const NO_MAIL = "That email domain doesn't accept mail. Please check it.";
 const DISPOSABLE_MSG =
   "Please use a permanent email address so we can reach you about your booking.";
 
-// Throwaway providers. Deliberately short: a booking we can never follow up on
-// is the problem, and a long list is a maintenance liability that ages badly.
+// Throwaway providers, deliberately short: a long list ages badly and is a maintenance liability.
 const DISPOSABLE = new Set([
   "10minutemail.com",
   "guerrillamail.com",
@@ -23,8 +19,7 @@ const DISPOSABLE = new Set([
   "yopmail.com",
 ]);
 
-// Answers are cached per domain: bookings cluster on a handful of providers, and
-// a DNS result is good for far longer than one request.
+// Cached per domain: bookings cluster on a few providers, and DNS outlives one request.
 const TTL_MS = 60 * 60 * 1000;
 const cache = new Map<string, { accepts: boolean; at: number }>();
 
@@ -35,15 +30,11 @@ export function resetEmailVerifyCache(): void {
   cache.clear();
 }
 
-/**
- * true / false, or null when DNS itself could not answer. A transient failure
- * must not block a booking, so only a definitive "no such domain" says false.
- */
+/** true/false, or null when DNS couldn't answer: only a definitive "no such domain" says false. */
 async function domainAcceptsMail(domain: string): Promise<boolean | null> {
   try {
     const mx = await dns.resolveMx(domain);
-    // A published MX is the answer either way. "." alone is RFC 7505's null MX,
-    // an explicit refusal of mail, so it must not fall through to the A rule.
+    // A published MX settles it; "." alone is RFC 7505's null MX, an explicit refusal of mail.
     if (mx.length > 0) return mx.some((r) => r.exchange && r.exchange !== ".");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;

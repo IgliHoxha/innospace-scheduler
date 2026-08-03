@@ -37,8 +37,7 @@ export default function DashboardClient({
   contact: ContactInfo;
   booths: Booth[];
 }) {
-  // Resolve booth names from props, never from env: this is a client bundle where
-  // the env-backed lookup would throw.
+  // Booth names from props, never env: the env-backed lookup would throw in a client bundle.
   const boothName = (id: string | undefined) => boothNameIn(booths, id);
 
   const [data, setData] = useState<ReservationPage>(initialData);

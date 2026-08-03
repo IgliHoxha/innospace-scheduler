@@ -22,11 +22,7 @@ function toDate(hhmm: string) {
 
 const toHHMM = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-/**
- * Start / End as typed HH:MM fields: type over the digits, arrow up/down to
- * step, left/right to move between fields. It only collects the two times;
- * opening hours, minimums and clashes are enforced by the form and the server.
- */
+/** Start/End as typed HH:MM fields; it only collects the times, the form and server enforce the rules. */
 export default function TimeRangePicker({
   value,
   onChange,
@@ -47,8 +43,7 @@ export default function TimeRangePicker({
   const fromDate = toDate(from);
   const toDate_ = toDate(to);
 
-  // Pre-fill the default, and reset it when the booth or day changes, so what the
-  // fields show and what the form holds never disagree.
+  // Pre-fill and reset on booth or day change, so the fields and the form never disagree.
   React.useEffect(() => {
     onChangeRef.current({ from: defaultRange.from, to: defaultRange.to });
   }, [defaultRange.from, defaultRange.to]);

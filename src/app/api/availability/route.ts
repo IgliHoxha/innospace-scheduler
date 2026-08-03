@@ -20,10 +20,7 @@ import { pad2 } from "@/lib/utils";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * What's taken for a booth on a day, plus `earliest`, the first time still
- * reservable. Public, like the booking screen it feeds.
- */
+/** What's taken for a booth on a day, plus the first still-reservable time. Public, like the form. */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const boothId = sp.get("booth") ?? "";
@@ -46,14 +43,12 @@ export async function GET(req: NextRequest) {
     start: timeOf(b.startsAt),
     end: timeOf(b.endsAt),
     label: rangeLabel(b.startsAt, b.endsAt),
-    // Everyone shares the booths, so the board shows who holds a slot: the name
-    // only, never the email, the note or anything else on the row.
+    // Everyone shares the booths, so the board shows the holder's name only, nothing else.
     by: b.reservedBy,
   }));
 
   const opens = `${pad2(openHour())}:00`;
-  // Today, anything before "now" is gone. Rounded onto the step grid because the
-  // picker seeds from this, and 15:22 would seed a time nothing can reserve.
+  // Today, anything before now is gone, rounded onto the step grid since the picker seeds from it.
   const earliest =
     date === todayYMD()
       ? minutesToTime(

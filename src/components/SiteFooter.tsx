@@ -1,5 +1,4 @@
-// A clean white footer bar shown at the bottom of every authenticated screen,
-// mirroring innospacetirana.com's footer (trimmed to a single line).
+// A white footer bar on every authenticated screen, mirroring innospacetirana.com's.
 export function SiteFooter() {
   return (
     <footer className="site-footer">

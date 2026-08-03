@@ -48,8 +48,7 @@ describe("reservation display helpers", () => {
     );
   });
 
-  // Guards the client-crash regression: these helpers must never read env
-  // (SCHEDULER_BOOTHS) themselves, so they stay usable in a browser bundle.
+  // These helpers must never read env themselves, so they stay usable in a browser bundle.
   it("stays pure with SCHEDULER_BOOTHS unset (no env read of its own)", () => {
     vi.stubEnv("SCHEDULER_BOOTHS", "");
     expect(t.boothLabel(base, boothName)).toBe("Booth 1");
@@ -149,8 +148,7 @@ describe("contact footer", () => {
     ]);
   });
 
-  // EMAIL_SIGNOFF_NAME already carries the org ("... Team"), and the mail shell
-  // prints it again in the footer, so the sign-off must not repeat it.
+  // EMAIL_SIGNOFF_NAME already carries the org and the footer prints it, so don't repeat it.
   it("does not repeat the org inside the sign-off", () => {
     expect(t.signOff(contact)).not.toContain("Test Org");
   });

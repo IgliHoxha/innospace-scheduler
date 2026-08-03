@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
 import { DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_USER } from "../helpers/fixtures";
 
-// resetApp() re-imports the route (and with it a fresh in-memory limiter Map),
-// so every test starts clean.
+// resetApp() re-imports the route with a fresh limiter Map, so every test starts clean.
 type Route = typeof import("@/app/api/login/route");
 let route: Route;
 

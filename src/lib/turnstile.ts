@@ -1,6 +1,4 @@
-// Cloudflare Turnstile: proves a booking came from a browser, not a script.
-// Both keys are optional feature-flags (like RESEND_API_KEY): with either unset
-// the check is skipped entirely, so dev and the test suite need no Cloudflare.
+// Turnstile proves a booking came from a browser; with either key unset the check is skipped.
 import { optionalEnv } from "./env-app";
 
 const VERIFY_URL =
@@ -13,28 +11,19 @@ export function turnstileEnabled(): boolean {
   );
 }
 
-/**
- * The public widget key, and only when the pair is complete. Half a
- * configuration renders no widget at all, so the form can never show a check
- * that the route isn't enforcing.
- */
+/** The public widget key, only when the pair is complete, so the form never shows an unenforced check. */
 export function turnstileSiteKey(): string | undefined {
   return turnstileEnabled() ? optionalEnv("TURNSTILE_SITE_KEY") : undefined;
 }
 
-/**
- * Verify a widget token with Cloudflare. Fails closed: a malformed answer, a
- * non-200, or a network error all count as "not verified", so an attacker can't
- * get in by making the check itself fail.
- */
+/** Verify a token with Cloudflare, failing closed: any error counts as not verified. */
 export async function verifyTurnstile(
   token: unknown,
   ip?: string,
 ): Promise<boolean> {
   const secret = optionalEnv("TURNSTILE_SECRET_KEY");
   if (!secret) return true; // switched off: nothing to verify against
-  // Logged because it never reaches siteverify: without this, a widget failing
-  // to solve looks exactly like nobody booking at all in Cloudflare's analytics.
+  // Logged because it never reaches siteverify, where it would otherwise look like nobody booking.
   if (typeof token !== "string" || !token) {
     console.warn(
       "[turnstile] booking rejected: no widget token in the request",

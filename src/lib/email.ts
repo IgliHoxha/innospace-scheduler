@@ -21,32 +21,26 @@ function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
 
-// Gmail rasterises SVG through its image proxy and can't recolour inside an
-// image, so only the teal mark stays artwork and the wordmark is HTML text that
-// dark-mode clients invert. The proxy caches per URL: bump on any artwork edit.
+// Only the mark is artwork; the wordmark is HTML text so dark-mode clients can invert it.
 const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
   return `${baseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
-// logo-mark.svg is 329x308, so a 32px-tall render is 34px wide. Mail clients that
-// ignore CSS need the width attribute or they reserve the full intrinsic size.
+// 329x308 artwork, so 32px tall is 34px wide; clients ignoring CSS need the width attribute.
 const MARK_HEIGHT = 32;
 const MARK_WIDTH = 34;
 
 const FONT_STACK =
   "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
 
-// The wordmark is the fixed brand lockup, not the configurable BUSINESS_NAME.
-// Flat inline spans, never a table: Gmail cut the rounded card in two at the
-// table version of this.
+// The fixed brand lockup, not BUSINESS_NAME; flat spans, since Gmail cut the table version in two.
 function logoLockup(org: string): string {
   return `<img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
 
-// Built on first send, not at import, so a keyless dev/test run never constructs
-// one. The null isn't cached, so a key set later still takes effect.
+// Built on first send, not at import, so a keyless dev run never constructs one.
 let _resend: Resend | null = null;
 function client(): Resend | null {
   if (_resend) return _resend;
@@ -71,15 +65,11 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// One pass, so the URL branch claims a URL carrying "@" or "+" instead of a later
-// branch half-eating it. Each tail ends on a word character or digit to keep
-// punctuation out; phones need a leading "+" so years and prices aren't linked.
+// One pass, so the URL branch claims a URL carrying "@" or "+" before a later branch half-eats it.
 const LINKABLE =
   /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(\+\d[\d\s().-]{7,}\d)/g;
 
-// Plain text -> safe HTML. Addresses and phones are linked here rather than left
-// bare: Gmail and iOS auto-link them in their own blue, clashing with the
-// brand-coloured URLs alongside.
+// Plain text to safe HTML; addresses are linked here, or clients auto-link them in a clashing blue.
 function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
@@ -135,9 +125,7 @@ function shell(opts: {
   </div>`;
 }
 
-// Self-service cancel link. Booking needs no account, so this token is the only
-// proof of ownership there is: it names one reservation and expires when that
-// slot ends, since a passed booking can't be cancelled anyway.
+// The cancel token is the only proof of ownership: one reservation, expiring when that slot ends.
 function cancelButton(r: Reservation): string {
   if (!r.id || !r.endsAt) return "";
   const expiresAt = epochMsOf(r.endsAt);
@@ -153,17 +141,10 @@ function cancelButton(r: Reservation): string {
     </div>`;
 }
 
-/**
- * "skipped" means nothing was attempted (no API key, no address), which is how
- * dev and the tests run. Only "failed" means the address was refused, so callers
- * can tell "we chose not to send" from "we could not".
- */
+/** "skipped" is nothing attempted (no key or address); only "failed" means the address was refused. */
 export type EmailOutcome = "sent" | "skipped" | "failed";
 
-/**
- * Send a confirmation (on reservation) or cancellation (from the dashboard) email
- * to whoever booked. customBody (dashboard edit) overrides the template.
- */
+/** Send a confirmation or cancellation to whoever booked; customBody overrides the template. */
 export async function sendReservationEmail(
   reservation: Reservation,
   status: EmailStatus,
@@ -181,8 +162,7 @@ export async function sendReservationEmail(
     customBody ?? emailBodyText(reservation, status, contact, boothName)
   ).trim();
 
-  // The SDK reports API-level refusals (bad address, suppressed recipient) in
-  // the resolved value, not by throwing, so the result has to be inspected.
+  // The SDK reports refusals in the resolved value rather than throwing, so inspect the result.
   let result: { error?: unknown } | undefined;
   try {
     result = await resend.emails.send({

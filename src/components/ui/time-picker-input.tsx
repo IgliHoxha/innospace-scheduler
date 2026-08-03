@@ -23,12 +23,7 @@ export interface TimePickerInputProps extends Omit<
   onLeftFocus?: () => void;
 }
 
-/**
- * One editable time field (hours or minutes). A real text box: it shows a caret,
- * takes a single digit as readily as two, and puts the caret after the digits on
- * entry, where the first keystroke then replaces what is there. Arrow up/down
- * steps; left/right cross to the sibling only from the edge.
- */
+/** One editable time field: caret at the end on entry, first keystroke replaces, arrows step. */
 const TimePickerInput = React.forwardRef<
   HTMLInputElement,
   TimePickerInputProps
@@ -52,17 +47,13 @@ const TimePickerInput = React.forwardRef<
     },
     ref,
   ) => {
-    // What is being typed, before it is padded. Null means "show the real value":
-    // holding the raw text lets a lone "1" stay "1" instead of snapping to "01"
-    // under the caret, while the committed date is always the padded one.
+    // The raw text being typed, so a lone "1" doesn't snap to "01" under the caret.
     const [draft, setDraft] = React.useState<string | null>(null);
 
-    // True from the moment the field is entered until its first keystroke, which
-    // is the one that replaces rather than appends.
+    // True from entering the field until its first keystroke, the one that replaces.
     const freshRef = React.useRef(true);
 
-    // The field is two digits wide, so there is nowhere useful to put the caret
-    // but the end: a click landing left of a digit would otherwise type behind it.
+    // Two digits wide, so the only useful caret position is the end.
     const caretToEnd = (el: HTMLInputElement) => {
       const n = el.value.length;
       el.setSelectionRange(n, n);
@@ -131,8 +122,7 @@ const TimePickerInput = React.forwardRef<
         type={type}
         inputMode="decimal"
         onChange={handleChange}
-        // Caret to the end on entry, and again after the click that follows, which
-        // the browser would otherwise drop wherever it landed.
+        // Caret to the end on entry and after the click, which would otherwise drop it mid-field.
         onFocus={(e) => {
           freshRef.current = true;
           caretToEnd(e.currentTarget);

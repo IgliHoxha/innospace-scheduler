@@ -35,8 +35,7 @@ describe("checkEmailDeliverable", () => {
     expect(r.ok === false && r.error).toContain("doesn't accept mail");
   });
 
-  // RFC 7505: a lone "." says the domain takes no mail at all, which outranks
-  // any A record it happens to publish. example.com really does this.
+  // RFC 7505: a lone "." says the domain takes no mail, outranking any A record. example.com does this.
   it("rejects a null MX even when the domain has an A record", async () => {
     resolveMx.mockResolvedValue([{ exchange: ".", priority: 0 }]);
     resolve.mockResolvedValue(["203.0.113.10"]);
@@ -63,8 +62,7 @@ describe("checkEmailDeliverable", () => {
     );
   });
 
-  // A resolver outage must never stop people booking: the Resend gate still
-  // catches a genuinely bad address afterwards.
+  // A resolver outage must never stop bookings; the Resend gate still catches a bad address.
   it("fails open when DNS itself cannot answer", async () => {
     resolveMx.mockRejectedValue(dnsError("ETIMEOUT"));
     await expect(

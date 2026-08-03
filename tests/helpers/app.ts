@@ -29,11 +29,7 @@ export function cleanupTmp(): void {
   }
 }
 
-/**
- * Reset the module registry and point the DB at a new file, so db.ts's lazy
- * singleton and booths.ts's cache start clean. Import the db/route modules after
- * calling it: they all share that one fresh DB until the next reset.
- */
+/** Reset the module registry and point the DB at a new file, so the lazy singletons start clean. */
 export function resetApp(): void {
   vi.resetModules();
   process.env.DATA_FILE = freshDataFile();
@@ -55,11 +51,7 @@ export function token(session: Session): string {
   return createSessionToken(session);
 }
 
-/**
- * Build a NextRequest with an optional JSON body and session cookie. Pass
- * `rawBody` instead of `body` to send an unserialised payload (e.g. malformed
- * JSON, to exercise a route's `req.json().catch(...)` fallback).
- */
+/** Build a NextRequest with an optional JSON body and cookie; `rawBody` sends an unserialised payload. */
 export function makeRequest(
   url: string,
   opts: {

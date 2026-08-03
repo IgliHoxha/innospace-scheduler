@@ -7,10 +7,7 @@ import { ACTIVE_STATUSES } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Cancel from the link in a confirmation email. The signed token is the whole
- * authorisation: it names one reservation and expires when that slot ends.
- */
+/** Cancel from the emailed link; the signed token names one reservation and expires with it. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -32,8 +29,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Already cancelled (or deleted): report success so a double-click reads as
-  // done rather than as an error.
+  // Already cancelled: report success so a double-click reads as done rather than as an error.
   if (!ACTIVE_STATUSES.includes(existing.status as "confirmed" | "pending")) {
     return NextResponse.json({ ok: true, alreadyCancelled: true });
   }
@@ -46,7 +42,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // No email here: this is the person's own action, and the cancellation
-  // template is written for the admin cancelling on them.
+  // No email: this is the person's own action, and the template is written for the admin cancelling.
   return NextResponse.json({ ok: true, alreadyCancelled: false });
 }

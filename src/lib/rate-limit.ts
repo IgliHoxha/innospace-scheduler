@@ -1,6 +1,4 @@
-// In-memory brute-force guard: a module-level Map, which holds because one
-// long-lived Fly machine serves everything. Buckets are separate so one attacker
-// can't lock everyone out.
+// In-memory brute-force guard, viable because one long-lived Fly machine serves everything.
 
 import { requireIntEnv } from "./env-app";
 
@@ -48,10 +46,7 @@ function ipPolicy(): Policy {
   };
 }
 
-/**
- * Public booking form: the login thresholds, but banning is off. A ban would be a
- * self-inflicted DoS on the shared office IP everyone books from.
- */
+/** The login thresholds without banning: a ban would DoS the shared office IP everyone books from. */
 function bookingPolicy(): Policy {
   return {
     maxAttempts: posIntEnv("LOGIN_IP_MAX_ATTEMPTS"),
@@ -190,10 +185,7 @@ export function registerBooking(ip: string): RateStatus {
   return hit(bookingKey(ip), bookingPolicy());
 }
 
-/**
- * Best-effort client IP: behind Cloudflare then Fly, the real one is in their own
- * headers. Always a string, so unknown clients still share a bucket.
- */
+/** Best-effort client IP from the Cloudflare and Fly headers; always a string, so unknowns share one. */
 export function clientKey(headers: Headers): string {
   return (
     headers.get("cf-connecting-ip") ||

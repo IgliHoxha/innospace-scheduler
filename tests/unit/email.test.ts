@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reservation } from "@/lib/types";
 import { verifyCancelToken } from "@/lib/auth";
 
-// Resend is stubbed at the class level so no request ever leaves the process;
-// `send` is shared across instances so the lazy singleton is still observable.
+// Resend is stubbed at class level; `send` is shared so the lazy singleton stays observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
 vi.mock("resend", () => ({
   Resend: class {
@@ -73,8 +72,7 @@ describe("email logo", () => {
     expect(await reservationHtml()).toContain('alt="Innospace Tirana"');
   });
 
-  // Gmail can recolour HTML but never the inside of an image, so the mark is the
-  // only part shipped as artwork: teal, which reads on either background.
+  // Gmail can't recolour inside an image, so only the mark ships as artwork, teal on either ground.
   it("ships a teal-only mark asset with no wordmark and no media query", () => {
     const svg = readFileSync(
       join(process.cwd(), "public", "logo-mark.svg"),
@@ -85,11 +83,7 @@ describe("email logo", () => {
     expect(svg).not.toContain("prefers-color-scheme");
   });
 
-  // The point of the whole exercise: the wordmark is HTML text inked neutral, so
-  // a dark-mode client inverts it to white exactly as it does the body copy.
-  // A <table> here made Gmail cut the bordered card container in two, rendering
-  // the header as a detached box above a "show trimmed content" expander. Keep
-  // the header markup flat: inline spans only.
+  // The wordmark is HTML text inked neutral so dark mode inverts it; flat spans, never a table.
   it("builds the header without a table, so the card is not split", async () => {
     const html = await reservationHtml();
     expect(html).not.toContain("<table");
@@ -122,8 +116,7 @@ describe("email logo", () => {
 });
 
 describe("body copy colour", () => {
-  // A mail client that dark-mode inverts keeps hue and flips lightness, so the
-  // old plum ink (#524552) came back pink instead of white. Neutral ink only.
+  // Dark-mode inversion keeps hue and flips lightness, so the old plum ink came back pink.
   it("inks paragraphs with a neutral black, never the brand plum", async () => {
     const html = await reservationHtml();
     expect(html).toContain("color:#000000;font-size:14px");
@@ -178,8 +171,7 @@ describe("cancel link", () => {
     expect(await reservationHtml()).not.toContain("/cancel?token=");
   });
 
-  // Same inversion rule as the body copy: neutral ink, never the plum-tinted
-  // footer grey, which a dark-mode client would bring back pink.
+  // Same inversion rule as the body copy: neutral ink, never the plum-tinted grey.
   it("inks the fine print neutral", async () => {
     expect(await reservationHtml()).toContain(
       'color:#767676;font-size:12px">Only you have this link',
@@ -304,8 +296,7 @@ describe("send outcome", () => {
     ).resolves.toBe("sent");
   });
 
-  // The SDK reports refusals in the resolved value rather than by throwing, so
-  // a caller that only catches would save a booking nobody was ever told about.
+  // The SDK reports refusals in the resolved value, so catching alone would save a silent booking.
   it("reports 'failed' when Resend refuses the address", async () => {
     send.mockResolvedValueOnce({
       data: null,

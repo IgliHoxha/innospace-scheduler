@@ -15,26 +15,13 @@ const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const toHHMM = (m: number) =>
   `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-// A pick block narrower than this (px) can't hold its "HH:MM - HH:MM" tag, so the
-// tag slides beside the block instead of centring inside it.
+// A pick narrower than this (px) can't hold its time tag, so the tag floats beside it.
 const TAG_FITS_PX = 96;
 
-// Travel (px) before a press counts as a drag. Below it the gesture stays a click
-// and keeps its whole hour, so a shaky hand doesn't silently shrink the pick.
+// Travel (px) before a press is a drag; below it the gesture stays a click and keeps its hour.
 const DRAG_SLOP_PX = 4;
 
-// TEMPORARY drag instrumentation: set to false to silence it, and take the dlog
-// calls out once the behaviour is settled.
-const DEBUG_DRAG = true;
-const dlog = (...args: unknown[]) => {
-  if (DEBUG_DRAG) console.log("[daycal]", ...args);
-};
-
-/**
- * Availability graph for one booth+day. With `onPick` it also picks the range:
- * click an hour, or drag for any length on the step grid. Without it the graph is
- * read-only, so the same component still serves anywhere a plain preview is wanted.
- */
+/** Availability graph for one booth+day; with `onPick` it also picks the range, by click or drag. */
 export default function DayTimeline({
   opens,
   closes,
@@ -100,8 +87,7 @@ export default function DayTimeline({
     return () => ro.disconnect();
   }, []);
 
-  // One box per hour. A box is pickable only if it is wholly free and not past,
-  // so a click can never land on somebody else's booking.
+  // One box per hour, pickable only if wholly free and not past.
   const cells: { from: number; to: number; free: boolean }[] = [];
   for (let m = opensMin; m < closesMin; m += 60) {
     const to = Math.min(m + 60, closesMin);
@@ -114,8 +100,7 @@ export default function DayTimeline({
     });
   }
 
-  // The gesture in flight: where it began and the free run it may not leave. Held
-  // in a ref so the window listeners read live values without resubscribing.
+  // The gesture in flight, in a ref so the window listeners read live values.
   const dragRef = useRef<{
     anchorMin: number;
     startX: number;
@@ -145,18 +130,11 @@ export default function DayTimeline({
 
   const pickCell = (i: number) => {
     if (onPick && cells[i].free) {
-      dlog(
-        "pickCell (whole hour)",
-        toHHMM(cells[i].from),
-        "-",
-        toHHMM(cells[i].to),
-      );
       onPick(toHHMM(cells[i].from), toHHMM(cells[i].to));
     }
   };
 
-  // Rebound every render so the listeners below always run against this render's
-  // segments and bar size, while subscribing only once per gesture.
+  // Rebound every render so the listeners run against this render's segments and size.
   const onStopRef = useRef<() => void>(() => {});
   onStopRef.current = () => {
     const d = dragRef.current;
@@ -170,19 +148,13 @@ export default function DayTimeline({
     if (!movedRef.current) {
       if (Math.abs(clientX - d.startX) < DRAG_SLOP_PX) return;
       movedRef.current = true;
-      dlog("drag started, travelled", Math.round(clientX - d.startX), "px");
     }
-    const at = minuteAt(clientX);
-    const r = dragRange(d.anchorMin, at, d.stretch, step, minMinutes);
-    dlog(
-      "move  pointer",
-      toHHMM(Math.round(at)),
-      "| anchor",
-      toHHMM(Math.round(d.anchorMin)),
-      "| stretch",
-      `${toHHMM(d.stretch.from)}-${toHHMM(d.stretch.to)}`,
-      "=> emit",
-      `${toHHMM(r.from)}-${toHHMM(r.to)}`,
+    const r = dragRange(
+      d.anchorMin,
+      minuteAt(clientX),
+      d.stretch,
+      step,
+      minMinutes,
     );
     onPick(toHHMM(r.from), toHHMM(r.to));
   };
@@ -191,29 +163,12 @@ export default function DayTimeline({
   const endRef = useRef<(() => void) | null>(null);
   useEffect(() => () => endRef.current?.(), []);
 
-  /**
-   * Track the gesture on the window: the pointer leaves the bar almost at once and
-   * is released anywhere. Subscribed here rather than from an effect so no movement
-   * can slip through the render that a state change would have to wait for.
-   */
+  /** Track the gesture on the window, subscribed here so no movement slips through a render. */
   const beginDrag = (i: number, clientX: number) => {
     const stretch = stretchFor(i);
-    if (!stretch) {
-      dlog("down on box", i, "-> no free stretch, ignoring");
-      return;
-    }
-    // The box you pressed, not the pixel you pressed it on: pressing at 09:50 and
-    // at 09:09 both start the range at 09:00, so a drag and the click it might
-    // have been never disagree about where the range began. Only the end moves.
+    if (!stretch) return;
+    // The box pressed, not the pixel: a drag and the click it might have been start alike.
     const anchorMin = Math.max(cells[i].from, stretch.from);
-    dlog(
-      "down  box",
-      `${toHHMM(cells[i].from)}-${toHHMM(cells[i].to)}`,
-      "| anchor",
-      toHHMM(anchorMin),
-      "| stretch",
-      `${toHHMM(stretch.from)}-${toHHMM(stretch.to)}`,
-    );
     movedRef.current = false;
     dragRef.current = {
       anchorMin,
@@ -223,20 +178,11 @@ export default function DayTimeline({
     };
 
     const move = (e: PointerEvent) => onMoveRef.current(e.clientX);
-    // A press that never travelled is a click, and only the release proves it, so
-    // the hour is taken there. Picking on press would show an hour and then visibly
-    // collapse it the moment the drag began. A cancelled gesture (the OS or the
-    // browser claiming the pointer mid-drag) is not a click and must commit nothing.
+    // A press that never travelled is a click, proven only on release; a cancel commits nothing.
     const finish = (commit: boolean) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
-      dlog(
-        commit ? "up" : "CANCEL",
-        movedRef.current
-          ? "(was a drag, keeping range)"
-          : "(no travel: a click)",
-      );
       if (commit) onStopRef.current();
       dragRef.current = null;
       endRef.current = null;
@@ -350,17 +296,14 @@ export default function DayTimeline({
                   width: `${pct(c.to) - pct(c.from)}%`,
                 }}
                 disabled={!c.free}
-                // No title: a tooltip naming the box contradicts the pick tag the
-                // moment a drag makes the range anything other than that hour.
+                // No title: naming the box contradicts the pick tag once a drag resizes it.
                 aria-label={`Reserve ${toHHMM(c.from)} to ${toHHMM(c.to)}`}
                 onPointerDown={(e) => {
                   if (!c.free) return;
                   e.preventDefault(); // no text selection while dragging
                   beginDrag(i, e.clientX);
                 }}
-                // Only for keyboard and assistive tech, which send no pointer events
-                // at all: detail 0 is what tells those clicks from a released press,
-                // already handled above.
+                // Keyboard only: detail 0 tells an assistive click from a released press.
                 onClick={(e) => {
                   if (e.detail === 0) pickCell(i);
                 }}

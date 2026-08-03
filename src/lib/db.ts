@@ -48,13 +48,10 @@ export class UserBusyError extends Error {
   }
 }
 
-// The whole schema, created on connect. No migration runner: every statement is
-// IF NOT EXISTS, so changing a column means editing here AND wiping the DB file,
-// because nothing rewrites a table that already exists.
+// The whole schema, created on connect. No migration runner: changing a column means wiping the file.
 function initSchema(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
-  // Serves the dashboard list's ORDER BY startsAt DESC, createdAt DESC: an
-  // ascending composite is reverse-scanned, so LIMIT stops early (no sort).
+  // Serves the dashboard's ORDER BY: reverse-scanned, so LIMIT stops early without a sort.
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
   );
@@ -63,9 +60,7 @@ function initSchema(db: Database.Database): void {
   );
 }
 
-// Lazy singleton: opened on the first query, not at import (never runs at build).
-// _stmts caches prepared statements for this connection (see prep); both reset
-// together, so the cache can never outlive the connection it was compiled against.
+// Lazy singleton opened on first query, with its statement cache, so neither outlives the other.
 let _db: Database.Database | null = null;
 let _stmts: Map<string, Database.Statement> | null = null;
 function getDb(): Database.Database {
@@ -81,9 +76,7 @@ function getDb(): Database.Database {
   return db;
 }
 
-// A prepared statement compiled once per connection and reused. Pass only static
-// SQL: a query whose text varies per call (dynamic WHERE / placeholder count)
-// would fill the cache with one-off entries, so those keep using db.prepare.
+// A statement compiled once per connection; static SQL only, or the cache fills with one-offs.
 function prep(sql: string): Database.Statement {
   const db = getDb();
   let stmt = _stmts!.get(sql);
@@ -229,10 +222,7 @@ export async function queryReservations(
   };
 }
 
-/**
- * Active (confirmed or pending) reservations for a booth on a day. The date is a
- * prefix of the datetime, so a range scan over startsAt uses the index.
- */
+/** Active reservations for a booth on a day; the date is a datetime prefix, so the index is used. */
 export async function reservedRanges(
   boothId: string,
   date: string,
@@ -256,10 +246,24 @@ export async function reservedRanges(
   }));
 }
 
-/**
- * Create a reservation. The overlap check and insert share one transaction, so
- * two racers for the same slot can't both win. Pending and confirmed both hold it.
- */
+/** What this email already holds that day, across every booth, since a run can span booths. */
+export async function heldRangesForEmail(
+  email: string,
+  date: string,
+): Promise<{ startsAt: string; endsAt: string }[]> {
+  const rows = prep(
+    `SELECT startsAt, endsAt
+       FROM reservations
+       WHERE LOWER(email) = ? AND startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
+       ORDER BY startsAt`,
+  ).all(email.toLowerCase(), `${date}T00:00`, `${date}T23:59`) as Row[];
+  return rows.map((r) => ({
+    startsAt: String(r.startsAt),
+    endsAt: String(r.endsAt),
+  }));
+}
+
+/** Create a reservation; the overlap check and insert share a transaction, so racers can't both win. */
 export async function createReservation(
   input: ReservationInput,
   status: Extract<ReservationStatus, "confirmed" | "pending"> = "confirmed",
@@ -275,9 +279,7 @@ export async function createReservation(
   };
 
   const tx = db.transaction((r: Reservation) => {
-    // Overlap on half-open ranges, so touching edges don't clash. Reservations
-    // are same-day, so the startsAt >= day-start bound keeps the index scan to
-    // this date instead of all history.
+    // Half-open, so touching edges don't clash; the day-start bound keeps the scan off all history.
     const dayStart = `${r.startsAt!.slice(0, 10)}T00:00`;
     const clash = prep(
       `SELECT 1 FROM reservations
@@ -286,8 +288,7 @@ export async function createReservation(
          LIMIT 1`,
     ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
-    // Self-overlap: one person can't hold two booths at once. Keyed on the email
-    // they booked with, which is all the identity a login-less booking has.
+    // Self-overlap: one person can't hold two booths at once, keyed on the email they booked with.
     if (r.email) {
       const selfClash = prep(
         `SELECT 1 FROM reservations
@@ -304,11 +305,7 @@ export async function createReservation(
   return reservation;
 }
 
-/**
- * Remove one reservation outright, whatever its status. Only for undoing a
- * booking whose confirmation could not be sent: it has to leave no trace and
- * free the slot at once, which the soft-delete path deliberately does not do.
- */
+/** Hard-delete, only for undoing a booking whose confirmation failed: it must free the slot at once. */
 export async function discardReservation(id: string): Promise<boolean> {
   const res = prep("DELETE FROM reservations WHERE id = ?").run(id);
   return res.changes > 0;

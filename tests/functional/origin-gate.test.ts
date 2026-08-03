@@ -1,6 +1,4 @@
-// One pass over every state-changing handler: a disallowed Origin must be
-// refused 403 before any work. The valid token on authenticated routes proves
-// the 403 comes from the origin gate running first, not from the auth guard.
+// One pass over every state-changing handler: a disallowed Origin must be refused before any work.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminToken, makeRequest, params, resetApp } from "../helpers/app";
 
@@ -61,9 +59,7 @@ describe("origin gate on mutating handlers", () => {
     await expectForbidden(res);
   });
 
-  // Regression: every page posts to this app's own API from the host it is
-  // served on. That is same-origin, never CSRF, so it must pass without the
-  // app's own origin being listed in ALLOWED_ORIGINS.
+  // Regression: a page posting to its own API is same-origin, never CSRF, so it must pass unlisted.
   it("allows the app calling its own API (same-origin, not on the list)", async () => {
     const route = await import("@/app/api/login/route");
     const res = await route.DELETE(

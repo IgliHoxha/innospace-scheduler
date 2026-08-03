@@ -3,10 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
-/**
- * Shared confirm modal. Escape and overlay clicks close it, and focus moves to
- * the safe action on open, so keyboard users aren't stranded behind the overlay.
- */
+/** Shared confirm modal; Escape and overlay close it, and focus opens on the safe action. */
 export function ConfirmDialog({
   title,
   onClose,

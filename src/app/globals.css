@@ -3,9 +3,7 @@
 @tailwind utilities;
 
 :root {
-  /* The UI is light-only, so say so: without this a dark-mode OS makes the browser
-     render native controls (login inputs, scrollbars) in dark chrome on these
-     white surfaces. */
+  /* Light-only UI: without this a dark-mode OS renders native controls in dark chrome. */
   color-scheme: light;
   /* Innospace Tirana brand palette */
   --brand: #25bdad;
@@ -108,8 +106,7 @@ a {
   transform: translateY(-1px);
 }
 
-/* Pill buttons matching innospacetirana.com's .btn (rounded-full + soft brand
-   shadow + smooth hover). */
+/* Pill buttons matching innospacetirana.com's .btn. */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -382,8 +379,7 @@ a {
 
 .time-row {
   display: flex;
-  /* Bottom-align so the pill can centre on the input boxes via its own margin,
-     the same way the clock icon does. */
+  /* Bottom-align so the pill centres on the input boxes via its own margin. */
   align-items: flex-end;
   gap: 14px;
   flex-wrap: wrap;
@@ -542,17 +538,14 @@ a {
   /* Light sky blue so the pick is unmistakable next to the teal "You" blocks. */
   background: rgba(56, 189, 248, 0.16);
   border: 2px solid #38bdf8;
-  /* Chrome floors border-width to whole pixels, so the half pixel that makes the
-     edge read at 2.5 comes from a faded ring inside it. Inset, so the bar clipping
-     its children can't shave it off a pick sitting at either end of the day. */
+  /* Chrome floors border-width to whole pixels, so the half pixel is an inset ring instead. */
   box-shadow:
     inset 0 0 0 1px rgba(56, 189, 248, 0.45),
     0 0 0 3px rgba(56, 189, 248, 0.16);
   pointer-events: none;
 }
 
-/* One transparent hour box per cell, above everything so it takes the pointer.
-   A taken hour opts out entirely, leaving the block beneath it hoverable. */
+/* One transparent hour box per cell, above everything; a taken hour opts out of pointer events. */
 .daycal-cell {
   position: absolute;
   top: -1px;
@@ -571,15 +564,12 @@ a {
   cursor: default;
 }
 
-/* Deliberately not the pick's sky blue: an hour box tinted with it reads as a
-   second, wider selection sitting beside the real one. This is the bar's own
-   dark teal, so hovering says "clickable" and only the pick says "picked". */
+/* Not the pick's sky blue: an hour box tinted with it reads as a second, wider selection. */
 .daycal-cell.free:hover {
   background: rgba(15, 91, 82, 0.06);
 }
 
-/* Mid-drag the pick itself is the feedback: box-by-box hovering would read as the
-   selection jumping from one hour to the next. */
+/* Mid-drag the pick is the feedback; box-by-box hovering would read as the selection jumping. */
 .daycal-bar.dragging .daycal-cell.free:hover {
   background: transparent;
 }
@@ -742,8 +732,7 @@ a {
   border-color: #b45309;
 }
 
-/* Turnstile sizes its own box even when interaction-only never shows anything,
-   so keep the slot collapsed and let the interactive callbacks open it. */
+/* Turnstile sizes its own box, so keep the slot collapsed until the interactive callbacks open it. */
 .turnstile-slot {
   height: 0;
   overflow: hidden;
@@ -1379,8 +1368,7 @@ tr:last-child td {
   line-height: 1;
 }
 
-/* Errors normally tuck straight under their field, but this one opens a section
-   and would otherwise sit flush against the card above it. */
+/* This error opens a section, so unlike the others it must not sit flush against the card above. */
 .error.for-note {
   margin-top: 18px;
 }
@@ -1416,8 +1404,7 @@ tr:last-child td {
 }
 
 /* ---- Time range picker (openstatus-style typed fields) ---- */
-/* Preflight is off to protect the app's own CSS, so the Input's utility border
-   needs the solid style preflight would otherwise have supplied. */
+/* Preflight is off to protect the app's CSS, so the Input's border needs an explicit style. */
 .tp-scope input {
   border-style: solid;
 }

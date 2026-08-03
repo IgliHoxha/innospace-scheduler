@@ -1,5 +1,4 @@
-// Pure helpers for the day-timeline availability view (member reservation screen).
-// Minutes are minutes-since-midnight; no I/O, no env, so they unit-test in isolation.
+// Pure day-timeline helpers in minutes-since-midnight; no I/O or env, so they test alone.
 
 export interface DaySegment<T> {
   fromMin: number;
@@ -8,10 +7,7 @@ export interface DaySegment<T> {
   reserved: T | null;
 }
 
-/**
- * Split the open day [opensMin, closesMin) into consecutive reserved and free
- * segments. Reservations are clamped to the window, and dropped if fully outside.
- */
+/** Split the open day into consecutive reserved and free segments, clamped to the window. */
 export function buildDaySegments<T extends { start: number; end: number }>(
   opensMin: number,
   closesMin: number,
@@ -48,10 +44,7 @@ export function snapToStep(min: number, stepMin: number): number {
   return Math.round(min / stepMin) * stepMin;
 }
 
-/**
- * A sensible end for a start picked inside a free stretch: the preferred length,
- * clamped to the stretch. Null when even the minimum won't fit before its limit.
- */
+/** A sensible end for a start, clamped to its free stretch; null when the minimum won't fit. */
 export function suggestedEndMin(
   startMin: number,
   limitMin: number,
@@ -62,13 +55,7 @@ export function suggestedEndMin(
   return Math.min(limitMin, startMin + Math.max(minDurationMin, preferredMin));
 }
 
-/**
- * The range a drag covers: from where it started to where the pointer is now,
- * snapped outward onto the step grid and never leaving the free stretch it began
- * in. Grows away from the anchor to the shortest bookable length, so a drag can't
- * hand the form a range it would only reject, and stops at the stretch's end when
- * that is all there is.
- */
+/** The range a drag covers, snapped outward onto the step grid and kept inside its free stretch. */
 export function dragRange(
   anchorMin: number,
   atMin: number,
@@ -77,9 +64,7 @@ export function dragRange(
   minDurationMin: number,
 ): { from: number; to: number } {
   const clamp = (m: number) => Math.min(stretch.to, Math.max(stretch.from, m));
-  // Outward, not to the nearest mark: a press 2 minutes shy of the hour would
-  // otherwise round forward onto it and the range would appear to start in the
-  // next box. Expanding both ways keeps everything swept over inside the range.
+  // Outward, not nearest: a press just shy of the hour would otherwise start the range on it.
   let from = clamp(Math.floor(Math.min(anchorMin, atMin) / stepMin) * stepMin);
   let to = clamp(Math.ceil(Math.max(anchorMin, atMin) / stepMin) * stepMin);
 
@@ -99,11 +84,7 @@ export function dragRange(
   return { from, to };
 }
 
-/**
- * The end to pair with a start that just moved, clamped to whichever free stretch
- * the start landed in. Null when it landed in none of them, so the caller can
- * leave the end untouched and let validation do the talking.
- */
+/** The end for a start that just moved, clamped to its free stretch; null when it landed in none. */
 export function endForStart(
   startMin: number,
   gaps: readonly { from: number; to: number }[],

@@ -4,6 +4,7 @@ import {
   findOverlap,
   meetsMinDuration,
   noteRequiredFor,
+  runTotalMinutes,
 } from "@/lib/reservation-rules";
 
 describe("meetsMinDuration", () => {
@@ -41,5 +42,65 @@ describe("findOverlap", () => {
   });
   it("returns null when the slot is free", () => {
     expect(findOverlap(660, 780, reserved)).toBeNull();
+  });
+});
+
+describe("runTotalMinutes", () => {
+  const held = (...pairs: [number, number][]) =>
+    pairs.map(([start, end]) => ({ start, end }));
+
+  it("is just the reservation when nothing else is held", () => {
+    expect(runTotalMinutes(600, 660, [])).toBe(60);
+  });
+
+  it("ignores bookings that do not touch it", () => {
+    // 10:00-11:00 alongside a 14:00-15:00 held elsewhere in the day.
+    expect(runTotalMinutes(600, 660, held([840, 900]))).toBe(60);
+  });
+
+  it("adds a booking that ends exactly where this one starts", () => {
+    expect(runTotalMinutes(600, 660, held([540, 600]))).toBe(120);
+  });
+
+  it("adds one that starts exactly where this one ends", () => {
+    expect(runTotalMinutes(600, 660, held([660, 720]))).toBe(120);
+  });
+
+  it("counts a run reached through another booking", () => {
+    // 09:00-10:00 + 10:00-11:00 held, booking 11:00-12:00: all three chain.
+    expect(runTotalMinutes(660, 720, held([540, 600], [600, 660]))).toBe(180);
+  });
+
+  it("chains in both directions at once", () => {
+    expect(runTotalMinutes(600, 660, held([540, 600], [660, 720]))).toBe(180);
+  });
+
+  it("treats a gap too small to book as no break at all", () => {
+    // 5 minutes clear, which nobody else could reserve: still one sitting.
+    expect(runTotalMinutes(605, 665, held([540, 600]), 15)).toBe(120);
+  });
+
+  it("lets a real gap break the run", () => {
+    // A clear hour between them, so the earlier booking doesn't count.
+    expect(runTotalMinutes(660, 720, held([540, 600]), 15)).toBe(60);
+  });
+
+  it("sums booked time, not the span the run covers", () => {
+    // 09:00-10:00 then 10:10-11:10 is 2 hours booked across 2h10m of clock.
+    expect(runTotalMinutes(610, 670, held([540, 600]), 15)).toBe(120);
+  });
+
+  it("ignores an overlapping booking, which is a clash and not a run", () => {
+    // 14:30-15:30 over a held 14:00-15:00: double booking, not a longer sitting.
+    expect(runTotalMinutes(870, 930, held([840, 900]), 15)).toBe(60);
+  });
+
+  it("ignores a zero-length row rather than looping on it", () => {
+    expect(runTotalMinutes(600, 660, held([600, 600]))).toBe(60);
+  });
+
+  it("counts held time once even if a row somehow appears twice", () => {
+    // The second copy overlaps the run the first made, so it adds nothing.
+    expect(runTotalMinutes(600, 660, held([540, 600], [540, 600]))).toBe(120);
   });
 });

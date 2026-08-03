@@ -1,12 +1,9 @@
 // Deterministic baseline env for every test file, then per-test temp-DB cleanup.
-// Tests override individual vars with vi.stubEnv and restore them themselves.
 import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
 import { SIGNING } from "./helpers/fixtures";
 
-// Required env vars have no code default, so the suite supplies a baseline. It
-// mirrors the previous defaults, so value-dependent tests keep asserting the
-// same numbers; individual tests still override with vi.stubEnv.
+// Required vars have no code default, so the suite supplies a baseline mirroring the old ones.
 const REQUIRED_BASELINE: Record<string, string> = {
   AUTH_SECRET: SIGNING,
   SCHEDULER_BOOTHS: "booth-1:Booth 1:2,booth-2:Booth 2:4,booth-3:Booth 3:6",
@@ -35,14 +32,12 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
   process.env[key] = value;
 }
 
-// Optional feature-flags stay OFF for a deterministic suite (email skipped,
-// CORS wildcard). DATA_FILE is set per-test by loadDb() to a temp file.
+// Optional feature-flags stay OFF for determinism; DATA_FILE is set per-test by loadDb().
 for (const key of ["RESEND_API_KEY", "ALLOWED_ORIGINS", "DATA_FILE"]) {
   delete process.env[key];
 }
 
-// Mocks persist across vi.resetModules(), so clear call history each test (the
-// mockResolvedValue implementations set in vi.mock factories survive a clear).
+// Mocks survive vi.resetModules(), so clear call history each test while implementations stay.
 afterEach(() => {
   vi.clearAllMocks();
   cleanupTmp();

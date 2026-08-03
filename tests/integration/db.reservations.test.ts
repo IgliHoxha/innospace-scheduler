@@ -208,3 +208,60 @@ describe("discardReservation", () => {
     expect(await db.discardReservation("nope")).toBe(false);
   });
 });
+
+describe("heldRangesForEmail", () => {
+  it("returns that person's active ranges for the day, in order", async () => {
+    await reserve("14:00", "15:00");
+    await reserve("09:00", "10:00", { boothId: "booth-2" });
+    const held = await db.heldRangesForEmail("ada@example.com", D);
+    expect(held).toEqual([
+      { startsAt: at("09:00"), endsAt: at("10:00") },
+      { startsAt: at("14:00"), endsAt: at("15:00") },
+    ]);
+  });
+
+  it("spans booths, since a run is a run whichever booth each part is on", async () => {
+    await reserve("14:00", "15:00");
+    await reserve("15:00", "16:00", { boothId: "booth-3" });
+    expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
+  });
+
+  it("matches the email whatever its case", async () => {
+    await reserve("14:00", "15:00", { email: "Ada@Example.COM" });
+    expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(1);
+  });
+
+  it("leaves out other people", async () => {
+    await reserve("14:00", "15:00", { email: "grace@example.com" });
+    expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+  });
+
+  it("leaves out other days", async () => {
+    await reserve("14:00", "15:00", {
+      startsAt: "2026-07-17T14:00",
+      endsAt: "2026-07-17T15:00",
+    });
+    expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+  });
+
+  it("leaves out cancelled ones, which hold nothing", async () => {
+    const r = await reserve("14:00", "15:00");
+    await db.updateReservationStatus(r.id, "cancelled");
+    expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+  });
+
+  it("counts pending ones, which do hold their slot", async () => {
+    await reserve("14:00", "15:00", {}).then(() => undefined);
+    await db.createReservation(
+      {
+        boothId: "booth-2",
+        startsAt: at("16:00"),
+        endsAt: at("17:00"),
+        email: "ada@example.com",
+        fullName: "Ada",
+      },
+      "pending",
+    );
+    expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
+  });
+});

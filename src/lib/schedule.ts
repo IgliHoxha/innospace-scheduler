@@ -1,5 +1,4 @@
-// Time rules. A reservation is a start/end local datetime "YYYY-MM-DDTHH:MM"
-// with no TZ suffix, so set TZ to make the server agree with the space.
+// Time rules; a reservation is local "YYYY-MM-DDTHH:MM" with no TZ, so TZ must match the space.
 import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
 import { timeOf, durationMinutes, ymd } from "./datetime";
@@ -56,10 +55,7 @@ export function noteRequired(startsAt: string, endsAt: string): boolean {
   );
 }
 
-/**
- * Round a minute-of-day up onto the step grid: "now" is an arbitrary minute and
- * anything off the grid is unreservable, so round up, never down.
- */
+/** Round a minute onto the step grid, always up: anything off the grid is unreservable. */
 export function ceilToStep(minutes: number): number {
   const step = stepMinutes();
   return Math.ceil(minutes / step) * step;

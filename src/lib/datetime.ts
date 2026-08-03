@@ -1,5 +1,4 @@
-// Helpers for the app's "YYYY-MM-DDTHH:MM" local wall-clock format. No env or
-// domain types, so the mailer, dashboard and picker can all share them.
+// Helpers for the app's "YYYY-MM-DDTHH:MM" local format, with no env or domain types, so all can share.
 import { pad2 } from "./utils";
 
 const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
@@ -12,8 +11,7 @@ export function isDateTime(value: string | undefined): boolean {
 
 /** Epoch ms for a local "YYYY-MM-DDTHH:MM", read in the server's TZ. NaN if malformed. */
 export function epochMsOf(dt: string): number {
-  // Range-checked, not just shaped: "T25:00" would otherwise roll silently into
-  // the next day instead of being refused.
+  // Range-checked, not just shaped: "T25:00" would otherwise roll silently into the next day.
   if (!isDateTime(dt)) return NaN;
   const m = DATETIME_RE.exec(dt);
   if (!m) return NaN;
@@ -147,10 +145,7 @@ export function formatDateMedium(value: string | undefined): string {
   return `${WEEKDAYS_SHORT[wd]}, ${p.d} ${MONTHS_SHORT[p.m - 1]}`;
 }
 
-/**
- * Compact date + time for the "created at" column, e.g. "14/07/26 14:30".
- * Uses the local timezone, so call it client-side only (hydration-safe).
- */
+/** Compact date+time for the created-at column; local timezone, so client-side only. */
 export function formatDateTime(iso: string): string {
   const dt = new Date(iso);
   if (Number.isNaN(dt.getTime())) return "";

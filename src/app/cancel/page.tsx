@@ -7,10 +7,7 @@ import CancelClient from "./CancelClient";
 
 export const dynamic = "force-dynamic";
 
-/**
- * The target of the cancel link in a confirmation email. The signed token is the
- * only credential, so everything here is resolved from it and nothing else.
- */
+/** Target of the emailed cancel link; the signed token is the only credential. */
 export default async function CancelPage({
   searchParams,
 }: {

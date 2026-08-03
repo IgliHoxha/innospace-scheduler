@@ -80,23 +80,14 @@ export function maxOf(type: TimePickerType): number {
   return type === "minutes" ? 59 : 23;
 }
 
-/**
- * The digits a field should hold after a keystroke, given where the caret ended up.
- * A field just entered replaces its contents with the digit typed, so a click plus
- * "5" reads 05 rather than appending to the 09 already there; after that the two
- * newest digits win, so a full field keeps accepting input instead of going deaf.
- */
+/** Digits a field holds after a keystroke: a fresh field is replaced, then the newest two win. */
 export function nextDigits(raw: string, caret: number, fresh: boolean): string {
   const digits = raw.replace(/\D/g, "");
   if (!fresh) return digits.slice(-2);
   return digits.slice(Math.max(0, caret - 1), caret) || digits.slice(-1);
 }
 
-/**
- * Has this entry finished, so focus can move on? Two digits always have. One has
- * only when no second digit could follow it: "3" must be 03:00 because 30-39 is
- * not an hour, while "1" waits, since 10-19 are.
- */
+/** Entry finished? Two digits always; one only when no second could follow ("3" isn't 30-39). */
 export function isCompleteEntry(digits: string, type: TimePickerType): boolean {
   if (digits.length >= 2) return true;
   if (digits.length !== 1) return false;

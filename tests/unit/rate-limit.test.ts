@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The limiter keeps a module-level Map, so re-import it fresh per test to reset
-// state. Fake timers drive Date.now() for lockout-expiry / escalation logic.
+// The limiter keeps a module-level Map, so re-import per test; fake timers drive expiry.
 type RateLimit = typeof import("@/lib/rate-limit");
 let rl: RateLimit;
 

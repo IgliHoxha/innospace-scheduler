@@ -1,6 +1,4 @@
-// Pure reservation-rule predicates. Config is injected (not read from env) so the
-// same math backs both the server (schedule.ts) and the client form (via props),
-// so they can't drift. Durations in minutes; times of day minutes-since-midnight.
+// Pure rule predicates with config injected, so server and client form can't drift. Minutes throughout.
 
 /** Is the reservation at least the minimum length? */
 export function meetsMinDuration(
@@ -10,10 +8,7 @@ export function meetsMinDuration(
   return durationMin >= minReservationMin;
 }
 
-/**
- * At or over the auto-approve threshold, a note is required (so the admin has
- * context). Note the boundary: `>=` needs a note, `>` also needs approval.
- */
+/** At or over the threshold a note is required: `>=` needs a note, `>` also needs approval. */
 export function noteRequiredFor(
   durationMin: number,
   autoApproveMaxHours: number,
@@ -29,11 +24,37 @@ export function approvalRequiredFor(
   return durationMin > autoApproveMaxHours * 60;
 }
 
-/**
- * The first reserved range that overlaps [startMin, endMin), or null. Half-open,
- * so touching edges (10:00-11:00 and 11:00-12:00) don't clash. Generic over the
- * reserved item so callers keep whatever extra fields (label, etc.) they carry.
- */
+/** Booked minutes of the back-to-back run this booking joins, so a split stay can't dodge the limits. */
+export function runTotalMinutes(
+  startMin: number,
+  endMin: number,
+  held: readonly { start: number; end: number }[],
+  maxGapMin = 0,
+): number {
+  let runStart = startMin;
+  let runEnd = endMin;
+  let total = Math.max(0, endMin - startMin);
+
+  // Each pass can extend the run and bring another booking in reach, so sweep until none joins.
+  const taken = new Set<number>();
+  for (let grew = true; grew;) {
+    grew = false;
+    held.forEach((h, i) => {
+      if (taken.has(i) || h.end <= h.start) return;
+      if (h.start > runEnd + maxGapMin || h.end < runStart - maxGapMin) return;
+      // Beside the run, never across it: an overlap is a clash, and would count twice.
+      if (h.end > runStart && h.start < runEnd) return;
+      taken.add(i);
+      total += h.end - h.start;
+      runStart = Math.min(runStart, h.start);
+      runEnd = Math.max(runEnd, h.end);
+      grew = true;
+    });
+  }
+  return total;
+}
+
+/** First reserved range overlapping [startMin, endMin), or null; half-open so touching edges are fine. */
 export function findOverlap<T extends { start: number; end: number }>(
   startMin: number,
   endMin: number,

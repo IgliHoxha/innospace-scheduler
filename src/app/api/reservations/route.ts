@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createReservation,
   discardReservation,
+  heldRangesForEmail,
   queryReservations,
   deleteReservations,
   SlotUnavailableError,
@@ -25,8 +26,6 @@ import {
 import { boothName, isBoothId } from "@/lib/booths";
 import {
   isReservableDate,
-  needsApproval,
-  noteRequired,
   autoApproveMaxHours,
   isValidTimeOfDay,
   minReservationMinutes,
@@ -39,7 +38,12 @@ import {
   nowDateTime,
 } from "@/lib/datetime";
 import { sendReservationEmail } from "@/lib/email";
-import { meetsMinDuration } from "@/lib/reservation-rules";
+import {
+  approvalRequiredFor,
+  meetsMinDuration,
+  noteRequiredFor,
+  runTotalMinutes,
+} from "@/lib/reservation-rules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,11 +142,26 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (noteRequired(startsAt, endsAt) && !note) {
+  // The note and approval limits apply to a back-to-back run, or a split stay would dodge them.
+  const held = (await heldRangesForEmail(guest.guest.email, date)).map((h) => ({
+    start: minutesOfDay(h.startsAt),
+    end: minutesOfDay(h.endsAt),
+  }));
+  const runMinutes = runTotalMinutes(
+    startMin,
+    endMin,
+    held,
+    minReservationMinutes(),
+  );
+  const partOfRun = runMinutes > endMin - startMin;
+
+  if (noteRequiredFor(runMinutes, autoApproveMaxHours()) && !note) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Please add a note saying what the reservation is for - it's required for reservations of ${autoApproveMaxHours()} hours or more.`,
+        error: partOfRun
+          ? `Please add a note saying what the reservation is for - back to back with your other bookings this comes to ${autoApproveMaxHours()} hours or more.`
+          : `Please add a note saying what the reservation is for - it's required for reservations of ${autoApproveMaxHours()} hours or more.`,
       },
       { status: 400 },
     );
@@ -154,11 +173,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Reservations over the limit need admin approval; shorter ones confirm instantly.
-  const status = needsApproval(startsAt, endsAt) ? "pending" : "confirmed";
+  // Over the limit needs admin approval, counting the whole run for the same reason.
+  const status = approvalRequiredFor(runMinutes, autoApproveMaxHours())
+    ? "pending"
+    : "confirmed";
 
-  // Last gate before anything is written. After the cheap validation, so a bad
-  // request neither costs a Cloudflare round-trip nor spends its one-use token.
+  // Last gate before any write, after the cheap checks so a bad request never spends its token.
   if (!(await verifyTurnstile(body.turnstileToken, ip))) {
     return NextResponse.json(
       {
@@ -169,9 +189,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Does the domain take mail at all? After Turnstile so only verified humans
-  // cost a DNS lookup, and before the insert so a dead address never holds a
-  // slot even briefly. Answers are cached per domain.
+  // Does the domain take mail? After Turnstile, and before the insert so a dead address holds nothing.
   const deliverable = await checkEmailDeliverable(guest.guest.email);
   if (!deliverable.ok) {
     return NextResponse.json(
@@ -195,10 +213,7 @@ export async function POST(req: NextRequest) {
       status,
     );
 
-    // A booking only counts once the confirmation is on its way: an address
-    // Resend refuses would otherwise leave someone holding a slot they were
-    // never told about, and holding it against everybody else. "skipped" (no
-    // API key) is not a refusal, or dev and the tests could never book.
+    // A booking counts only once the confirmation is away; "skipped" (no API key) is not a refusal.
     if (reservation.email) {
       const outcome = await sendReservationEmail(reservation, status);
       if (outcome === "failed") {

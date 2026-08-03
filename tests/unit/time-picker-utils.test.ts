@@ -78,8 +78,7 @@ describe("isCompleteEntry", () => {
 });
 
 describe("nextDigits", () => {
-  // Clicking a field puts the caret after "09"; the digit typed replaces it
-  // rather than landing beside it and reading as 95 or 09.
+  // Clicking puts the caret after "09", so the digit typed replaces rather than joins it.
   it("replaces the whole field on the first keystroke after entering it", () => {
     expect(u.nextDigits("095", 3, true)).toBe("5");
     expect(u.nextDigits("509", 1, true)).toBe("5");

@@ -95,9 +95,7 @@ describe("GET /api/availability earliest (today only)", () => {
     expect(body.earliest).toBe("10:30");
   });
 
-  // Regression: "now" is an arbitrary minute, and the picker seeds its default
-  // range from earliest, so an off-grid value produced a start the API refused
-  // ("Please choose times within opening hours, in 5-minute steps.").
+  // Regression: the picker seeds from earliest, so an off-grid value produced a start the API refused.
   it("rounds earliest up onto the step grid", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(`${DAY}T15:22:00`));

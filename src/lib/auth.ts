@@ -1,13 +1,10 @@
-// Cookie auth: an HMAC-signed token proving the admin signed in with the env
-// credentials, verified on each request. Booking needs no account, so the admin
-// is the only session there is.
+// Cookie auth: an HMAC-signed token for the env-credential admin, the only session there is.
 import { createHmac, timingSafeEqual } from "crypto";
 import { requireEnv } from "./env-app";
 
 export const SESSION_COOKIE = "innospace_scheduler_session";
 
-// Sessions expire after this long. The signed token carries its own expiry, so
-// a leaked cookie stops working after TTL even if its max-age is tampered with.
+// The signed token carries its own expiry, so tampering with the cookie's max-age achieves nothing.
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 export type Role = "admin";
@@ -88,9 +85,7 @@ export function verifySessionToken(
   }
 }
 
-// ---- Cancel tokens ---------------------------------------------------------
-// The same HMAC scheme as sessions but purpose-scoped, so a session cookie can
-// never be replayed as a cancel link, or the other way round.
+// Cancel tokens: the session HMAC scheme but purpose-scoped, so neither can be replayed as the other.
 
 interface CancelPayload {
   sub: string; // the reservation id
@@ -98,10 +93,7 @@ interface CancelPayload {
   exp: number;
 }
 
-/**
- * Mint a cancel link token. `expiresAtMs` is the reservation's end time, so the
- * link dies exactly when the booking does: a past slot can't be cancelled anyway.
- */
+/** Mint a cancel token expiring at the reservation's end, since a passed slot can't be cancelled. */
 export function createCancelToken(
   reservationId: string,
   expiresAtMs: number,

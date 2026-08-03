@@ -112,8 +112,7 @@ export default function ReservationClient({
     error: string;
   } | null>(null);
 
-  // Turnstile reserves its box whether or not it ever shows anything, so the slot
-  // stays collapsed and only opens while Cloudflare says it is being interactive.
+  // Turnstile reserves its box regardless, so the slot stays collapsed until Cloudflare goes interactive.
   const [turnstileToken, setTurnstileToken] = useState("");
   const [challenging, setChallenging] = useState(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
@@ -165,8 +164,7 @@ export default function ReservationClient({
     };
   }, [turnstileSiteKey]);
 
-  // Reload what's taken whenever booth or date changes. A request id guards
-  // against a slow response overwriting a newer selection.
+  // Reload on booth or date change; a request id stops a slow response overwriting a newer one.
   const reqId = useRef(0);
   const loadAvailability = useCallback(async () => {
     if (!boothId || !date) return;
@@ -196,8 +194,7 @@ export default function ReservationClient({
   const mustNote = noteRequiredFor(duration, autoApproveMaxHours);
   const willNeedApproval = approvalRequiredFor(duration, autoApproveMaxHours);
 
-  // Reservable free stretches. If none (day over or fully taken) we hide the picker
-  // and say why instead.
+  // Reservable free stretches; with none, the picker is hidden and the reason shown instead.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
     const dayEnd = toMinutes(avail.closes);
@@ -219,8 +216,7 @@ export default function ReservationClient({
   const dayIsOver =
     !!avail && toMinutes(avail.earliest) >= toMinutes(avail.closes);
 
-  // Named, because this one problem is shown at the note box rather than down by
-  // the button, and both places have to mean the same string.
+  // Named because this problem shows at the note box, and both places must mean the same string.
   const noteRequiredMessage = `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
 
   function validate(): string {
@@ -260,8 +256,7 @@ export default function ReservationClient({
   async function reserve() {
     if (!canReserve) return;
 
-    // Same validator the route handler runs, so the client can't submit
-    // something the server would only reject afterwards.
+    // The same validator the route runs, so the client can't submit what the server would reject.
     const guest = validateGuest({ fullName, email });
     if (!guest.ok) {
       setGuestError({ field: guest.field, error: guest.error });
@@ -270,8 +265,7 @@ export default function ReservationClient({
     }
     setGuestError(null);
 
-    // Nothing to spend yet. Reveal the widget rather than letting the server
-    // refuse a token the visitor was never shown a way to earn.
+    // Reveal the widget rather than let the server refuse a token nobody was shown a way to earn.
     if (turnstileSiteKey && !turnstileToken) {
       setChallenging(true);
       setError("Please complete the human check below, then reserve again.");
@@ -319,8 +313,7 @@ export default function ReservationClient({
       }
     } finally {
       setReservation(false);
-      // A token is single-use, so the widget needs a fresh one either way:
-      // without this a second booking (or a retry after an error) is refused.
+      // A token is single-use, so a retry or a second booking needs a fresh one.
       if (turnstileSiteKey) {
         setTurnstileToken("");
         window.turnstile?.reset(widgetIdRef.current ?? undefined);
@@ -404,8 +397,7 @@ export default function ReservationClient({
                   <TimeRangePicker
                     value={start && end ? { from: start, to: end } : null}
                     onChange={({ from, to }) => {
-                      // A moved start drags the end an hour after it, so the pair
-                      // stays bookable instead of leaving a stale end behind.
+                      // A moved start drags the end an hour after it, so the pair stays bookable.
                       const reanchored =
                         from === start
                           ? null
@@ -448,21 +440,8 @@ export default function ReservationClient({
                 selection={start && end ? { start, end } : null}
                 step={stepMinutes}
                 minMinutes={minReservationMinutes}
-                // The graph is the other way to choose a range, so it writes the
-                // same state the fields do rather than a parallel one.
+                // The graph is another way to choose a range, so it writes the same state the fields do.
                 onPick={(from, to) => {
-                  // TEMPORARY: paired with the [daycal] logs, this shows whether
-                  // what the graph sends is what the form ends up holding.
-                  console.log(
-                    "[form] onPick",
-                    from,
-                    "-",
-                    to,
-                    "| state was",
-                    start,
-                    "-",
-                    end,
-                  );
                   setStart(from);
                   setEnd(to);
                   setError("");

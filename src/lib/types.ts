@@ -1,5 +1,4 @@
-// Single source of truth for statuses: the type, API validators, and DB CHECK
-// constraint all derive from this array.
+// Single source of truth for statuses: the type, validators and DB CHECK all derive from this.
 export const RESERVATION_STATUSES = [
   "pending",
   "confirmed",
@@ -9,16 +8,13 @@ export const RESERVATION_STATUSES = [
 
 export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 
-// Statuses that hold a slot: pending blocks the time exactly like confirmed.
-// `satisfies` proves it's a subset of the canonical list, so it can't drift.
+// Statuses that hold a slot; `satisfies` proves it's a subset of the canonical list.
 export const ACTIVE_STATUSES = [
   "confirmed",
   "pending",
 ] as const satisfies readonly ReservationStatus[];
 
-// Length caps for free-text input. Enforced server-side (the client mirrors them
-// with maxLength) so nothing unbounded reaches the DB, and so a huge password
-// can't burn CPU in scrypt.
+// Length caps for free text, enforced server-side so nothing unbounded reaches the DB.
 export const MAX_NOTE = 500;
 export const MAX_NAME = 80;
 export const MAX_EMAIL = 254; // RFC 5321
@@ -46,9 +42,7 @@ export interface Reservation extends ReservationInput {
   status: ReservationStatus;
 }
 
-// The email-footer contact fields, every one required and read from env
-// server-side (getContactFromEnv in env-app.ts), so a footer always renders
-// complete. Also the dashboard's contact prop, hence no env access here.
+// Email-footer contact fields, all required from env, so a footer always renders complete.
 export type ContactInfo = {
   name: string; // who signs off the confirmation
   org: string;

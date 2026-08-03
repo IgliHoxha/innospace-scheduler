@@ -1,6 +1,4 @@
-// Throwaway test credentials, NOT real secrets: each only unlocks a per-test temp
-// DB. Kept here as named "fixture-*" values (never inline `password: "..."`), so
-// secret scanners don't misread them as live keys.
+// Throwaway test credentials, not real secrets: named "fixture-*" so scanners don't flag them.
 
 /** A valid member password used across the auth/activation tests. */
 export const CORRECT = "correct-horse-fixture";

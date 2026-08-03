@@ -1,6 +1,4 @@
-// Booking identity for a login-less reservation. Shared verbatim by the form
-// (inline feedback) and the route handler (the truth), so the two can't drift.
-// No env or server imports: this has to be safe in the client bundle.
+// Booking identity, shared verbatim by the form and the route handler so the two can't drift.
 import { MAX_EMAIL, MAX_NAME } from "./types";
 
 export interface GuestInput {
@@ -29,12 +27,7 @@ const MAX_DOMAIN = 255;
 // A domain label: alphanumeric, hyphens allowed inside but never at either end.
 const LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-/**
- * Reject what is structurally impossible rather than what merely looks unusual.
- * Every rule here refuses an address no mail server would accept, so a typo is
- * caught on the form instead of costing a booking a round-trip to Resend. It
- * still cannot tell whether the mailbox exists: only a real send does that.
- */
+/** Reject only what is structurally impossible, never what merely looks unusual. */
 export function emailProblem(value: string): string | null {
   const email = value.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return "Please enter a valid email address.";
@@ -79,8 +72,7 @@ export function validateGuest(input: GuestInput): GuestResult {
       error: "Please enter your full name.",
     };
   }
-  // Both names: the admin needs to know who holds a booth, and one word rarely
-  // identifies anyone in a shared space.
+  // Both names: one word rarely identifies anyone in a shared space.
   if (!fullName.includes(" ")) {
     return {
       ok: false,

@@ -172,8 +172,7 @@ describe("dragRange", () => {
     expect(dragRange(600, 660, stretch, 5, 15)).toEqual({ from: 600, to: 660 });
   });
 
-  // Pressing at 09:58 and dragging right used to round the anchor to 10:00, so the
-  // range was born on the hour line and looked like it had jumped a box along.
+  // Pressing at 09:58 used to round the anchor to 10:00, so the range was born on the hour line.
   it("does not let a press just shy of the hour snap forward onto it", () => {
     expect(dragRange(598, 602, stretch, 5, 15)).toEqual({ from: 595, to: 610 });
   });
@@ -184,8 +183,7 @@ describe("dragRange", () => {
   });
 
   it("grows leftward for a leftward drag, still without rounding inward", () => {
-    // Anchor 10:02 ceils to 10:05 and the minimum is made up going back, not
-    // forward, because that is the way the pointer was travelling.
+    // Anchor 10:02 ceils to 10:05 and the minimum is made up going back, the way the pointer moved.
     expect(dragRange(602, 598, stretch, 5, 15)).toEqual({ from: 590, to: 605 });
   });
 });

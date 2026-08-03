@@ -52,8 +52,7 @@ const ok = {
   end: "15:00",
   ...who,
 };
-// No token: booking is public. `ip` varies the client so the per-IP throttle
-// (20 attempts) can't leak between tests in the same module registry.
+// No token: booking is public. `ip` varies the client so the throttle can't leak between tests.
 const post = (body: unknown, ip = "test-ip") =>
   route.POST(
     makeRequest("/api/reservations", {
@@ -166,8 +165,7 @@ describe("POST /api/reservations - success", () => {
     expect(res.status).toBe(502);
     expect((await json(res)).error).toContain("nothing was reserved");
 
-    // Gone, not merely soft-deleted: a held slot nobody was told about is worse
-    // than no booking at all, so the row must not survive in any status.
+    // Gone, not soft-deleted: a held slot nobody was told about is worse than no booking at all.
     expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
   });
 
@@ -234,8 +232,7 @@ describe("POST /api/reservations - success", () => {
 describe("POST /api/reservations - per-IP throttle", () => {
   it("429 with Retry-After once the IP passes the attempt limit", async () => {
     const ip = "flooder";
-    // Back-to-back quarter-hours from 09:00: adjacent ranges are half-open, so
-    // none of them clash and only the throttle can reject one.
+    // Back-to-back quarter-hours: half-open ranges don't clash, so only the throttle can reject one.
     const hhmm = (min: number) =>
       `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
     // 20 accepted bookings = LOGIN_IP_MAX_ATTEMPTS in the test baseline.
@@ -371,8 +368,7 @@ describe("POST /api/reservations - Turnstile", () => {
   it("403 when siteverify itself errors", async () => {
     enable();
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    // A plain stub, not vi.fn(): a mock that rejects has its result tracked and
-    // the rejection resurfaces as an unhandled error even once we catch it.
+    // A plain stub, not vi.fn(): a tracked rejection resurfaces as an unhandled error.
     vi.stubGlobal("fetch", () => Promise.reject(new Error("ECONNRESET")));
     expect((await post({ ...ok, turnstileToken: "tok" })).status).toBe(403);
     expect((await db.queryReservations({})).total).toBe(0);
@@ -387,8 +383,7 @@ describe("POST /api/reservations - Turnstile", () => {
     expect((await db.queryReservations({})).total).toBe(1);
   });
 
-  // The token is single-use, so it must not be spent on a request that was
-  // never going to succeed.
+  // The token is single-use, so it must not be spent on a request that was never going to succeed.
   it("does not call siteverify when the slot itself is invalid", async () => {
     enable();
     siteverify(true);
@@ -396,5 +391,87 @@ describe("POST /api/reservations - Turnstile", () => {
       (await post({ ...ok, start: "14:07", turnstileToken: "good" })).status,
     ).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/reservations - back-to-back runs count as one sitting", () => {
+  // Splitting a long stay into short bookings must not dodge the 2 hour rules.
+  const at = (
+    start: string,
+    end: string,
+    extra: Record<string, unknown> = {},
+  ) => post({ ...ok, start, end, ...extra }, "run-ip");
+
+  it("confirms a lone hour with no note", async () => {
+    const res = await at("14:00", "15:00");
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("requires a note on the hour that takes the run to the limit", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await at("15:00", "16:00", { boothId: "booth-2" });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("back to back");
+  });
+
+  it("confirms that second hour once a note is given", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await at("15:00", "16:00", {
+      boothId: "booth-2",
+      note: "Workshop",
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("needs admin approval once the run passes the limit", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    expect(
+      (await at("15:00", "16:00", { boothId: "booth-2", note: "Workshop" }))
+        .status,
+    ).toBe(201);
+    // Third hour: the run is now 3 hours, past the 2 hour auto-approve limit.
+    const res = await at("16:00", "17:00", {
+      boothId: "booth-3",
+      note: "Workshop",
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("pending");
+  });
+
+  it("does not chain bookings with a real gap between them", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    // 16:00 leaves a bookable hour clear, so this stands on its own.
+    const res = await at("16:00", "17:00", { boothId: "booth-2" });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("counts another person's adjacent booking against nobody", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await post(
+      {
+        ...ok,
+        start: "15:00",
+        end: "16:00",
+        boothId: "booth-2",
+        fullName: "Grace Hopper",
+        email: "grace@example.com",
+      },
+      "run-ip",
+    );
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("matches the email case-insensitively", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await at("15:00", "16:00", {
+      boothId: "booth-2",
+      email: "ADA@Example.com",
+    });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("back to back");
   });
 });
