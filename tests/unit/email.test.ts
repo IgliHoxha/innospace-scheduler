@@ -387,3 +387,123 @@ describe("the linkifier", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 });
+
+// Gmail builds its snippet from the first text in the body, which used to be the wordmark spans.
+describe("the preheader", () => {
+  it("comes before the logo lockup, or the client scrapes the wordmark instead", async () => {
+    const html = await reservationHtml();
+    expect(html.indexOf("Confirmed:")).toBeGreaterThan(-1);
+    expect(html.indexOf("Confirmed:")).toBeLessThan(html.indexOf(">inno<"));
+  });
+
+  it("names the booking and the organisation", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain(
+      "Confirmed: Booth 1 · Thursday, 16 July 2026 · 09:30 - 11:00 at Test Org.",
+    );
+  });
+
+  it("is hidden every way a client might respect", async () => {
+    const html = await reservationHtml();
+    const div = /<div style="display:none;[^"]*">/.exec(html)?.[0] ?? "";
+    for (const rule of [
+      "display:none",
+      "font-size:0",
+      "line-height:0",
+      "max-height:0",
+      "max-width:0",
+      "opacity:0",
+      "overflow:hidden",
+      "mso-hide:all",
+    ]) {
+      expect(div).toContain(rule);
+    }
+  });
+
+  // Without the filler the client reads straight on into the logo and shows it anyway.
+  it("pads past the length a snippet reads", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain("&#8199;&#65279;&#847;".repeat(30));
+  });
+
+  it("describes a cancellation as cancelled, since its subject only says 'Update'", async () => {
+    await email.sendReservationEmail(RESERVATION, "cancelled");
+    expect(htmlOf()).toContain("Cancelled: Booth 1");
+  });
+
+  it("describes a pending request as awaiting approval", async () => {
+    await email.sendReservationEmail(RESERVATION, "pending");
+    expect(htmlOf()).toContain("Awaiting approval: Booth 1");
+  });
+
+  // An admin can rewrite the body from the dashboard, so the snippet cannot be taken from it.
+  it("ignores a custom body and keeps describing the reservation", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "<script>x</script> hi",
+    );
+    expect(htmlOf()).toContain("Confirmed: Booth 1");
+  });
+
+  // The org is env copy, so an angle bracket in it would otherwise close the hidden div early.
+  it("escapes the text it is given, so no markup can break out of the hidden div", async () => {
+    vi.stubEnv("BUSINESS_NAME", "</div><b>Sale!</b>");
+    const hidden =
+      /<div style="display:none;[^"]*">([\s\S]*?)<\/div>/.exec(
+        await reservationHtml(),
+      )?.[1] ?? "";
+    expect(hidden).toContain("&lt;/div&gt;&lt;b&gt;Sale!&lt;/b&gt;");
+    expect(hidden).not.toContain("<b>");
+  });
+});
+
+// Env copy reaches the HTML verbatim, so a legitimate "&" or "<" in it must not become markup.
+describe("escaping the env-supplied copy", () => {
+  it("escapes the org in the footer and in the logo's alt text", async () => {
+    vi.stubEnv("BUSINESS_NAME", 'Smith & Sons <"Tirana">');
+    const html = await reservationHtml();
+    expect(html).toContain('alt="Smith &amp; Sons &lt;&quot;Tirana&quot;&gt;"');
+    expect(html).toContain("Smith &amp; Sons &lt;&quot;Tirana&quot;&gt; · <a");
+    expect(html).not.toContain("Smith & Sons");
+  });
+
+  // A quote in the URL would otherwise end the href and let the rest become attributes.
+  it("escapes the website URL in both the href and the visible text", async () => {
+    vi.stubEnv(
+      "BUSINESS_WEBSITE_URL",
+      'https://x.test/?a=1&b=2"onclick="evil()',
+    );
+    const html = await reservationHtml();
+    expect(html).toContain(
+      'href="https://x.test/?a=1&amp;b=2&quot;onclick=&quot;evil()"',
+    );
+    expect(html).not.toContain('"onclick="evil()');
+  });
+
+  // The button only renders while the slot is ahead, so pin "now" before it or nothing is asserted.
+  it("escapes the cancel link, which carries the base URL from env", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-16T08:00:00"));
+    vi.stubEnv("APP_BASE_URL", 'https://x.test/"onmouseover="evil()');
+    const html = await reservationHtml();
+    vi.useRealTimers();
+    expect(html).toContain("Cancel this reservation");
+    expect(html).toContain("&quot;onmouseover=&quot;evil()/cancel?token=");
+    expect(html).not.toContain('"onmouseover="evil()');
+  });
+
+  it("escapes the logo src, built from that same base URL", async () => {
+    vi.stubEnv("APP_BASE_URL", 'https://x.test/"onerror="evil()');
+    const html = await reservationHtml();
+    expect(html).toContain("&quot;onerror=&quot;evil()/logo-mark.svg");
+    expect(html).not.toContain('"onerror="evil()');
+  });
+
+  it("leaves ordinary copy untouched", async () => {
+    vi.stubEnv("BUSINESS_NAME", "Innospace Tirana");
+    const html = await reservationHtml();
+    expect(html).toContain('alt="Innospace Tirana"');
+    expect(html).not.toContain("&amp;");
+  });
+});

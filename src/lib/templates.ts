@@ -59,6 +59,21 @@ export function emailSubject(
   return `Your ${booth} reservation is confirmed${date ? ` for ${date}` : ""}`;
 }
 
+/** The snippet a notification shows under the subject; without one the client scrapes the wordmark. */
+export function emailPreheader(
+  r: Reservation,
+  status: EmailStatus,
+  contact: ContactInfo,
+  boothName: BoothNamer,
+): string {
+  const where = `${reservationSummary(r, boothName)} at ${contact.org}.`;
+  if (status === "cancelled")
+    return `Cancelled: ${where} You can reserve another slot whenever suits you.`;
+  if (status === "pending")
+    return `Awaiting approval: ${where} The slot is held for you meanwhile.`;
+  return `Confirmed: ${where} Your cancel link is inside if your plans change.`;
+}
+
 export function emailHeading(status: EmailStatus): string {
   if (status === "confirmed") return "Reservation confirmed";
   if (status === "pending") return "Reservation request received";

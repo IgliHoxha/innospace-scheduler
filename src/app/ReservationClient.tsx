@@ -586,7 +586,7 @@ export default function ReservationClient({
         </div>
 
         {/* Note + submit */}
-        {noteError && <p className="error for-note">{noteError}</p>}
+        {noteError && <p className="error">{noteError}</p>}
         <textarea
           id="note"
           name="note"

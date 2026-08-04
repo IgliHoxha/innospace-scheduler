@@ -381,17 +381,19 @@ export default function DayTimeline({
             />
           )}
 
-          {segments.map((s) => {
+          {segments.map((s, i) => {
             if (!s.reserved) return null;
             const src = s.reserved.src;
             // Only a booking this browser holds the token for can offer to cancel itself.
             const canCancel = !!src.cancelToken;
             const range = { from: s.fromMin, to: s.toMin };
+            // Segments are consecutive, so the next one being booked means these two blocks touch.
+            const seam = !!segments[i + 1]?.reserved;
             return (
               <button
                 key={`${s.fromMin}-${s.toMin}`}
                 type="button"
-                className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""}`}
+                className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""} ${seam ? "seam" : ""}`}
                 style={{
                   left: `${pct(s.fromMin)}%`,
                   width: `${pct(s.toMin) - pct(s.fromMin)}%`,

@@ -60,7 +60,8 @@ button {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 20px 72px;
+  /* 40 at the foot, not 72: the last card here is the reserve bar, so the rest read as a void. */
+  padding: 32px 20px 40px;
   flex: 1 0 auto;
 }
 
@@ -466,10 +467,13 @@ button {
   /* Taken time reads muted red against the free bar. */
   background: #fbdcdc;
   color: #a32323;
-  /* A hairline instead of two touching borders, which read as one thick seam. */
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.9);
   font: inherit;
   cursor: pointer;
+}
+
+/* Only where the next block touches this one: alone it would read as a gap in the booking. */
+.daycal-block.seam {
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.9);
 }
 
 /* Yours in the brand teal: which bookings are yours reads before the label does. */
@@ -713,9 +717,19 @@ button {
   margin: 12px 0 0;
 }
 
+/* One rhythm for the stack that closes the form, so no banner appearing changes the spacing. */
+.note-box,
+.container > .error,
+.success,
+.turnstile-slot.is-challenging,
+.reserve-bar {
+  margin-top: 16px;
+}
+
 .note-box {
   width: 100%;
-  margin-top: 16px;
+  /* Block, or the textarea's baseline leaves a stray 4px under it that only shows with a banner. */
+  display: block;
   padding: 11px 13px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -749,7 +763,6 @@ button {
 .turnstile-slot.is-challenging {
   height: auto;
   overflow: visible;
-  margin-top: 14px;
 }
 
 .reserve-bar {
@@ -758,7 +771,6 @@ button {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  margin-top: 16px;
   padding: 14px 18px;
   background: var(--card);
   border: 1px solid var(--border);
@@ -780,7 +792,8 @@ button {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  margin: 14px 0 0;
+  /* Top margin comes from the stack rhythm above; this only drops the paragraph's own. */
+  margin-bottom: 0;
 }
 
 .muted {
@@ -1372,11 +1385,6 @@ tr:last-child td {
   content: "⚠";
   font-size: 14px;
   line-height: 1;
-}
-
-/* This error opens a section, so unlike the others it must not sit flush against the card above. */
-.error.for-note {
-  margin-top: 18px;
 }
 
 /* Footer - a clean white bar with a hairline top border, matching the page. */

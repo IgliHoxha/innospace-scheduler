@@ -211,3 +211,53 @@ describe("the note line in a pending request", () => {
     }
   });
 });
+
+// The notification snippet: without one, a client scrapes the wordmark spans and shows "innospaceTIRANA".
+describe("the email preheader", () => {
+  const pre = (status: t.EmailStatus, r: Reservation = base) =>
+    t.emailPreheader(r, status, contact, boothName);
+
+  it("leads with the status, since the cancellation subject only says 'Update'", () => {
+    expect(pre("confirmed")).toMatch(/^Confirmed: /);
+    expect(pre("pending")).toMatch(/^Awaiting approval: /);
+    expect(pre("cancelled")).toMatch(/^Cancelled: /);
+  });
+
+  it("carries the booth, day, time and the organisation in every status", () => {
+    for (const status of ["confirmed", "pending", "cancelled"] as const) {
+      expect(pre(status)).toContain(
+        "Booth 1 · Tuesday, 14 July 2026 · 09:30 - 11:00",
+      );
+      expect(pre(status)).toContain("Test Org");
+    }
+  });
+
+  it("says the same thing as the summary shown everywhere else", () => {
+    expect(pre("confirmed")).toContain(t.reservationSummary(base, boothName));
+  });
+
+  it("adds what the reader should do next, and it differs by status", () => {
+    expect(pre("confirmed")).toContain("cancel link");
+    expect(pre("pending")).toContain("held for you");
+    expect(pre("cancelled")).toContain("reserve another slot");
+  });
+
+  // A notification shows roughly this much, so the details must land before the tail is cut.
+  it("fits the booking details inside the first 100 characters", () => {
+    for (const status of ["confirmed", "pending", "cancelled"] as const) {
+      expect(pre(status).slice(0, 100)).toContain("09:30 - 11:00");
+    }
+  });
+
+  it("still reads when the reservation has no times", () => {
+    const bare = { ...base, startsAt: undefined, endsAt: undefined };
+    expect(pre("confirmed", bare)).toContain("Test Org");
+    expect(pre("confirmed", bare)).not.toContain("undefined");
+  });
+
+  it("uses only ASCII hyphens, like every other piece of product copy", () => {
+    for (const status of ["confirmed", "pending", "cancelled"] as const) {
+      expect(pre(status)).not.toMatch(/[–—]/);
+    }
+  });
+});

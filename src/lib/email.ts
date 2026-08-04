@@ -8,6 +8,7 @@ import type { Reservation } from "./types";
 import {
   emailBodyText,
   emailHeading,
+  emailPreheader,
   emailSubject,
   type EmailStatus,
 } from "./templates";
@@ -37,7 +38,7 @@ const FONT_STACK =
 
 // The fixed brand lockup, not BUSINESS_NAME; flat spans, since Gmail cut the table version in two.
 function logoLockup(org: string): string {
-  return `<img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
+  return `<img src="${escapeHtml(emailLogoUrl())}" alt="${escapeHtml(org)}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
 
 // Built on first send, not at import, so a keyless dev run never constructs one.
@@ -94,22 +95,32 @@ function textToHtml(text: string): string {
     .join("");
 }
 
+// Invisible filler, so a client stops scraping at the preheader instead of reading on into the logo.
+const PREHEADER_PAD = "&#8199;&#65279;&#847;".repeat(30);
+
+// Hidden every way a mail client might respect, since only snippet readers are meant to see it.
+function preheaderHtml(text: string): string {
+  return `<div style="display:none;font-size:0;line-height:0;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">${escapeHtml(text)}${PREHEADER_PAD}</div>`;
+}
+
 function shell(opts: {
   accent: string;
   heading: string;
   bodyHtml: string;
   org: string;
   url: string;
+  preheader: string;
 }): string {
-  const { accent, heading, bodyHtml, org, url } = opts;
+  const { accent, heading, bodyHtml, org, url, preheader } = opts;
   // Footer website link; visible text drops the scheme and any trailing slash.
-  const footerLink = ` · <a href="${url}" style="color:${BRAND};text-decoration:none">${url
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")}</a>`;
+  const footerLink = ` · <a href="${escapeHtml(url)}" style="color:${BRAND};text-decoration:none">${escapeHtml(
+    url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+  )}</a>`;
   const header = `<div style="padding:22px 28px;border-bottom:1px solid ${COLORS.divider}">
         ${logoLockup(org)}
       </div>`;
   return `
+  ${preheaderHtml(preheader)}
   <div style="background:${COLORS.accentBg};padding:28px 12px;font-family:${FONT_STACK}">
     <div style="max-width:560px;margin:0 auto;background:${COLORS.background};border-radius:14px;overflow:hidden;border:1px solid ${COLORS.border}">
       ${header}
@@ -119,7 +130,7 @@ function shell(opts: {
         ${bodyHtml}
       </div>
       <div style="padding:16px 28px;background:${COLORS.footerBg};border-top:1px solid ${COLORS.divider};color:${COLORS.footerText};font-size:12px">
-        ${org}${footerLink}
+        ${escapeHtml(org)}${footerLink}
       </div>
     </div>
   </div>`;
@@ -136,7 +147,7 @@ function cancelButton(r: Reservation): string {
   // Sits below the sign-off, ruled off as utility chrome rather than letter copy.
   return `
     <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
-      <a href="${link}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Cancel this reservation</a>
+      <a href="${escapeHtml(link)}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Cancel this reservation</a>
       <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">Only you have this link, and it stops working once the reservation has passed.</p>
     </div>`;
 }
@@ -183,6 +194,8 @@ export async function sendReservationEmail(
           (status === "cancelled" ? "" : cancelButton(reservation)),
         org: contact.org,
         url: contact.url,
+        // The details, not the edited body: a custom body could open with anything.
+        preheader: emailPreheader(reservation, status, contact, boothName),
       }),
     });
   } catch (err) {
