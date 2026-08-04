@@ -23,6 +23,13 @@ import {
   runTotalMinutes,
 } from "@/lib/reservation-rules";
 import { availabilityQuery } from "@/lib/availability-url";
+import {
+  heldRangesFor,
+  readMine,
+  rememberMine,
+  slotKey,
+  type MineEntry,
+} from "@/lib/mine";
 import { endForStart, suggestedEndMin } from "@/lib/timeline";
 import { formatDateLong } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
@@ -58,51 +65,6 @@ const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
-
-// Bookings made from this browser: how a login-less board says "You", and how the
-// back-to-back rule can warn before the server does. Kept short: it is a convenience.
-const MINE_KEY = "innospace.mine";
-const MINE_MAX = 50;
-const slotKey = (boothId: string, startsAt: string) => `${boothId}|${startsAt}`;
-
-/** One remembered booking: key, range, booker, and the token that can cancel it. */
-interface MineEntry {
-  k: string;
-  s: string;
-  e: string;
-  m: string;
-  t: string;
-}
-
-function readMine(): MineEntry[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as unknown;
-    if (!Array.isArray(raw)) return [];
-    // Entries were bare keys before the run rule needed times; those still label "You".
-    return raw.flatMap((x) => {
-      if (typeof x === "string") return [{ k: x, s: "", e: "", m: "", t: "" }];
-      const e = x as Partial<MineEntry>;
-      return e && typeof e.k === "string"
-        ? [{ k: e.k, s: e.s ?? "", e: e.e ?? "", m: e.m ?? "", t: e.t ?? "" }]
-        : [];
-    });
-  } catch {
-    return []; // private mode, or somebody else's data in the key
-  }
-}
-
-function rememberMine(entry: MineEntry): MineEntry[] {
-  const next = [entry, ...readMine().filter((m) => m.k !== entry.k)].slice(
-    0,
-    MINE_MAX,
-  );
-  try {
-    localStorage.setItem(MINE_KEY, JSON.stringify(next));
-  } catch {
-    /* storage unavailable: the board just won't say "You" */
-  }
-  return next;
-}
 
 declare global {
   interface Window {
@@ -281,27 +243,17 @@ export default function ReservationClient({
   const booker = isValidEmail(email.trim()) ? canonicalEmail(email) : "";
 
   // That person's other bookings that day, so the run rule can warn before the server rejects.
-  const myHeld = useMemo(() => {
-    if (!booker) return [];
-    const onBoard = new Set(
-      (avail?.reserved ?? []).map((b) =>
-        slotKey(boothId, `${date}T${b.start}`),
-      ),
-    );
-    return (
-      mine
-        .filter(
-          (m) =>
-            canonicalEmail(m.m) === booker && m.e && m.s.startsWith(`${date}T`),
-        )
-        // Cancelled bookings would still be remembered, so the booth on screen gets rechecked.
-        .filter((m) => !m.k.startsWith(`${boothId}|`) || onBoard.has(m.k))
-        .map((m) => ({
-          start: toMinutes(m.s.slice(11)),
-          end: toMinutes(m.e.slice(11)),
-        }))
-    );
-  }, [mine, avail, boothId, date, booker]);
+  const myHeld = useMemo(
+    () =>
+      heldRangesFor({
+        entries: mine,
+        booker,
+        boothId,
+        date,
+        boardStarts: (avail?.reserved ?? []).map((b) => b.start),
+      }),
+    [mine, avail, boothId, date, booker],
+  );
 
   // Back to back counts as one sitting; the server recounts it across every device.
   const runMinutes =
