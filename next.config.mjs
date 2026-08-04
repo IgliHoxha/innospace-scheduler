@@ -26,8 +26,7 @@ const nextConfig = {
         ],
       },
       {
-        // The one API worth caching: it changes only when somebody books, and a
-        // stale board costs at most the 409 the client already refetches on.
+        // Cacheable only because a booking or cancellation refetches with a `t` param to force a miss.
         source: "/api/availability",
         headers: [
           {

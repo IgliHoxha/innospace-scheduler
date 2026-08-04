@@ -70,6 +70,23 @@ describe("GET /api/availability", () => {
     });
   });
 
+  // The board is CDN-cached, so a post-booking reload busts it with `t`; the route must not mind.
+  it("ignores the cache-busting param, answering exactly as it would without it", async () => {
+    await seatOne("Ada");
+    const plain = await (await get(`booth=booth-1&date=${today}`)).json();
+    const busted = await (
+      await get(`booth=booth-1&date=${today}&t=1700000000`)
+    ).json();
+    expect(busted).toEqual(plain);
+    expect(busted.ok).toBe(true);
+  });
+
+  it("ignores any other unknown query param too", async () => {
+    const res = await get(`booth=booth-1&date=${today}&utm_source=x&t=`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+
   it("exposes times only: never a name, email, note or id", async () => {
     await db.createReservation({
       boothId: "booth-1",

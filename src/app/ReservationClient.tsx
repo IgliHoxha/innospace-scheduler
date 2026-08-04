@@ -22,6 +22,7 @@ import {
   noteRequiredFor,
   runTotalMinutes,
 } from "@/lib/reservation-rules";
+import { availabilityQuery } from "@/lib/availability-url";
 import { endForStart, suggestedEndMin } from "@/lib/timeline";
 import { formatDateLong } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
@@ -226,43 +227,47 @@ export default function ReservationClient({
 
   // Reload on booth or date change; a request id stops a slow response overwriting a newer one.
   const reqId = useRef(0);
-  const loadAvailability = useCallback(async () => {
-    if (!boothId || !date) return;
-    const id = ++reqId.current;
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/availability?booth=${encodeURIComponent(boothId)}&date=${encodeURIComponent(date)}`,
-        // The edge may serve a stale board; the tab that just booked or cancelled must not.
-        { cache: "no-store" },
-      );
-      const json = (await res.json()) as { ok: boolean } & Availability;
-      if (id !== reqId.current) return;
-      const owned = readMine();
-      setMine(owned);
-      setAvail(
-        json.ok
-          ? {
-              ...json,
-              reserved: json.reserved.map((b) => {
-                const held = owned.find(
-                  (m) => m.k === slotKey(boothId, `${date}T${b.start}`),
-                );
-                return {
-                  ...b,
-                  mine: !!held,
-                  cancelToken: held?.t || undefined,
-                };
-              }),
-            }
-          : null,
-      );
-      setStart("");
-      setEnd("");
-    } finally {
-      if (id === reqId.current) setLoading(false);
-    }
-  }, [boothId, date]);
+  const loadAvailability = useCallback(
+    async (fresh = false) => {
+      if (!boothId || !date) return;
+      const id = ++reqId.current;
+      setLoading(true);
+      try {
+        const res = await fetch(
+          // `fresh` is for after a booking or cancellation, where the edge's 30s copy would omit it.
+          `/api/availability?${availabilityQuery(boothId, date, fresh ? Date.now() : undefined)}`,
+          // Stops this browser's own cache only: the CDN ignores it, which is what the fresh URL is for.
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as { ok: boolean } & Availability;
+        if (id !== reqId.current) return;
+        const owned = readMine();
+        setMine(owned);
+        setAvail(
+          json.ok
+            ? {
+                ...json,
+                reserved: json.reserved.map((b) => {
+                  const held = owned.find(
+                    (m) => m.k === slotKey(boothId, `${date}T${b.start}`),
+                  );
+                  return {
+                    ...b,
+                    mine: !!held,
+                    cancelToken: held?.t || undefined,
+                  };
+                }),
+              }
+            : null,
+        );
+        setStart("");
+        setEnd("");
+      } finally {
+        if (id === reqId.current) setLoading(false);
+      }
+    },
+    [boothId, date],
+  );
 
   useEffect(() => {
     loadAvailability();
@@ -455,7 +460,7 @@ export default function ReservationClient({
             }),
           );
         }
-        await loadAvailability();
+        await loadAvailability(true);
       } else {
         const message = json.error || "Could not reserve that time.";
         const field = json.field;
@@ -464,7 +469,7 @@ export default function ReservationClient({
         else if (field) setGuestError({ field, error: message });
         else setError(message);
         if (field) document.getElementById(field)?.focus();
-        loadAvailability(); // someone may have just taken it
+        loadAvailability(true); // someone may have just taken it, so the cached board won't show them
       }
     } finally {
       setReservation(false);
@@ -604,7 +609,7 @@ export default function ReservationClient({
                     "Your reservation is cancelled. The slot is free for someone else now.",
                   );
                   setError("");
-                  loadAvailability();
+                  loadAvailability(true);
                 }}
                 // The graph is another way to choose a range, so it writes the same state the fields do.
                 onPick={(from, to) => {
