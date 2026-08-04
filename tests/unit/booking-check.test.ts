@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkBooking,
+  isBlocking,
   noteRequiredMessage,
   type BookingCheckInput,
 } from "@/lib/booking-check";
@@ -156,6 +157,36 @@ describe("checkBooking: the note rule", () => {
     const r = check({ endMin: 11 * 60 + 55 });
     expect(r.mustNote).toBe(false);
     expect(r.problem).toBe("");
+  });
+});
+
+// The picker re-seeds itself after a booking, so a live note error scolds a range nobody chose.
+describe("isBlocking", () => {
+  it("does not block on a missing note, which waits for the reserve press", () => {
+    const r = check({ endMin: 12 * 60 });
+    expect(r.field).toBe("note");
+    expect(r.problem).not.toBe("");
+    expect(isBlocking(r)).toBe(false);
+  });
+
+  it("blocks on every problem about the times themselves", () => {
+    for (const over of [
+      { startMin: 10 * 60 + 7 }, // off the grid
+      { endMin: 10 * 60 }, // end not after start
+      { endMin: 10 * 60 + 10 }, // under the minimum
+      { earliestMin: 11 * 60 }, // already passed
+      { reserved: [{ start: 10 * 60, end: 11 * 60, label: "x" }] }, // clash
+      { held: [{ start: 10 * 60, end: 11 * 60 }] }, // two booths at once
+    ]) {
+      expect(isBlocking(check(over))).toBe(true);
+    }
+  });
+
+  it("does not block a clean booking", () => {
+    expect(isBlocking(check())).toBe(false);
+    expect(isBlocking(check({ endMin: 12 * 60, note: "Board meeting" }))).toBe(
+      false,
+    );
   });
 });
 

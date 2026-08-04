@@ -43,6 +43,12 @@ export interface BookingCheckInput {
   autoApproveMaxHours: number;
 }
 
+/** Does this problem block the reserve button, or wait for the press? */
+export function isBlocking(check: BookingCheck): boolean {
+  // A missing note is about a field the booker has not reached yet, not about the times they chose.
+  return !!check.problem && check.field !== "note";
+}
+
 /** The message shown when a note is required, worded for whether a run is what pushed it over. */
 export function noteRequiredMessage(
   partOfRun: boolean,

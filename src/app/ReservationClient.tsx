@@ -14,7 +14,7 @@ import {
   validateGuest,
   type GuestField,
 } from "@/lib/guest";
-import { checkBooking } from "@/lib/booking-check";
+import { checkBooking, isBlocking } from "@/lib/booking-check";
 import { availabilityQuery } from "@/lib/availability-url";
 import {
   heldRangesFor,
@@ -285,9 +285,9 @@ export default function ReservationClient({
     minReservationMinutes,
     autoApproveMaxHours,
   });
-  const { mustNote, needsApproval: willNeedApproval, problem } = check;
-  // Sits above the note box; everything else stays by the reserve button.
-  const noteProblem = check.field === "note" ? problem : "";
+  const { mustNote, needsApproval: willNeedApproval } = check;
+  // A missing note is not shown live: the picker re-seeds itself, so it would scold a range nobody chose.
+  const problem = isBlocking(check) ? check.problem : "";
   const canReserve = !!start && !!end && !problem && !reservation;
 
   /** Clear a field's error as soon as it's edited, so it can't linger. */
@@ -312,6 +312,13 @@ export default function ReservationClient({
       return;
     }
     setGuestError(null);
+
+    // Held back until now, so the ask lands when they tried to book rather than when the picker moved.
+    if (check.field === "note") {
+      setNoteError(check.problem);
+      document.getElementById("note")?.focus();
+      return;
+    }
 
     // Reveal the widget rather than let the server refuse a token nobody was shown a way to earn.
     if (turnstileSiteKey && !turnstileToken) {
@@ -479,6 +486,7 @@ export default function ReservationClient({
                         reanchored == null ? to : minutesToTime(reanchored),
                       );
                       setError("");
+                      setNoteError("");
                     }}
                     defaultRange={{
                       from: minutesToTime(freeGaps[0].from),
@@ -525,6 +533,7 @@ export default function ReservationClient({
                   setStart(from);
                   setEnd(to);
                   setError("");
+                  setNoteError("");
                 }}
               />
             </>
@@ -573,9 +582,7 @@ export default function ReservationClient({
         </div>
 
         {/* Note + submit */}
-        {(noteProblem || noteError) && (
-          <p className="error for-note">{noteProblem || noteError}</p>
-        )}
+        {noteError && <p className="error for-note">{noteError}</p>}
         <textarea
           id="note"
           name="note"
@@ -611,7 +618,7 @@ export default function ReservationClient({
           </>
         )}
 
-        {problem && !noteProblem && <p className="error">{problem}</p>}
+        {problem && <p className="error">{problem}</p>}
         {error && <p className="error">{error}</p>}
         {success && <p className="success">{success}</p>}
 

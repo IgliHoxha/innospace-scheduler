@@ -399,7 +399,10 @@ export default function DayTimeline({
 
           {hasPick && (
             <div
-              className="daycal-pick"
+              // Against the bar's own end its border has to follow the curve, or the clip slices it.
+              className={`daycal-pick ${pct(selFrom!) === 0 ? "at-start" : ""} ${
+                pct(selTo!) === 100 ? "at-end" : ""
+              }`}
               style={{
                 left: `${pct(selFrom!)}%`,
                 width: `${pct(selTo!) - pct(selFrom!)}%`,
