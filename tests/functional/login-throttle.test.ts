@@ -79,3 +79,71 @@ describe("POST /api/login brute-force throttling", () => {
     expect((await wrong()).status).toBe(401);
   });
 });
+
+describe("POST /api/login - the IP ban, the only permanent block", () => {
+  // A fresh limiter per test, with the IP bucket tight and the account bucket out of the way.
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    resetApp();
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "50");
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "1");
+    route = await import("@/app/api/login/route");
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("403s permanently once the IP passes LOGIN_MAX_LOCKOUTS", async () => {
+    expect((await wrong()).status).toBe(401);
+    expect((await wrong()).status).toBe(429); // IP lockout 1
+
+    vi.advanceTimersByTime(61_000); // lockout served
+    expect((await wrong()).status).toBe(401);
+
+    const res = await wrong(); // lockout 2, past maxLockouts of 1
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/access blocked/i);
+  });
+
+  it("stays banned, and correct credentials do not lift it", async () => {
+    await wrong();
+    await wrong();
+    vi.advanceTimersByTime(61_000);
+    await wrong();
+    expect((await wrong()).status).toBe(403);
+
+    vi.advanceTimersByTime(365 * 24 * 3600_000); // a year on
+    expect((await wrong()).status).toBe(403);
+    expect((await right()).status).toBe(403);
+  });
+
+  it("bans that IP only, leaving another client alone", async () => {
+    await wrong();
+    await wrong();
+    vi.advanceTimersByTime(61_000);
+    await wrong();
+    expect((await wrong()).status).toBe(403);
+    expect((await right("9.9.9.9")).status).toBe(200);
+  });
+});
+
+describe("POST /api/login - the lockout wait is worded for its length", () => {
+  beforeEach(async () => {
+    resetApp();
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "50");
+    route = await import("@/app/api/login/route");
+  });
+
+  it("counts in seconds under a minute", async () => {
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "30");
+    const res = await wrong();
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toContain("30 seconds");
+  });
+
+  it("counts in minutes at or over one, and says minute in the singular", async () => {
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "60");
+    expect((await (await wrong()).json()).error).toContain("1 minute");
+  });
+});

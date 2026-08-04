@@ -533,6 +533,39 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
     expect((await json(res)).reservation?.status).toBe("confirmed");
   });
 
+  // A gap nobody else could book is not a break: the tolerance is MIN_RESERVATION_MINUTES.
+  it("closes a 5 minute gap: still one sitting", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await at("15:05", "16:05", { boothId: "booth-2" });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("back to back");
+  });
+
+  it("closes a 15 minute gap, the largest unbookable one", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await at("15:15", "16:15", { boothId: "booth-2" });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("back to back");
+  });
+
+  it("lets a 20 minute gap break the run: that is bookable time left free", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    const res = await at("15:20", "16:20", { boothId: "booth-2" });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("counts a gapped run for approval too, not just the note", async () => {
+    expect((await at("14:00", "15:00")).status).toBe(201);
+    // 60 held + 65 booked = 2h05 across a 5 minute gap, past the 2 hour auto-approve limit.
+    const res = await at("15:05", "16:10", {
+      boothId: "booth-2",
+      note: "Workshop",
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("pending");
+  });
+
   it("needs admin approval once the run passes the limit", async () => {
     expect((await at("14:00", "15:00")).status).toBe(201);
     expect(

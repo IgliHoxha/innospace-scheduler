@@ -44,6 +44,12 @@ describe("GET /api/availability", () => {
     expect((await get("booth=booth-1&date=1999-01-01")).status).toBe(400);
   });
 
+  it("400 when either query param is missing entirely", async () => {
+    expect((await get(`date=${today}`)).status).toBe(400);
+    expect((await get("booth=booth-1")).status).toBe(400);
+    expect((await get("")).status).toBe(400);
+  });
+
   it("returns reserved ranges and opening hours", async () => {
     await seatOne("Ada");
     const res = await get(`booth=booth-1&date=${today}`);

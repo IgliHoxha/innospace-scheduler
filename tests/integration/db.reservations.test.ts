@@ -77,6 +77,23 @@ describe("createReservation + overlap", () => {
     ).resolves.toBeTruthy();
   });
 
+  it("sees through Gmail dots and tags: one inbox can't hold two booths at once", async () => {
+    await reserve("10:00", "11:00", { email: "igli.ihoxha@gmail.com" });
+    await expect(
+      reserve("10:30", "11:30", {
+        boothId: "booth-2",
+        email: "igliihoxha+booth@gmail.com",
+      }),
+    ).rejects.toBeInstanceOf(db.UserBusyError);
+  });
+
+  it("does not let a row with no email block anyone", async () => {
+    await reserve("10:00", "11:00", { email: undefined });
+    await expect(
+      reserve("10:30", "11:30", { boothId: "booth-2" }),
+    ).resolves.toBeTruthy();
+  });
+
   it("matches the email case-insensitively, so casing can't dodge the rule", async () => {
     await reserve("10:00", "11:00", { email: "Ada@Example.com" });
     await expect(
@@ -234,6 +251,24 @@ describe("heldRangesForEmail", () => {
   it("leaves out other people", async () => {
     await reserve("14:00", "15:00", { email: "grace@example.com" });
     expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+  });
+
+  it("matches Gmail past its dots and plus tags, since it is one inbox", async () => {
+    await reserve("14:00", "15:00", { email: "igli.ihoxha@gmail.com" });
+    await reserve("15:00", "16:00", {
+      boothId: "booth-2",
+      email: "igliihoxha+booth@googlemail.com",
+    });
+    expect(await db.heldRangesForEmail("igliihoxha@gmail.com", D)).toHaveLength(
+      2,
+    );
+  });
+
+  it("ignores a row with no email rather than matching or throwing", async () => {
+    await reserve("14:00", "15:00", { email: undefined });
+    await reserve("15:00", "16:00", { boothId: "booth-2" });
+    const held = await db.heldRangesForEmail("ada@example.com", D);
+    expect(held).toEqual([{ startsAt: at("15:00"), endsAt: at("16:00") }]);
   });
 
   it("leaves out other days", async () => {

@@ -99,6 +99,43 @@ describe("isValidEmail", () => {
     }
   });
 
+  it("rejects a dot that opens, closes or doubles up", () => {
+    for (const e of [
+      "ada..lovelace@example.com",
+      ".ada@example.com",
+      "ada.@example.com",
+      "ada@example..com",
+    ]) {
+      expect(isValidEmail(e)).toBe(false);
+    }
+  });
+
+  it("rejects a domain label starting or ending with a hyphen", () => {
+    expect(isValidEmail("ada@-example.com")).toBe(false);
+    expect(isValidEmail("ada@example-.com")).toBe(false);
+    expect(isValidEmail("ada@ex_ample.com")).toBe(false);
+    // A hyphen inside a label is legitimate and must survive.
+    expect(isValidEmail("ada@my-example.com")).toBe(true);
+  });
+
+  it("rejects a TLD that is not all letters, the usual typo", () => {
+    expect(isValidEmail("ada@example.c0m")).toBe(false);
+    expect(isValidEmail("ada@example.123")).toBe(false);
+    expect(isValidEmail("ada@example.co-uk")).toBe(false);
+  });
+
+  it("rejects a local part over the RFC 5321 limit of 64", () => {
+    expect(isValidEmail(`${"a".repeat(64)}@example.com`)).toBe(true);
+    expect(isValidEmail(`${"a".repeat(65)}@example.com`)).toBe(false);
+  });
+
+  it("rejects a domain over the RFC 5321 limit of 255", () => {
+    // Labels of 60 so no single one is oversized: only the whole domain is.
+    const domain = `${Array(5).fill("a".repeat(60)).join(".")}.com`;
+    expect(domain.length).toBeGreaterThan(255);
+    expect(isValidEmail(`ada@${domain}`)).toBe(false);
+  });
+
   it("rejects addresses with no @, no dotted domain, or whitespace", () => {
     for (const e of [
       "",

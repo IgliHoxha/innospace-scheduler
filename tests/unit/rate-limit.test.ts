@@ -210,3 +210,15 @@ describe("booking throttle (public form)", () => {
     expect(rl.checkLoginBlocked(IP, "admin").blocked).toBe(false);
   });
 });
+
+describe("env guards", () => {
+  it("refuses a non-positive threshold rather than blocking everyone forever", async () => {
+    for (const bad of ["0", "-1"]) {
+      vi.stubEnv("LOGIN_MAX_ATTEMPTS", bad);
+      const { registerLoginFailure } = await import("@/lib/rate-limit");
+      expect(() => registerLoginFailure("1.1.1.1", "admin")).toThrow(
+        /positive integer/i,
+      );
+    }
+  });
+});
