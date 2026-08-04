@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MAX_EMAIL_BODY } from "@/lib/types";
 import type { Reservation, ReservationStatus, ContactInfo } from "@/lib/types";
 import { boothNameIn, type Booth } from "@/lib/booths";
 import type { ReservationPage } from "@/lib/db";
@@ -655,6 +656,8 @@ function EmailPreview({
         rows={7}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        // The route rejects a longer body, so the box stops it rather than failing on send.
+        maxLength={MAX_EMAIL_BODY}
         aria-label="cancellation email body"
       />
     </div>

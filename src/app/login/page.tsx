@@ -47,6 +47,7 @@ export default function LoginPage() {
           onChange={(e) => setLogin(e.target.value)}
           autoComplete="username"
           maxLength={MAX_EMAIL}
+          required
           autoFocus
         />
         <input
@@ -58,6 +59,7 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           maxLength={MAX_PASSWORD}
+          required
         />
         <button className="btn" type="submit" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
