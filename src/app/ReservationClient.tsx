@@ -14,14 +14,7 @@ import {
   validateGuest,
   type GuestField,
 } from "@/lib/guest";
-import {
-  approvalRequiredFor,
-  findOverlap,
-  isBookableMinute,
-  meetsMinDuration,
-  noteRequiredFor,
-  runTotalMinutes,
-} from "@/lib/reservation-rules";
+import { checkBooking } from "@/lib/booking-check";
 import { availabilityQuery } from "@/lib/availability-url";
 import {
   heldRangesFor,
@@ -255,15 +248,6 @@ export default function ReservationClient({
     [mine, avail, boothId, date, booker],
   );
 
-  // Back to back counts as one sitting; the server recounts it across every device.
-  const runMinutes =
-    startMin != null && endMin != null && duration > 0
-      ? runTotalMinutes(startMin, endMin, myHeld, minReservationMinutes)
-      : 0;
-  const partOfRun = runMinutes > duration;
-  const mustNote = noteRequiredFor(runMinutes, autoApproveMaxHours);
-  const willNeedApproval = approvalRequiredFor(runMinutes, autoApproveMaxHours);
-
   // Reservable free stretches; with none, the picker is hidden and the reason shown instead.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
@@ -286,53 +270,27 @@ export default function ReservationClient({
   const dayIsOver =
     !!avail && toMinutes(avail.earliest) >= toMinutes(avail.closes);
 
-  // Named because this problem shows at the note box, and both places must mean the same string.
-  const noteRequiredMessage = partOfRun
-    ? `Please say what the reservation is for - back to back with your other bookings this comes to ${autoApproveMaxHours} hours or more.`
-    : `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
-
-  // Every check the route makes that the browser can make too, in the route's own order.
-  function validate(): string {
-    if (!avail || !start || !end || startMin == null || endMin == null)
-      return "";
-    const openMin = toMinutes(avail.opens);
-    const closeMin = toMinutes(avail.closes);
-    if (
-      !isBookableMinute(startMin, openMin, closeMin, stepMinutes) ||
-      !isBookableMinute(endMin, openMin, closeMin, stepMinutes)
-    )
-      return `Please choose times within opening hours, in ${stepMinutes}-minute steps.`;
-    if (endMin <= startMin) return "The end time must be after the start time.";
-    if (!meetsMinDuration(duration, minReservationMinutes))
-      return `Reservations must be at least ${minReservationMinutes} minutes long.`;
-    if (startMin < toMinutes(avail.earliest))
-      return "That time has already passed.";
-    const clash = findOverlap(
-      startMin,
-      endMin,
-      avail.reserved.map((b) => ({
-        start: toMinutes(b.start),
-        end: toMinutes(b.end),
-        label: b.label,
-      })),
-    );
-    if (clash) return `That overlaps an existing reservation (${clash.label}).`;
-    // The server rejects holding two booths at once; this browser knows its own bookings.
-    if (
-      findOverlap(
-        startMin,
-        endMin,
-        myHeld.map((h) => ({ ...h, label: "" })),
-      )
-    )
-      return "You already have a reservation during that time.";
-    if (mustNote && !note.trim()) return noteRequiredMessage;
-    return "";
-  }
-
-  const problem = validate();
+  // Every check the route makes that the browser can make too; nothing is judged before a board loads.
+  const check = checkBooking({
+    startMin: avail && start ? startMin : null,
+    endMin: avail && end ? endMin : null,
+    openMin: avail ? toMinutes(avail.opens) : 0,
+    closeMin: avail ? toMinutes(avail.closes) : 0,
+    earliestMin: avail ? toMinutes(avail.earliest) : 0,
+    reserved: (avail?.reserved ?? []).map((b) => ({
+      start: toMinutes(b.start),
+      end: toMinutes(b.end),
+      label: b.label,
+    })),
+    held: myHeld,
+    note,
+    stepMinutes,
+    minReservationMinutes,
+    autoApproveMaxHours,
+  });
+  const { mustNote, needsApproval: willNeedApproval, problem } = check;
   // Sits above the note box; everything else stays by the reserve button.
-  const noteProblem = problem === noteRequiredMessage ? problem : "";
+  const noteProblem = check.field === "note" ? problem : "";
   const canReserve = !!start && !!end && !problem && !reservation;
 
   /** Clear a field's error as soon as it's edited, so it can't linger. */
