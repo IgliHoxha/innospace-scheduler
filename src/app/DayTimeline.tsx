@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildDaySegments, dragRange, pickTagPlacement } from "@/lib/timeline";
+import {
+  buildDaySegments,
+  dragRange,
+  pickTagPlacement,
+  tickMinutes,
+} from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
 import { MailIcon, TrashIcon, WhatsAppIcon } from "@/components/ui/icons";
@@ -23,6 +28,9 @@ const TAG_FITS_PX = 96;
 
 // Travel (px) before a press is a drag; below it the gesture stays a click and keeps its hour.
 const DRAG_SLOP_PX = 4;
+
+// Room (px) one "HH:MM" tick needs before it touches its neighbour, so a narrow bar shows fewer.
+const TICK_LABEL_PX = 44;
 
 /** Availability graph for one booth+day; with `onPick` it also picks the range, by click or drag. */
 export default function DayTimeline({
@@ -75,9 +83,9 @@ export default function DayTimeline({
     })),
   );
 
-  const ticks: number[] = [];
+  const hourMarks: number[] = [];
   for (let h = Math.ceil(opensMin / 60) * 60; h <= closesMin; h += 60) {
-    ticks.push(h);
+    hourMarks.push(h);
   }
   // Edge ticks anchor to the bar's ends; inner ones centre on their mark.
   const tickStyle = (t: number) => {
@@ -103,6 +111,9 @@ export default function DayTimeline({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Fewer marks get a label on a narrow bar, though the grid behind them still runs hourly.
+  const tickLabels = tickMinutes(opensMin, closesMin, barPx, TICK_LABEL_PX);
 
   // The tag's own width, so a floating tag can be centred on its pick without leaving the bar.
   const [tagPx, setTagPx] = useState(0);
@@ -352,7 +363,7 @@ export default function DayTimeline({
           className={`daycal-bar ${dragging ? "dragging" : ""}`}
           ref={barRef}
         >
-          {ticks
+          {hourMarks
             .filter((t) => t > opensMin && t < closesMin)
             .map((t) => (
               <div
@@ -458,7 +469,7 @@ export default function DayTimeline({
       </div>
 
       <div className="daycal-ticks">
-        {ticks.map((t) => (
+        {tickLabels.map((t) => (
           <span key={t} className="daycal-tick" style={tickStyle(t)}>
             {minutesToTime(t)}
           </span>

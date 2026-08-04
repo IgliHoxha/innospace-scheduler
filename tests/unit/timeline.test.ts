@@ -6,6 +6,7 @@ import {
   pickTagPlacement,
   snapToStep,
   suggestedEndMin,
+  tickMinutes,
 } from "@/lib/timeline";
 
 // Reserved ranges as minutes-since-midnight (09:00 = 540, etc.).
@@ -260,5 +261,54 @@ describe("pickTagPlacement", () => {
 
   it("does not try to clamp a tag wider than the bar", () => {
     expect(place(40, 47, { tagPx: BAR + 1 }).leftPx).toBeNull();
+  });
+});
+
+describe("tickMinutes", () => {
+  // A 09:00-23:00 day, the shape the booking screen actually shows.
+  const OPEN = 540;
+  const CLOSE = 1380;
+  const LABEL = 44;
+  const at = (barPx: number) => tickMinutes(OPEN, CLOSE, barPx, LABEL);
+  const hours = (mins: number[]) => mins.map((m) => m / 60);
+
+  it("labels every hour when the bar is wide enough", () => {
+    expect(hours(at(1126))).toEqual([
+      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    ]);
+  });
+
+  // The bug: 15 labels needing 44px each cannot fit a phone's ~350px bar.
+  it("thins the labels on a phone-width bar", () => {
+    expect(hours(at(350))).toEqual([9, 11, 13, 15, 17, 19, 21, 23]);
+  });
+
+  it("thins further the narrower it gets, and never below the two ends", () => {
+    expect(hours(at(220))).toEqual([9, 12, 15, 18, 23]);
+    expect(at(1)).toEqual([OPEN, CLOSE]);
+  });
+
+  it("keeps closing time whatever the step, dropping the mark that would crowd it", () => {
+    for (const barPx of [1126, 350, 300, 220, 160, 90, 40]) {
+      const marks = at(barPx);
+      expect(marks[0]).toBe(OPEN);
+      expect(marks[marks.length - 1]).toBe(CLOSE);
+      // Whatever survives has to have room for its own label.
+      const gapPx = ((marks[1] - marks[0]) / (CLOSE - OPEN)) * barPx;
+      if (marks.length > 2) expect(gapPx).toBeGreaterThanOrEqual(LABEL);
+    }
+  });
+
+  it("labels every hour until the bar has been measured", () => {
+    expect(at(0)).toHaveLength(15);
+  });
+
+  it("starts on the first whole hour of a day that opens mid-hour", () => {
+    expect(hours(tickMinutes(570, 720, 1000, LABEL))).toEqual([10, 11, 12]);
+  });
+
+  // Opening time is never sacrificed to make room for closing time; the two ends are the floor.
+  it("keeps both ends of a bar with room for nothing else", () => {
+    expect(hours(tickMinutes(540, 660, 40, LABEL))).toEqual([9, 11]);
   });
 });

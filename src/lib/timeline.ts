@@ -84,6 +84,32 @@ export function dragRange(
   return { from, to };
 }
 
+/** The hour marks that fit under a bar this wide, thinned evenly and always keeping closing time. */
+export function tickMinutes(
+  opensMin: number,
+  closesMin: number,
+  barPx: number,
+  labelPx: number,
+): number[] {
+  const all: number[] = [];
+  for (let m = Math.ceil(opensMin / 60) * 60; m <= closesMin; m += 60) {
+    all.push(m);
+  }
+  const hours = (closesMin - opensMin) / 60;
+  // Nothing to thin before the bar is measured, and two marks are the ends, which always show.
+  if (all.length < 3 || barPx <= 0 || hours <= 0) return all;
+  const step = Math.max(1, Math.ceil((labelPx * hours) / barPx));
+  if (step === 1) return all;
+  const kept = all.filter((_, i) => i % step === 0);
+  const last = all[all.length - 1];
+  if (kept[kept.length - 1] !== last) {
+    // Closing time earns its place, so the mark before it gives way when it would sit too close.
+    if (kept.length > 1 && last - kept[kept.length - 1] < step * 60) kept.pop();
+    kept.push(last);
+  }
+  return kept;
+}
+
 /** Where the pick's time tag sits: inside a roomy pick, else a chip above it, centred but kept on the bar. */
 export function pickTagPlacement(opts: {
   barPx: number;
