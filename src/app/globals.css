@@ -50,6 +50,11 @@ a {
   color: var(--brand-dark);
 }
 
+/* Preflight is off, so a button keeps the UA's own text colour, which iOS Safari renders blue. */
+button {
+  color: inherit;
+}
+
 /* Width and rhythm shared with innospace-bookings, so the two back offices read as one product. */
 .container {
   width: 100%;
