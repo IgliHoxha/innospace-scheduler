@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getReservation, updateReservationStatus } from "@/lib/db";
+import { updateReservationStatus } from "@/lib/db";
 import { sendReservationEmail } from "@/lib/email";
 import { requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
@@ -10,6 +10,7 @@ import {
 } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /** Admin-only approve, cancel or delete; whoever booked uses the signed link in their email. */
 export async function PATCH(
@@ -41,14 +42,7 @@ export async function PATCH(
     );
   }
 
-  const existing = await getReservation(id);
-  if (!existing) {
-    return NextResponse.json(
-      { ok: false, error: "Not found." },
-      { status: 404 },
-    );
-  }
-
+  // One atomic UPDATE ... RETURNING: a separate existence read would only add a race window.
   const reservation = await updateReservationStatus(id, status);
   if (!reservation) {
     return NextResponse.json(

@@ -111,15 +111,13 @@ describe("PATCH /api/reservations/[id]", () => {
 });
 
 describe("PATCH /api/reservations/[id] - failures that must not lose the change", () => {
-  it("404s when the row is deleted between the read and the write", async () => {
+  it("404s and tells nobody when the row is already gone", async () => {
     const r = await seed("pending");
-    vi.spyOn(db, "updateReservationStatus").mockImplementation(async (id) => {
-      await db.discardReservation(id);
-      return null;
-    });
+    await db.discardReservation(r.id);
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     expect(res.status).toBe(404);
-    vi.restoreAllMocks();
+    // Nothing was updated, so nobody gets told a booking they no longer have is confirmed.
+    expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });
 
   it("still confirms when the notification email throws", async () => {
