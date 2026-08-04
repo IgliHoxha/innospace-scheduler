@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidEmail, validateGuest } from "@/lib/guest";
+import { canonicalEmail, isValidEmail, validateGuest } from "@/lib/guest";
 import { MAX_EMAIL, MAX_NAME } from "@/lib/types";
 
 const ok = { fullName: "Ada Lovelace", email: "ada@example.com" };
@@ -113,5 +113,63 @@ describe("isValidEmail", () => {
     ]) {
       expect(isValidEmail(e)).toBe(false);
     }
+  });
+});
+
+describe("canonicalEmail", () => {
+  it("ignores dots in a Gmail local part, as Gmail does", () => {
+    expect(canonicalEmail("igli.ihoxha@gmail.com")).toBe(
+      "igliihoxha@gmail.com",
+    );
+    expect(canonicalEmail("i.g.l.i.i.h.o.x.h.a@gmail.com")).toBe(
+      "igliihoxha@gmail.com",
+    );
+  });
+  it("drops a Gmail plus tag", () => {
+    expect(canonicalEmail("igliihoxha+booth@gmail.com")).toBe(
+      "igliihoxha@gmail.com",
+    );
+    expect(canonicalEmail("igli.ihoxha+a.b@gmail.com")).toBe(
+      "igliihoxha@gmail.com",
+    );
+  });
+  it("folds googlemail.com onto gmail.com, the same inbox by an older name", () => {
+    expect(canonicalEmail("igli.ihoxha@googlemail.com")).toBe(
+      "igliihoxha@gmail.com",
+    );
+    expect(canonicalEmail("igliihoxha+x@googlemail.com")).toBe(
+      canonicalEmail("igli.ihoxha@gmail.com"),
+    );
+  });
+  it("drops a plus tag at the other providers that document it", () => {
+    expect(canonicalEmail("ada+booth@outlook.com")).toBe("ada@outlook.com");
+    expect(canonicalEmail("ada+booth@icloud.com")).toBe("ada@icloud.com");
+    expect(canonicalEmail("ada+booth@proton.me")).toBe("ada@proton.me");
+    expect(canonicalEmail("ada+booth@fastmail.com")).toBe("ada@fastmail.com");
+  });
+  it("keeps dots outside Gmail: nobody else ignores them", () => {
+    expect(canonicalEmail("igli.ihoxha@outlook.com")).toBe(
+      "igli.ihoxha@outlook.com",
+    );
+    expect(canonicalEmail("a.b@icloud.com")).toBe("a.b@icloud.com");
+  });
+  it("leaves an unknown domain untouched rather than guessing its rules", () => {
+    expect(canonicalEmail("a.b+c@somecompany.al")).toBe("a.b+c@somecompany.al");
+    expect(canonicalEmail("a.b+c@innospacetirana.com")).toBe(
+      "a.b+c@innospacetirana.com",
+    );
+  });
+  it("trims and lowercases whatever it is given", () => {
+    expect(canonicalEmail("  Igli.IHoxha@Gmail.COM ")).toBe(
+      "igliihoxha@gmail.com",
+    );
+  });
+  it("keeps the original when canonicalising would empty the local part", () => {
+    expect(canonicalEmail("+tag@gmail.com")).toBe("+tag@gmail.com");
+    expect(canonicalEmail("...@gmail.com")).toBe("...@gmail.com");
+  });
+  it("passes through anything without a domain", () => {
+    expect(canonicalEmail("nope")).toBe("nope");
+    expect(canonicalEmail("")).toBe("");
   });
 });

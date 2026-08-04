@@ -2,10 +2,34 @@ import { describe, expect, it } from "vitest";
 import {
   approvalRequiredFor,
   findOverlap,
+  isBookableMinute,
   meetsMinDuration,
   noteRequiredFor,
   runTotalMinutes,
 } from "@/lib/reservation-rules";
+
+describe("isBookableMinute", () => {
+  const open = 8 * 60;
+  const close = 23 * 60;
+  it("accepts a time on the grid inside the window", () => {
+    expect(isBookableMinute(9 * 60, open, close, 5)).toBe(true);
+    expect(isBookableMinute(9 * 60 + 55, open, close, 5)).toBe(true);
+  });
+  it("rejects a time off the step grid", () => {
+    expect(isBookableMinute(9 * 60 + 7, open, close, 5)).toBe(false);
+  });
+  it("rejects a time outside opening hours", () => {
+    expect(isBookableMinute(open - 5, open, close, 5)).toBe(false);
+    expect(isBookableMinute(close + 5, open, close, 5)).toBe(false);
+  });
+  it("includes both ends of the window, so a booking may close the day", () => {
+    expect(isBookableMinute(open, open, close, 5)).toBe(true);
+    expect(isBookableMinute(close, open, close, 5)).toBe(true);
+  });
+  it("rejects a non-integer minute", () => {
+    expect(isBookableMinute(9.5 * 60 + 0.5, open, close, 5)).toBe(false);
+  });
+});
 
 describe("meetsMinDuration", () => {
   it("is inclusive of the minimum", () => {

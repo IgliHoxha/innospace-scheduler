@@ -56,6 +56,48 @@ export function isValidEmail(value: string): boolean {
   return emailProblem(value) === null;
 }
 
+// googlemail.com is the same inbox as gmail.com, reached by an older name for it.
+const DOMAIN_ALIASES = new Map([["googlemail.com", "gmail.com"]]);
+
+// Gmail alone ignores dots; everyone else treats them as part of the address.
+const IGNORES_DOTS = new Set(["gmail.com"]);
+
+// Providers documenting "+tag" as an alias of the same inbox, so a tag buys no second identity.
+const IGNORES_PLUS_TAG = new Set([
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "proton.me",
+  "protonmail.com",
+  "pm.me",
+  "fastmail.com",
+]);
+
+/** One mailbox, one identity: what the booking limits count against, never what we send to. */
+export function canonicalEmail(value: string): string {
+  const email = value.trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return email;
+
+  let local = email.slice(0, at);
+  const raw = email.slice(at + 1);
+  const domain = DOMAIN_ALIASES.get(raw) ?? raw;
+
+  if (IGNORES_PLUS_TAG.has(domain)) {
+    const plus = local.indexOf("+");
+    if (plus >= 0) local = local.slice(0, plus);
+  }
+  if (IGNORES_DOTS.has(domain)) local = local.replaceAll(".", "");
+
+  // An all-dots or bare "+tag" local part would canonicalise to nothing, so keep the original.
+  return local ? `${local}@${domain}` : email;
+}
+
 // Collapse runs of whitespace so "Ada   Lovelace" is stored as one clean name.
 const clean = (v: unknown): string =>
   typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";

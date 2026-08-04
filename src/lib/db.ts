@@ -11,6 +11,7 @@ import {
   type ReservationStatus,
 } from "./types";
 import { requireEnv } from "./env-app";
+import { canonicalEmail } from "./guest";
 
 const COLS =
   "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note";
@@ -245,16 +246,20 @@ export async function heldRangesForEmail(
   email: string,
   date: string,
 ): Promise<{ startsAt: string; endsAt: string }[]> {
+  // A day's rows are few, and SQL can't strip Gmail's dots, so the match happens here.
   const rows = prep(
-    `SELECT startsAt, endsAt
+    `SELECT email, startsAt, endsAt
        FROM reservations
-       WHERE LOWER(email) = ? AND startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
+       WHERE startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
        ORDER BY startsAt`,
-  ).all(email.toLowerCase(), `${date}T00:00`, `${date}T23:59`) as Row[];
-  return rows.map((r) => ({
-    startsAt: String(r.startsAt),
-    endsAt: String(r.endsAt),
-  }));
+  ).all(`${date}T00:00`, `${date}T23:59`) as Row[];
+  const want = canonicalEmail(email);
+  return rows
+    .filter((r) => canonicalEmail(String(r.email ?? "")) === want)
+    .map((r) => ({
+      startsAt: String(r.startsAt),
+      endsAt: String(r.endsAt),
+    }));
 }
 
 /** Create a reservation; the overlap check and insert share a transaction, so racers can't both win. */
@@ -282,14 +287,17 @@ export async function createReservation(
          LIMIT 1`,
     ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
-    // Self-overlap: one person can't hold two booths at once, keyed on the email they booked with.
+    // Self-overlap: one person can't hold two booths at once, keyed on the mailbox they booked with.
     if (r.email) {
-      const selfClash = prep(
-        `SELECT 1 FROM reservations
-           WHERE LOWER(email) = ? AND status IN (${ACTIVE_LIST})
-             AND startsAt >= ? AND startsAt < ? AND endsAt > ?
-           LIMIT 1`,
-      ).get(r.email.toLowerCase(), dayStart, r.endsAt, r.startsAt);
+      const want = canonicalEmail(r.email);
+      const overlapping = prep(
+        `SELECT email FROM reservations
+           WHERE status IN (${ACTIVE_LIST})
+             AND startsAt >= ? AND startsAt < ? AND endsAt > ?`,
+      ).all(dayStart, r.endsAt, r.startsAt) as Row[];
+      const selfClash = overlapping.some(
+        (o) => canonicalEmail(String(o.email ?? "")) === want,
+      );
       if (selfClash) throw new UserBusyError();
     }
     insert(r);

@@ -25,7 +25,13 @@ type Body = {
   ok: boolean;
   error?: string;
   field?: string;
-  reservation?: { status: string; fullName?: string; email?: string };
+  reservation?: {
+    id?: string;
+    status: string;
+    fullName?: string;
+    email?: string;
+  };
+  cancelToken?: string;
   total?: number;
   counts?: { total: number };
   removed?: number;
@@ -97,6 +103,103 @@ describe("POST /api/reservations - identity validation", () => {
   });
 });
 
+describe("POST /api/reservations - Gmail variants are one person", () => {
+  const gmail = { fullName: "Igli Hoxha", email: "igliihoxha@gmail.com" };
+  const dotted = { fullName: "Igli Hoxha", email: "igli.iho.xha@gmail.com" };
+
+  it("counts a dotted variant into the same back-to-back run", async () => {
+    expect((await post({ ...ok, ...gmail })).status).toBe(201);
+    // 15:00-16:00 straight after, so the run is 2h and the note becomes required.
+    const res = await post({
+      ...ok,
+      ...dotted,
+      start: "15:00",
+      end: "16:00",
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.field).toBe("note");
+    expect(body.error).toContain("back to back");
+  });
+
+  it("counts a plus tag into the same run", async () => {
+    expect((await post({ ...ok, ...gmail })).status).toBe(201);
+    const res = await post({
+      ...ok,
+      email: "igliihoxha+booth@gmail.com",
+      start: "15:00",
+      end: "16:00",
+    });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("back to back");
+  });
+
+  it("409s a dotted variant trying to hold a second booth at the same time", async () => {
+    expect((await post({ ...ok, ...gmail })).status).toBe(201);
+    const res = await post({ ...ok, ...dotted, boothId: "booth-2" });
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toContain("already have a reservation");
+  });
+
+  it("still treats a different mailbox as a different person", async () => {
+    expect((await post({ ...ok, ...gmail })).status).toBe(201);
+    const res = await post({
+      ...ok,
+      fullName: "Someone Else",
+      email: "someoneelse@gmail.com",
+      start: "15:00",
+      end: "16:00",
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("keeps dots meaningful outside Gmail", async () => {
+    expect(
+      (await post({ ...ok, fullName: "Ada L", email: "a.b@outlook.com" }))
+        .status,
+    ).toBe(201);
+    const res = await post({
+      ...ok,
+      fullName: "Ada L",
+      email: "ab@outlook.com",
+      boothId: "booth-2",
+    });
+    expect(res.status).toBe(201);
+  });
+});
+
+describe("POST /api/reservations - cancel token for the booking browser", () => {
+  it("returns a token naming that reservation, so the board can cancel it", async () => {
+    const res = await post(ok);
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    const auth = await import("@/lib/auth");
+    expect(body.cancelToken).toBeTruthy();
+    expect(auth.verifyCancelToken(body.cancelToken)).toBe(body.reservation?.id);
+  });
+  it("mints a token that dies with the slot, exactly like the emailed one", async () => {
+    const body = await json(await post(ok));
+    const auth = await import("@/lib/auth");
+    // One minute past the 15:00 end: the slot has gone, so its token must go too.
+    vi.setSystemTime(new Date(`${DAY}T15:01:00`));
+    expect(auth.verifyCancelToken(body.cancelToken)).toBeNull();
+  });
+  it("is accepted by the cancel route and frees the slot", async () => {
+    const body = await json(await post(ok));
+    const cancel = await import("@/app/api/cancel/route");
+    const res = await cancel.POST(
+      makeRequest("/api/cancel", {
+        method: "POST",
+        body: { token: body.cancelToken },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await json(res)).ok).toBe(true);
+    const row = await db.getReservation(body.reservation!.id!);
+    expect(row?.status).toBe("cancelled");
+  });
+});
+
 describe("POST /api/reservations - slot validation", () => {
   it("400 for an unknown booth", async () => {
     expect((await post({ ...ok, boothId: "nope" })).status).toBe(400);
@@ -121,10 +224,15 @@ describe("POST /api/reservations - slot validation", () => {
   it("400 when a note is required (>= 2h) but missing", async () => {
     const res = await post({ ...ok, end: "16:00" });
     expect(res.status).toBe(400);
-    expect((await json(res)).error).toContain("note");
+    const body = await json(res);
+    expect(body.error).toContain("note");
+    // Named so the form can focus the note box instead of stranding the message.
+    expect(body.field).toBe("note");
   });
   it("400 for an over-long note", async () => {
-    expect((await post({ ...ok, note: "x".repeat(501) })).status).toBe(400);
+    const res = await post({ ...ok, note: "x".repeat(501) });
+    expect(res.status).toBe(400);
+    expect((await json(res)).field).toBe("note");
   });
   it("400 on a malformed JSON body (parse falls back to empty)", async () => {
     const res = await route.POST(

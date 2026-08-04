@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { buildDaySegments, dragRange } from "@/lib/timeline";
 import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
+import { MailIcon, TrashIcon, WhatsAppIcon } from "@/components/ui/icons";
+import { useTooltip } from "@/components/ui/tooltip";
 
 /** A reservation already taken for the booth+day, times as "HH:MM". */
 interface Reserved {
@@ -11,6 +13,8 @@ interface Reserved {
   label: string;
   /** Booked from this browser; the board never learns who anyone else is. */
   mine: boolean;
+  /** Present only for a booking this browser made: the proof needed to cancel it. */
+  cancelToken?: string;
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -34,6 +38,7 @@ export default function DayTimeline({
   step,
   minMinutes,
   contact,
+  onCancelled,
   boothName = "booth",
   dateLabel = "that day",
 }: {
@@ -50,6 +55,8 @@ export default function DayTimeline({
   minMinutes: number;
   /** Where an enquiry about a taken slot goes. Omit and taken blocks stay inert. */
   contact?: { phone: string; email: string };
+  /** Called after this browser cancels one of its own bookings, so the board can reload. */
+  onCancelled?: () => void;
   boothName?: string;
   dateLabel?: string;
 }) {
@@ -168,8 +175,9 @@ export default function DayTimeline({
     onPick(toHHMM(r.from), toHHMM(r.to));
   };
 
-  // Keyed on the range, not an index, so the popover closes itself if that booking
-  // is gone by the time availability reloads.
+  const { tooltip, tip } = useTooltip();
+
+  // Keyed on the range, not an index, so the popover closes itself if that booking is gone.
   const [asking, setAsking] = useState<{ from: number; to: number } | null>(
     null,
   );
@@ -191,15 +199,68 @@ export default function DayTimeline({
     ? `Booking enquiry: ${boothName}, ${dateLabel} ${toHHMM(askOn.fromMin)} - ${toHHMM(askOn.toMin)}`
     : "";
 
-  // Escape closes it; the overlay handles clicks outside.
+  // Keyed on the range too, so a booking cancelled elsewhere takes its dialog with it.
+  const [cancelling, setCancelling] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const cancelOn =
+    (cancelling &&
+      segments.find(
+        (s) =>
+          s.reserved &&
+          s.fromMin === cancelling.from &&
+          s.toMin === cancelling.to,
+      )) ||
+    null;
+  const cancelToken = cancelOn?.reserved?.src.cancelToken ?? "";
+
+  const closeCancel = () => {
+    setCancelling(null);
+    setCancelError("");
+  };
+
+  /** The emailed link's endpoint, with the token this browser kept when it booked. */
+  async function confirmCancel() {
+    if (!cancelToken) return;
+    setCancelBusy(true);
+    setCancelError("");
+    try {
+      const res = await fetch("/api/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: cancelToken }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (res.ok && json.ok) {
+        closeCancel();
+        onCancelled?.();
+      } else {
+        setCancelError(json.error || "Could not cancel that reservation.");
+      }
+    } catch {
+      setCancelError("Could not reach the server. Please try again.");
+    } finally {
+      setCancelBusy(false);
+    }
+  }
+
+  // Escape closes whichever dialog is open; the overlay handles clicks outside.
   useEffect(() => {
-    if (!askOn) return;
+    if (!askOn && !cancelOn) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAsking(null);
+      if (e.key !== "Escape") return;
+      setAsking(null);
+      if (!cancelBusy) closeCancel();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [askOn]);
+  }, [askOn, cancelOn, cancelBusy]);
 
   // Ends whatever gesture is running, for an unmount mid-drag.
   const endRef = useRef<(() => void) | null>(null);
@@ -291,33 +352,49 @@ export default function DayTimeline({
             <div
               className="daycal-past"
               style={{ left: 0, width: `${pct(earliestMin)}%` }}
-              title="Already passed"
+              {...tooltip("Already passed")}
             />
           )}
 
-          {segments.map((s, i) =>
-            s.reserved ? (
+          {segments.map((s, i) => {
+            if (!s.reserved) return null;
+            const src = s.reserved.src;
+            // Only a booking this browser holds the token for can offer to cancel itself.
+            const canCancel = !!src.cancelToken;
+            const range = { from: s.fromMin, to: s.toMin };
+            return (
               <button
                 key={i}
                 type="button"
-                className="daycal-block"
+                className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""}`}
                 style={{
                   left: `${pct(s.fromMin)}%`,
                   width: `${pct(s.toMin) - pct(s.fromMin)}%`,
                 }}
-                title={`${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · ${
-                  s.reserved.src.mine ? "Your booking" : "Booked"
-                }${contact ? " - click to request information" : ""}`}
-                aria-haspopup={contact ? "dialog" : undefined}
-                disabled={!contact}
-                onClick={() => setAsking({ from: s.fromMin, to: s.toMin })}
+                {...tooltip(
+                  canCancel
+                    ? `Your booking, ${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · click to cancel it`
+                    : src.mine
+                      ? `Your booking, ${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)}${contact ? " · click to contact us about it" : ""}`
+                      : `${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · Booked${contact ? " - click to request information" : ""}`,
+                )}
+                aria-haspopup={canCancel || contact ? "dialog" : undefined}
+                disabled={!canCancel && !contact}
+                onClick={() =>
+                  canCancel ? setCancelling(range) : setAsking(range)
+                }
               >
                 <span className="daycal-block-label">
-                  {s.reserved.src.mine ? "You" : "Booked"}
+                  {src.mine ? "You" : "Booked"}
                 </span>
+                {canCancel && (
+                  <span className="daycal-block-label on-hover">
+                    <TrashIcon />
+                  </span>
+                )}
               </button>
-            ) : null,
-          )}
+            );
+          })}
 
           {hasPick && (
             <div
@@ -329,8 +406,7 @@ export default function DayTimeline({
             />
           )}
 
-          {/* Sits above everything so it can take the pointer. Taken hours opt
-              out of pointer events entirely, so their tooltips still work. */}
+          {/* Above everything to take the pointer; taken hours opt out so their tooltips still work. */}
           {onPick &&
             cells.map((c, i) => (
               <button
@@ -380,9 +456,67 @@ export default function DayTimeline({
           <i className="sw booked" /> Booked
         </span>
         <span>
+          <i className="sw mine" /> Yours
+        </span>
+        <span>
           <i className="sw pick" /> Your pick
         </span>
       </div>
+
+      {tip}
+
+      {cancelOn && (
+        <div
+          className="modal-overlay"
+          onClick={() => !cancelBusy && closeCancel()}
+          role="presentation"
+        >
+          <div
+            className="modal ask-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cancel this reservation"
+          >
+            <button
+              type="button"
+              className="modal-close"
+              onClick={closeCancel}
+              disabled={cancelBusy}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <h2>Cancel this reservation?</h2>
+            <p className="modal-sub">
+              <strong>{boothName}</strong>
+              <br />
+              {dateLabel}
+              <br />
+              {toHHMM(cancelOn.fromMin)} - {toHHMM(cancelOn.toMin)}
+            </p>
+            {cancelError && <p className="error">{cancelError}</p>}
+            <div className="ask-actions">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={closeCancel}
+                disabled={cancelBusy}
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                className="btn danger"
+                onClick={confirmCancel}
+                disabled={cancelBusy}
+              >
+                {cancelBusy ? "Cancelling…" : "Yes, cancel it"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {askOn && contact && (
         <div
@@ -416,7 +550,7 @@ export default function DayTimeline({
                 href={mailtoLink(contact.email, askSubject, askMessage)}
                 onClick={() => setAsking(null)}
               >
-                Email
+                <MailIcon /> Email
               </a>
               <a
                 className="btn whatsapp"
@@ -425,7 +559,7 @@ export default function DayTimeline({
                 rel="noopener noreferrer"
                 onClick={() => setAsking(null)}
               >
-                WhatsApp
+                <WhatsAppIcon /> WhatsApp
               </a>
             </div>
           </div>

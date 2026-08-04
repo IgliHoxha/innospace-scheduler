@@ -8,12 +8,19 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
 import { type Booth } from "@/lib/booths";
 import { MAX_EMAIL, MAX_NAME, MAX_NOTE, type Reservation } from "@/lib/types";
-import { validateGuest, type GuestField } from "@/lib/guest";
+import {
+  canonicalEmail,
+  isValidEmail,
+  validateGuest,
+  type GuestField,
+} from "@/lib/guest";
 import {
   approvalRequiredFor,
   findOverlap,
+  isBookableMinute,
   meetsMinDuration,
   noteRequiredFor,
+  runTotalMinutes,
 } from "@/lib/reservation-rules";
 import { endForStart, suggestedEndMin } from "@/lib/timeline";
 import { formatDateLong } from "@/lib/datetime";
@@ -27,6 +34,8 @@ interface Reserved {
   label: string;
   /** Booked from this browser, the only way a login-less screen can know it's yours. */
   mine: boolean;
+  /** Present only for a booking this browser made: the proof needed to cancel it. */
+  cancelToken?: string;
 }
 
 interface Availability {
@@ -49,31 +58,49 @@ const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
 
-// Bookings made from this browser, so the board can say "You" without the server
-// ever telling one visitor who another one is. Kept short: it is a convenience.
+// Bookings made from this browser: how a login-less board says "You", and how the
+// back-to-back rule can warn before the server does. Kept short: it is a convenience.
 const MINE_KEY = "innospace.mine";
 const MINE_MAX = 50;
 const slotKey = (boothId: string, startsAt: string) => `${boothId}|${startsAt}`;
 
-function readMine(): string[] {
+/** One remembered booking: key, range, booker, and the token that can cancel it. */
+interface MineEntry {
+  k: string;
+  s: string;
+  e: string;
+  m: string;
+  t: string;
+}
+
+function readMine(): MineEntry[] {
   try {
     const raw = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as unknown;
-    return Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : [];
+    if (!Array.isArray(raw)) return [];
+    // Entries were bare keys before the run rule needed times; those still label "You".
+    return raw.flatMap((x) => {
+      if (typeof x === "string") return [{ k: x, s: "", e: "", m: "", t: "" }];
+      const e = x as Partial<MineEntry>;
+      return e && typeof e.k === "string"
+        ? [{ k: e.k, s: e.s ?? "", e: e.e ?? "", m: e.m ?? "", t: e.t ?? "" }]
+        : [];
+    });
   } catch {
     return []; // private mode, or somebody else's data in the key
   }
 }
 
-function rememberMine(key: string): void {
+function rememberMine(entry: MineEntry): MineEntry[] {
+  const next = [entry, ...readMine().filter((m) => m.k !== entry.k)].slice(
+    0,
+    MINE_MAX,
+  );
   try {
-    const next = [key, ...readMine().filter((k) => k !== key)].slice(
-      0,
-      MINE_MAX,
-    );
     localStorage.setItem(MINE_KEY, JSON.stringify(next));
   } catch {
     /* storage unavailable: the board just won't say "You" */
   }
+  return next;
 }
 
 declare global {
@@ -132,7 +159,10 @@ export default function ReservationClient({
   const [loading, setLoading] = useState(false);
   const [reservation, setReservation] = useState(false);
   const [error, setError] = useState("");
+  // Kept apart from `error` so it can sit at the note box the way the live check does.
+  const [noteError, setNoteError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
+  const [mine, setMine] = useState<MineEntry[]>([]);
 
   // Who's booking. No account, so these come with every reservation.
   const [fullName, setFullName] = useState("");
@@ -203,18 +233,27 @@ export default function ReservationClient({
     try {
       const res = await fetch(
         `/api/availability?booth=${encodeURIComponent(boothId)}&date=${encodeURIComponent(date)}`,
+        // The edge may serve a stale board; the tab that just booked or cancelled must not.
+        { cache: "no-store" },
       );
       const json = (await res.json()) as { ok: boolean } & Availability;
       if (id !== reqId.current) return;
       const owned = readMine();
+      setMine(owned);
       setAvail(
         json.ok
           ? {
               ...json,
-              reserved: json.reserved.map((b) => ({
-                ...b,
-                mine: owned.includes(slotKey(boothId, `${date}T${b.start}`)),
-              })),
+              reserved: json.reserved.map((b) => {
+                const held = owned.find(
+                  (m) => m.k === slotKey(boothId, `${date}T${b.start}`),
+                );
+                return {
+                  ...b,
+                  mine: !!held,
+                  cancelToken: held?.t || undefined,
+                };
+              }),
             }
           : null,
       );
@@ -232,8 +271,41 @@ export default function ReservationClient({
   const startMin = start ? toMinutes(start) : null;
   const endMin = end ? toMinutes(end) : null;
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
-  const mustNote = noteRequiredFor(duration, autoApproveMaxHours);
-  const willNeedApproval = approvalRequiredFor(duration, autoApproveMaxHours);
+
+  // The run belongs to whoever is booking, so it stays unknown until they say who that is.
+  const booker = isValidEmail(email.trim()) ? canonicalEmail(email) : "";
+
+  // That person's other bookings that day, so the run rule can warn before the server rejects.
+  const myHeld = useMemo(() => {
+    if (!booker) return [];
+    const onBoard = new Set(
+      (avail?.reserved ?? []).map((b) =>
+        slotKey(boothId, `${date}T${b.start}`),
+      ),
+    );
+    return (
+      mine
+        .filter(
+          (m) =>
+            canonicalEmail(m.m) === booker && m.e && m.s.startsWith(`${date}T`),
+        )
+        // Cancelled bookings would still be remembered, so the booth on screen gets rechecked.
+        .filter((m) => !m.k.startsWith(`${boothId}|`) || onBoard.has(m.k))
+        .map((m) => ({
+          start: toMinutes(m.s.slice(11)),
+          end: toMinutes(m.e.slice(11)),
+        }))
+    );
+  }, [mine, avail, boothId, date, booker]);
+
+  // Back to back counts as one sitting; the server recounts it across every device.
+  const runMinutes =
+    startMin != null && endMin != null && duration > 0
+      ? runTotalMinutes(startMin, endMin, myHeld, minReservationMinutes)
+      : 0;
+  const partOfRun = runMinutes > duration;
+  const mustNote = noteRequiredFor(runMinutes, autoApproveMaxHours);
+  const willNeedApproval = approvalRequiredFor(runMinutes, autoApproveMaxHours);
 
   // Reservable free stretches; with none, the picker is hidden and the reason shown instead.
   const freeGaps = useMemo(() => {
@@ -258,14 +330,26 @@ export default function ReservationClient({
     !!avail && toMinutes(avail.earliest) >= toMinutes(avail.closes);
 
   // Named because this problem shows at the note box, and both places must mean the same string.
-  const noteRequiredMessage = `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
+  const noteRequiredMessage = partOfRun
+    ? `Please say what the reservation is for - back to back with your other bookings this comes to ${autoApproveMaxHours} hours or more.`
+    : `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
 
+  // Every check the route makes that the browser can make too, in the route's own order.
   function validate(): string {
     if (!avail || !start || !end || startMin == null || endMin == null)
       return "";
+    const openMin = toMinutes(avail.opens);
+    const closeMin = toMinutes(avail.closes);
+    if (
+      !isBookableMinute(startMin, openMin, closeMin, stepMinutes) ||
+      !isBookableMinute(endMin, openMin, closeMin, stepMinutes)
+    )
+      return `Please choose times within opening hours, in ${stepMinutes}-minute steps.`;
     if (endMin <= startMin) return "The end time must be after the start time.";
     if (!meetsMinDuration(duration, minReservationMinutes))
       return `Reservations must be at least ${minReservationMinutes} minutes long.`;
+    if (startMin < toMinutes(avail.earliest))
+      return "That time has already passed.";
     const clash = findOverlap(
       startMin,
       endMin,
@@ -276,6 +360,15 @@ export default function ReservationClient({
       })),
     );
     if (clash) return `That overlaps an existing reservation (${clash.label}).`;
+    // The server rejects holding two booths at once; this browser knows its own bookings.
+    if (
+      findOverlap(
+        startMin,
+        endMin,
+        myHeld.map((h) => ({ ...h, label: "" })),
+      )
+    )
+      return "You already have a reservation during that time.";
     if (mustNote && !note.trim()) return noteRequiredMessage;
     return "";
   }
@@ -290,6 +383,8 @@ export default function ReservationClient({
     return (value: string) => {
       set(value);
       setError("");
+      // The run the server counted was that email's, so a new address invalidates its verdict.
+      if (field === "email") setNoteError("");
       if (guestError?.field === field) setGuestError(null);
     };
   };
@@ -315,6 +410,7 @@ export default function ReservationClient({
 
     setReservation(true);
     setError("");
+    setNoteError("");
     setSuccess(null);
     try {
       const res = await fetch("/api/reservations", {
@@ -333,8 +429,9 @@ export default function ReservationClient({
       const json = (await res.json().catch(() => ({}))) as {
         ok: boolean;
         error?: string;
-        field?: GuestField;
+        field?: GuestField | "note";
         reservation?: Reservation;
+        cancelToken?: string;
       };
       if (res.ok && json.ok) {
         const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
@@ -346,14 +443,27 @@ export default function ReservationClient({
         );
         setNote("");
         // Recorded before the reload, so the block comes back labelled "You".
-        if (json.reservation?.startsAt) {
-          rememberMine(slotKey(boothId, json.reservation.startsAt));
+        const made = json.reservation;
+        if (made?.startsAt && made.endsAt) {
+          setMine(
+            rememberMine({
+              k: slotKey(boothId, made.startsAt),
+              s: made.startsAt,
+              e: made.endsAt,
+              m: guest.guest.email,
+              t: json.cancelToken ?? "",
+            }),
+          );
         }
         await loadAvailability();
       } else {
-        if (json.field)
-          setGuestError({ field: json.field, error: json.error! });
-        setError(json.error || "Could not reserve that time.");
+        const message = json.error || "Could not reserve that time.";
+        const field = json.field;
+        // Shown at the field it names, so a long form doesn't hide the reason below the fold.
+        if (field === "note") setNoteError(message);
+        else if (field) setGuestError({ field, error: message });
+        else setError(message);
+        if (field) document.getElementById(field)?.focus();
         loadAvailability(); // someone may have just taken it
       }
     } finally {
@@ -488,6 +598,14 @@ export default function ReservationClient({
                 contact={contact}
                 boothName={selectedBooth?.name ?? "the booth"}
                 dateLabel={dates.find((d) => d.value === date)?.label ?? date}
+                // Cancelled from the board: the slot is free again, so the graph has to be refetched.
+                onCancelled={() => {
+                  setSuccess(
+                    "Your reservation is cancelled. The slot is free for someone else now.",
+                  );
+                  setError("");
+                  loadAvailability();
+                }}
                 // The graph is another way to choose a range, so it writes the same state the fields do.
                 onPick={(from, to) => {
                   setStart(from);
@@ -541,12 +659,14 @@ export default function ReservationClient({
         </div>
 
         {/* Note + submit */}
-        {noteProblem && <p className="error for-note">{noteProblem}</p>}
+        {(noteProblem || noteError) && (
+          <p className="error for-note">{noteProblem || noteError}</p>
+        )}
         <textarea
           id="note"
           name="note"
           aria-label="Note"
-          className={`note-box ${mustNote && !note.trim() ? "required" : ""}`}
+          className={`note-box ${(mustNote && !note.trim()) || noteError ? "required" : ""}`}
           placeholder={
             mustNote
               ? `Note (required for ${autoApproveMaxHours} hours or more) - what is the booth for?`
@@ -558,14 +678,12 @@ export default function ReservationClient({
           onChange={(e) => {
             setNote(e.target.value);
             setError("");
+            setNoteError("");
           }}
           aria-required={mustNote}
         />
 
-        {/* Empty until Cloudflare decides to challenge, and collapsed to nothing
-            while it stays that way, so an ordinary booking sees no gap here.
-            The script is loaded without render=explicit's usual onload hook: the
-            effect above polls for it instead. */}
+        {/* Collapsed until Cloudflare challenges, so an ordinary booking sees no gap. */}
         {turnstileSiteKey && (
           <>
             <Script

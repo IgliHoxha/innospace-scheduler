@@ -1,5 +1,17 @@
 // Pure rule predicates with config injected, so server and client form can't drift. Minutes throughout.
 
+/** Inside opening hours and on the step grid: the form checks it before the route repeats it. */
+export function isBookableMinute(
+  minutes: number,
+  openMin: number,
+  closeMin: number,
+  stepMin: number,
+): boolean {
+  if (!Number.isInteger(minutes)) return false;
+  if (minutes < openMin || minutes > closeMin) return false;
+  return minutes % stepMin === 0;
+}
+
 /** Is the reservation at least the minimum length? */
 export function meetsMinDuration(
   durationMin: number,

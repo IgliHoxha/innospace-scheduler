@@ -1,5 +1,9 @@
 // Time rules; a reservation is local "YYYY-MM-DDTHH:MM" with no TZ, so TZ must match the space.
-import { approvalRequiredFor, noteRequiredFor } from "./reservation-rules";
+import {
+  approvalRequiredFor,
+  isBookableMinute,
+  noteRequiredFor,
+} from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
 import { timeOf, durationMinutes, ymd } from "./datetime";
 
@@ -61,11 +65,14 @@ export function ceilToStep(minutes: number): number {
   return Math.ceil(minutes / step) * step;
 }
 
-/** Is this time-of-day on the step grid and inside the opening window? */
+/** The same rule the form runs, with this server's hours supplied. */
 export function isValidTimeOfDay(minutes: number): boolean {
-  if (!Number.isInteger(minutes)) return false;
-  if (minutes < openHour() * 60 || minutes > closeHour() * 60) return false;
-  return minutes % stepMinutes() === 0;
+  return isBookableMinute(
+    minutes,
+    openHour() * 60,
+    closeHour() * 60,
+    stepMinutes(),
+  );
 }
 
 /** "09:30 - 11:00" for a reservation. */

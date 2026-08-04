@@ -36,7 +36,9 @@ import {
   durationMinutes,
   toDateTime,
   nowDateTime,
+  epochMsOf,
 } from "@/lib/datetime";
+import { createCancelToken } from "@/lib/auth";
 import { sendReservationEmail } from "@/lib/email";
 import {
   approvalRequiredFor,
@@ -159,6 +161,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
+        // Named so the form can land the cursor on the note instead of a message far below it.
+        field: "note",
         error: partOfRun
           ? `Please add a note saying what the reservation is for - back to back with your other bookings this comes to ${autoApproveMaxHours()} hours or more.`
           : `Please add a note saying what the reservation is for - it's required for reservations of ${autoApproveMaxHours()} hours or more.`,
@@ -168,7 +172,11 @@ export async function POST(req: NextRequest) {
   }
   if (note && note.length > MAX_NOTE) {
     return NextResponse.json(
-      { ok: false, error: `The note must be ${MAX_NOTE} characters or fewer.` },
+      {
+        ok: false,
+        field: "note",
+        error: `The note must be ${MAX_NOTE} characters or fewer.`,
+      },
       { status: 400 },
     );
   }
@@ -229,12 +237,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // The same proof the email link carries, so the booking browser can cancel without it.
+    const expiresAt = epochMsOf(reservation.endsAt ?? endsAt);
     return NextResponse.json(
       {
         ok: true,
         id: reservation.id,
         reservation,
         booth: boothName(boothId),
+        cancelToken: Number.isFinite(expiresAt)
+          ? createCancelToken(reservation.id, expiresAt)
+          : undefined,
       },
       { status: 201 },
     );

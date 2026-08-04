@@ -8,6 +8,7 @@ import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useTooltip } from "@/components/ui/tooltip";
 import {
   boothLabel,
   emailBodyText,
@@ -40,6 +41,7 @@ export default function DashboardClient({
   // Booth names from props, never env: the env-backed lookup would throw in a client bundle.
   const boothName = (id: string | undefined) => boothNameIn(booths, id);
 
+  const { tooltip, tip } = useTooltip();
   const [data, setData] = useState<ReservationPage>(initialData);
   const [filter, setFilter] = useState<"all" | ReservationStatus>(
     INITIAL_FILTER,
@@ -325,7 +327,7 @@ export default function DashboardClient({
                         {r.status === "pending" && (
                           <button
                             className="icon-btn tick"
-                            title="Approve reservation"
+                            {...tooltip("Approve reservation")}
                             aria-label="Approve reservation"
                             onClick={() =>
                               setPending({
@@ -342,11 +344,11 @@ export default function DashboardClient({
                         )}
                         <button
                           className="icon-btn cross"
-                          title={
+                          {...tooltip(
                             r.status === "pending"
                               ? "Reject reservation"
-                              : "Cancel reservation"
-                          }
+                              : "Cancel reservation",
+                          )}
                           aria-label={
                             r.status === "pending"
                               ? "Reject reservation"
@@ -369,7 +371,7 @@ export default function DashboardClient({
                         </button>
                         <button
                           className="icon-btn trash"
-                          title="Delete reservation"
+                          {...tooltip("Delete reservation")}
                           aria-label="Delete reservation"
                           disabled={r.status === "deleted"}
                           onClick={() =>
@@ -480,6 +482,7 @@ export default function DashboardClient({
         </ConfirmDialog>
       )}
       <SiteFooter />
+      {tip}
     </>
   );
 }
