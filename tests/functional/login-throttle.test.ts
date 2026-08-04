@@ -147,3 +147,48 @@ describe("POST /api/login - the lockout wait is worded for its length", () => {
     expect((await (await wrong()).json()).error).toContain("1 minute");
   });
 });
+
+describe("POST /api/login - oversized input counts like any other failure", () => {
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    resetApp();
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "50");
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "1");
+    route = await import("@/app/api/login/route");
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const huge = () =>
+    post({ login: "a".repeat(300), password: "b".repeat(300) });
+
+  it("401s an over-long login without letting it reach the hasher", async () => {
+    expect((await huge()).status).toBe(429); // 1 attempt allowed, so this trips the lockout
+  });
+
+  it("bans the IP through the oversized path too, not just wrong passwords", async () => {
+    await huge();
+    vi.advanceTimersByTime(61_000);
+    expect((await huge()).status).toBe(403);
+  });
+});
+
+describe("POST /api/login - the wait is pluralised properly", () => {
+  beforeEach(async () => {
+    resetApp();
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "50");
+    route = await import("@/app/api/login/route");
+  });
+
+  it("says minutes, plural, for a longer lockout", async () => {
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "300");
+    expect((await (await wrong()).json()).error).toContain("5 minutes");
+  });
+
+  it("says second, singular, for a one second lockout", async () => {
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "1");
+    expect((await (await wrong()).json()).error).toContain("1 second");
+  });
+});

@@ -109,3 +109,37 @@ describe("PATCH /api/reservations/[id]", () => {
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH /api/reservations/[id] - failures that must not lose the change", () => {
+  it("404s when the row is deleted between the read and the write", async () => {
+    const r = await seed("pending");
+    vi.spyOn(db, "updateReservationStatus").mockImplementation(async (id) => {
+      await db.discardReservation(id);
+      return null;
+    });
+    const res = await patch(r.id, { status: "confirmed" }, adminToken());
+    expect(res.status).toBe(404);
+    vi.restoreAllMocks();
+  });
+
+  it("still confirms when the notification email throws", async () => {
+    const r = await seed("pending");
+    vi.mocked(email.sendReservationEmail).mockRejectedValueOnce(
+      new Error("resend is down"),
+    );
+    const res = await patch(r.id, { status: "confirmed" }, adminToken());
+    // The status change is the point; the email is best effort.
+    expect(res.status).toBe(200);
+    expect((await db.getReservation(r.id))?.status).toBe("confirmed");
+  });
+});
+
+describe("PATCH /api/reservations/[id] - statuses that send no email", () => {
+  it("soft-deletes without emailing anyone", async () => {
+    const r = await seed();
+    const res = await patch(r.id, { status: "deleted" }, adminToken());
+    expect(res.status).toBe(200);
+    expect((await db.getReservation(r.id))?.status).toBe("deleted");
+    expect(email.sendReservationEmail).not.toHaveBeenCalled();
+  });
+});

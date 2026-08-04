@@ -163,3 +163,51 @@ describe("contact footer", () => {
     }
   });
 });
+
+describe("reservations missing their times", () => {
+  it("has no date to report when startsAt is absent", () => {
+    expect(
+      t.dateOfReservation({ ...base, startsAt: undefined }),
+    ).toBeUndefined();
+  });
+
+  it("names the booth generically when there is no reservation to name it from", () => {
+    const subject = t.emailSubject("confirmed", contact, boothName);
+    expect(subject).toContain("meeting booth");
+    expect(subject).not.toContain("undefined");
+  });
+
+  it("says 'your requested date' rather than printing undefined", () => {
+    const subject = t.emailSubject("confirmed", contact, boothName, {
+      ...base,
+      startsAt: undefined,
+    });
+    expect(subject).toBe(
+      "Your Booth 1 reservation is confirmed for your requested date",
+    );
+  });
+});
+
+describe("the note line in a pending request", () => {
+  it("is included when a note was given", () => {
+    const body = t.emailBodyText(
+      { ...base, status: "pending", note: "  Team workshop  " },
+      "pending",
+      contact,
+      boothName,
+    );
+    expect(body).toContain("Note: Team workshop");
+  });
+
+  it("is left out entirely when the note is blank", () => {
+    for (const note of [undefined, "", "   "]) {
+      const body = t.emailBodyText(
+        { ...base, status: "pending", note },
+        "pending",
+        contact,
+        boothName,
+      );
+      expect(body).not.toContain("Note:");
+    }
+  });
+});

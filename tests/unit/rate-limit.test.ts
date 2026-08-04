@@ -222,3 +222,64 @@ describe("env guards", () => {
     }
   });
 });
+
+describe("bucket housekeeping and repeat hits", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "60");
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "1");
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("reports the remaining wait without escalating it further", async () => {
+    const rl = await import("@/lib/rate-limit");
+    expect(rl.registerLoginFailure("2.2.2.2", "a").retryAfterSeconds).toBe(60);
+    vi.advanceTimersByTime(20_000);
+    // 40s left, and the lockout has not been extended by the extra attempt.
+    expect(rl.registerLoginFailure("2.2.2.2", "a").retryAfterSeconds).toBe(40);
+  });
+
+  it("keeps reporting a ban on every later attempt", async () => {
+    const rl = await import("@/lib/rate-limit");
+    rl.registerLoginFailure("3.3.3.3", "a");
+    vi.advanceTimersByTime(61_000);
+    expect(rl.registerLoginFailure("3.3.3.3", "a").banned).toBe(true);
+    // Already banned: the next hit returns from the ban check, not the counter.
+    expect(rl.registerLoginFailure("3.3.3.3", "a")).toEqual({
+      blocked: true,
+      banned: true,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it("forgets an idle, unblocked bucket after an hour", async () => {
+    const rl = await import("@/lib/rate-limit");
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "5"); // stay under the account lockout
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "100"); // and well under the IP one
+    rl.registerLoginFailure("4.4.4.4", "idle-user");
+    vi.advanceTimersByTime(61 * 60 * 1000);
+    // Pruned, so the budget starts over rather than carrying an hour-old failure.
+    rl.registerLoginFailure("5.5.5.5", "someone-else");
+    expect(rl.checkLoginBlocked("4.4.4.4", "idle-user").blocked).toBe(false);
+    for (let i = 0; i < 4; i++) rl.registerLoginFailure("4.4.4.4", "idle-user");
+    expect(rl.checkLoginBlocked("4.4.4.4", "idle-user").blocked).toBe(false);
+  });
+});
+
+describe("two buckets blocking at once", () => {
+  it("reports the longer of the two waits", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "30"); // account: shorter
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "600"); // IP: longer
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "10");
+    const rl = await import("@/lib/rate-limit");
+    // Both trip on this one failure, so the strongest must win.
+    expect(rl.registerLoginFailure("7.7.7.7", "a").retryAfterSeconds).toBe(600);
+    vi.useRealTimers();
+  });
+});

@@ -199,7 +199,8 @@ export async function queryReservations(
     SEARCH_COLS.forEach(() => params.push(like));
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  // Never empty: the status clause above is pushed on every path.
+  const whereSql = `WHERE ${where.join(" AND ")}`;
 
   const total = (
     db

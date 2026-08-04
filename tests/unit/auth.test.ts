@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 import {
   ADMIN_PASS,
   ADMIN_USER,
@@ -123,5 +124,29 @@ describe("admin credentials", () => {
     expect(() =>
       checkAdminCredentials(DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS),
     ).toThrow();
+  });
+});
+
+describe("a token whose body is not a payload", () => {
+  const signed = (json: string) => {
+    const body = Buffer.from(json, "utf8").toString("base64url");
+    // Signed correctly, so only the payload check can reject it.
+    const mac = createHmac("sha256", process.env.AUTH_SECRET as string)
+      .update(body)
+      .digest("hex");
+    return `${body}.${mac}`;
+  };
+
+  it("rejects a session token carrying JSON null", () => {
+    expect(verifySessionToken(signed("null"))).toBeNull();
+  });
+
+  it("rejects a session token whose body is not JSON at all", () => {
+    expect(verifySessionToken(signed("not json"))).toBeNull();
+  });
+
+  it("rejects a cancel token carrying JSON null or junk", () => {
+    expect(verifyCancelToken(signed("null"))).toBeNull();
+    expect(verifyCancelToken(signed("{oops"))).toBeNull();
   });
 });

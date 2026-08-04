@@ -91,3 +91,12 @@ describe("date + time formatting", () => {
     expect(t.formatDateTime("not-a-date")).toBe("");
   });
 });
+
+describe("dates that cannot be parsed", () => {
+  it("falls back rather than rendering NaN in an email", () => {
+    for (const bad of [undefined, "", "not-a-date", "16-07-2026"]) {
+      expect(t.formatDateLong(bad)).toBe("your requested date");
+      expect(t.formatDateMedium(bad)).toBe("");
+    }
+  });
+});

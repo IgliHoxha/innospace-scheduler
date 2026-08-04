@@ -120,3 +120,23 @@ describe("POST /api/cancel", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /api/cancel - the row disappears mid-request", () => {
+  it("404s when the reservation is deleted between the read and the write", async () => {
+    const r = await seed();
+    // Hard-deleted after getReservation succeeds, so the update finds nothing.
+    vi.spyOn(db, "updateReservationStatus").mockImplementation(async (id) => {
+      await db.discardReservation(id);
+      return null;
+    });
+    const res = await route.POST(
+      makeRequest("/api/cancel", {
+        method: "POST",
+        body: { token: createCancelToken(r.id, epochMsOf(ENDS_AT)) },
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toContain("no longer exists");
+    vi.restoreAllMocks();
+  });
+});

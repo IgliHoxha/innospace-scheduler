@@ -123,3 +123,21 @@ describe("GET /api/availability earliest (today only)", () => {
     expect(body.earliest).toBe("09:00");
   });
 });
+
+// The block above pins a fixed DAY, which is never today, so only the "other day" path ran.
+describe("GET /api/availability earliest (the request is for today)", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps opening time when now is still before the space opens", async () => {
+    vi.setSystemTime(new Date(`${today}T06:00:00`));
+    const body = await (await get(`booth=booth-1&date=${today}`)).json();
+    expect(body.earliest).toBe(body.opens);
+  });
+
+  it("moves past now once the day is underway", async () => {
+    vi.setSystemTime(new Date(`${today}T13:07:00`));
+    const body = await (await get(`booth=booth-1&date=${today}`)).json();
+    expect(body.earliest).toBe("13:10"); // rounded up onto the 5-minute grid
+  });
+});

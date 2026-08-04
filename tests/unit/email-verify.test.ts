@@ -117,3 +117,18 @@ describe("checkEmailDeliverable", () => {
     expect(resolveMx).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("disposable domains", () => {
+  it("refuses a throwaway inbox before any DNS lookup", async () => {
+    const res = await verify.checkEmailDeliverable("ada@mailinator.com");
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toMatch(/permanent email/i);
+    // Rejected on the list alone, so no resolver was consulted.
+    expect(resolveMx).not.toHaveBeenCalled();
+  });
+
+  it("refuses an address with no domain at all", async () => {
+    expect((await verify.checkEmailDeliverable("ada@")).ok).toBe(false);
+    expect(resolveMx).not.toHaveBeenCalled();
+  });
+});

@@ -187,3 +187,17 @@ describe("dragRange", () => {
     expect(dragRange(602, 598, stretch, 5, 15)).toEqual({ from: 590, to: 605 });
   });
 });
+
+describe("a reservation starting before the window opens", () => {
+  it("is clamped to opening time with no free sliver in front of it", () => {
+    // 08:00-10:00 against a 09:00 open: the segment starts at 09:00, nothing before it.
+    const segs = buildDaySegments(540, 1380, [{ start: 480, end: 600 }]);
+    expect(segs[0]).toMatchObject({ fromMin: 540, toMin: 600 });
+    expect(segs[0].reserved).not.toBeNull();
+  });
+
+  it("drops a reservation that ends before the window even opens", () => {
+    const segs = buildDaySegments(540, 1380, [{ start: 400, end: 480 }]);
+    expect(segs).toEqual([{ fromMin: 540, toMin: 1380, reserved: null }]);
+  });
+});

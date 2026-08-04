@@ -616,3 +616,33 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
     expect((await json(res)).error).toContain("back to back");
   });
 });
+
+describe("POST /api/reservations - an unexpected failure is not a 500", () => {
+  it("400s with a safe message, leaking no SQL or stack", async () => {
+    vi.spyOn(db, "createReservation").mockRejectedValueOnce(
+      new Error("SQLITE_CORRUPT: database disk image is malformed"),
+    );
+    const res = await post(ok, "boom-ip");
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.error).toBe("Could not create the reservation.");
+    expect(body.error).not.toContain("SQLITE");
+    vi.restoreAllMocks();
+  });
+});
+
+describe("GET /api/reservations - the status filter", () => {
+  it("falls back to 'all' for a status it does not recognise", async () => {
+    await post(ok);
+    const list = async (qs: string) =>
+      json(
+        await route.GET(
+          makeRequest(`/api/reservations?${qs}`, { token: adminToken() }),
+        ),
+      );
+    // A junk filter must not silently return nothing, nor 500.
+    expect((await list("status=bogus")).total).toBe(1);
+    expect((await list("status=all")).total).toBe(1);
+    expect((await list("status=cancelled")).total).toBe(0);
+  });
+});

@@ -13,8 +13,8 @@ export function isDateTime(value: string | undefined): boolean {
 export function epochMsOf(dt: string): number {
   // Range-checked, not just shaped: "T25:00" would otherwise roll silently into the next day.
   if (!isDateTime(dt)) return NaN;
-  const m = DATETIME_RE.exec(dt);
-  if (!m) return NaN;
+  // Non-null: isDateTime just matched this same pattern.
+  const m = DATETIME_RE.exec(dt)!;
   const [y, mo, d] = m[1].split("-").map(Number);
   return new Date(y, mo - 1, d, Number(m[2]), Number(m[3])).getTime();
 }

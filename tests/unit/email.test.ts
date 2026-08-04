@@ -341,3 +341,49 @@ describe("send outcome", () => {
     warn.mockRestore();
   });
 });
+
+describe("without an API key", () => {
+  it("builds no client and reports the send as skipped", async () => {
+    vi.resetModules();
+    vi.stubEnv("RESEND_API_KEY", "");
+    const fresh = await import("@/lib/email");
+    await expect(
+      fresh.sendReservationEmail(RESERVATION, "confirmed"),
+    ).resolves.toBe("skipped");
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("the cancel link on an email it cannot build one for", () => {
+  it("is omitted when the reservation has already ended", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-16T12:00:00"));
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(htmlOf()).not.toContain("/cancel?token=");
+    vi.useRealTimers();
+  });
+
+  it("is omitted when the reservation carries no end time", async () => {
+    await email.sendReservationEmail(
+      { ...RESERVATION, endsAt: undefined },
+      "confirmed",
+    );
+    expect(htmlOf()).not.toContain("/cancel?token=");
+  });
+});
+
+describe("the linkifier", () => {
+  it("turns a phone number in the sign-off into a tel: link, digits only", async () => {
+    vi.stubEnv("BUSINESS_PHONE", "+355 69 219 2666");
+    const html = await reservationHtml();
+    expect(html).toContain('href="tel:+355692192666"');
+    // The visible text keeps its spacing; only the href is stripped.
+    expect(html).toContain(">+355 69 219 2666</a>");
+  });
+
+  it("reuses the client it already built rather than making a second one", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    await email.sendReservationEmail(RESERVATION, "cancelled");
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+});

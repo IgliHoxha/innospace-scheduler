@@ -300,3 +300,21 @@ describe("heldRangesForEmail", () => {
     expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
   });
 });
+
+describe("rows stored with fields left unset", () => {
+  it("keeps an absent name, email and note as null rather than the string 'undefined'", async () => {
+    const r = await db.createReservation({
+      boothId: "booth-1",
+      startsAt: at("14:00"),
+      endsAt: at("15:00"),
+    });
+    const back = await db.getReservation(r.id);
+    expect(back).toMatchObject({ boothId: "booth-1", status: "confirmed" });
+    expect(back?.fullName).toBeUndefined();
+    expect(back?.email).toBeUndefined();
+    expect(back?.note).toBeUndefined();
+    // It still lists and searches without throwing on the missing columns.
+    const page = await db.queryReservations({ search: "booth-1" });
+    expect(page.total).toBe(1);
+  });
+});
