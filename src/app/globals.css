@@ -50,11 +50,12 @@ a {
   color: var(--brand-dark);
 }
 
+/* Width and rhythm shared with innospace-bookings, so the two back offices read as one product. */
 .container {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 20px 64px;
+  padding: 32px 20px 72px;
   flex: 1 0 auto;
 }
 
@@ -69,10 +70,11 @@ a {
   box-shadow: 0 1px 2px rgba(82, 69, 82, 0.06);
 }
 
+/* Matches .container, or the brand would sit at a different margin to the page under it. */
 .topbar-inner {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 16px 20px;
+  padding: 14px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -252,7 +254,7 @@ a {
 /* Small-caps eyebrow above a title (matches the marketing site's .eyebrow). */
 .eyebrow {
   display: inline-block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
@@ -261,30 +263,25 @@ a {
 }
 
 /* Reservation screen */
+/* Type scale shared with innospace-bookings; the ink stays black, which is this app's own choice. */
 .page-title {
-  font-size: 24px;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
   color: var(--text);
-  margin: 24px 0 4px;
+  line-height: 1.15;
 }
 
-/* Dashboard header row: title + members button */
+/* Dashboard header block: eyebrow, title, subtitle. */
 .page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.page-head .page-title {
-  margin: 16px 0;
+  margin: 4px 0 4px;
 }
 
 .page-subtitle {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
   color: var(--muted);
-  font-size: 14px;
-  margin: 0 0 20px;
 }
 
 .field-label {
@@ -1384,8 +1381,9 @@ tr:last-child td {
   border-top: 1px solid var(--border);
 }
 
+/* Same 1200px as .container and .topbar-inner, or the footer sits inset from the page above it. */
 .site-footer-inner {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 18px 20px;
   display: flex;
@@ -1413,7 +1411,9 @@ tr:last-child td {
   border-style: solid;
 }
 
+/* The input boxes' own height (h-11), so anything beside them centres on them, not on the label too. */
 .timerange-fields {
+  --tp-input-h: 44px;
   display: flex;
   align-items: flex-end;
   gap: 12px;
@@ -1450,8 +1450,11 @@ tr:last-child td {
   color: var(--muted);
 }
 
+/* Given the inputs' height it ends where they end, so centring inside it is centring on them. */
 .tp-sep {
-  padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  height: var(--tp-input-h);
   color: var(--muted);
   font-size: 13px;
 }
@@ -1459,7 +1462,7 @@ tr:last-child td {
 .tp-clock {
   width: 18px;
   height: 18px;
-  margin-bottom: 13px;
-  /* centres the 18px icon on the 44px (h-11) input boxes */
+  /* The icon is bottom-aligned with the inputs, so half their spare height lifts it to their middle. */
+  margin-bottom: calc((var(--tp-input-h) - 18px) / 2);
   color: var(--brand);
 }

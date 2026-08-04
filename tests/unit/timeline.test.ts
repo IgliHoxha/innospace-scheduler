@@ -3,6 +3,7 @@ import {
   buildDaySegments,
   dragRange,
   endForStart,
+  pickTagPlacement,
   snapToStep,
   suggestedEndMin,
 } from "@/lib/timeline";
@@ -199,5 +200,65 @@ describe("a reservation starting before the window opens", () => {
   it("drops a reservation that ends before the window even opens", () => {
     const segs = buildDaySegments(540, 1380, [{ start: 400, end: 480 }]);
     expect(segs).toEqual([{ fromMin: 540, toMin: 1380, reserved: null }]);
+  });
+});
+
+describe("pickTagPlacement", () => {
+  // A 1000px bar over a 09:00-23:00 day, and a tag the size the chip renders at.
+  const BAR = 1000;
+  const TAG = 90;
+  const FITS = 96;
+  const place = (
+    fromPct: number,
+    toPct: number,
+    over: Partial<{ barPx: number; tagPx: number }> = {},
+  ) =>
+    pickTagPlacement({
+      barPx: BAR,
+      tagPx: TAG,
+      fromPct,
+      toPct,
+      fitsPx: FITS,
+      ...over,
+    });
+
+  it("keeps a roomy pick's tag inside it, centred", () => {
+    const p = place(0, 20);
+    expect(p.above).toBe(false);
+    expect(p.centerPct).toBe(10);
+    expect(p.leftPx).toBeNull();
+  });
+
+  it("floats the tag above a pick too narrow to hold it", () => {
+    expect(place(0, 9).above).toBe(true);
+    // Exactly the fitting width still counts as roomy.
+    expect(place(0, 9.6).above).toBe(false);
+  });
+
+  // The bug: a narrow pick near the right end used to pin its tag to the bar's edge instead.
+  it("centres a floating tag on its pick rather than on the bar's end", () => {
+    const p = place(85.71, 92.86);
+    expect(p.leftPx).toBeCloseTo(847.85, 1);
+    expect(p.leftPx! + TAG / 2).toBeCloseTo((BAR * p.centerPct) / 100, 1);
+  });
+
+  it("gives up only the overhang when the pick sits against an end", () => {
+    expect(place(0, 7.14).leftPx).toBe(0);
+    expect(place(92.86, 100).leftPx).toBe(BAR - TAG);
+  });
+
+  it("falls back to percent centring until both widths are known", () => {
+    expect(place(40, 47, { barPx: 0 })).toMatchObject({
+      above: false,
+      leftPx: null,
+    });
+    expect(place(40, 47, { tagPx: 0 })).toMatchObject({
+      above: true,
+      leftPx: null,
+    });
+  });
+
+  it("does not try to clamp a tag wider than the bar", () => {
+    expect(place(40, 47, { tagPx: BAR + 1 }).leftPx).toBeNull();
   });
 });

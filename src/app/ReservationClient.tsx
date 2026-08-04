@@ -404,15 +404,18 @@ export default function ReservationClient({
       <Topbar brandHref="/" brandLabel="Innospace Scheduler" />
 
       <div className="container">
-        <h1 className="page-title">Reserve a meeting booth</h1>
-        <p className="page-subtitle">
-          No account needed. Pick a booth and a time, tell us who you are, and
-          we&apos;ll email you the confirmation. Reservations of{" "}
-          {autoApproveMaxHours} hours or more need a note saying what the booth
-          is for, and anything over {autoApproveMaxHours} hours needs admin
-          approval before it&apos;s confirmed (the slot is held for you
-          meanwhile).
-        </p>
+        <div className="page-head">
+          <span className="eyebrow">Innospace Tirana</span>
+          <h1 className="page-title">Reserve a meeting booth</h1>
+          <p className="page-subtitle">
+            No account needed. Pick a booth and a time, tell us who you are, and
+            we&apos;ll email you the confirmation. Reservations of{" "}
+            {autoApproveMaxHours} hours or more need a note saying what the
+            booth is for, and anything over {autoApproveMaxHours} hours needs
+            admin approval before it&apos;s confirmed (the slot is held for you
+            meanwhile).
+          </p>
+        </div>
 
         {/* Step 1: booth */}
         <div className="field-label">Booth</div>
@@ -569,6 +572,7 @@ export default function ReservationClient({
                 name="email"
                 type="email"
                 autoComplete="email"
+                placeholder="you@example.com"
                 maxLength={MAX_EMAIL}
                 required
                 aria-invalid={!!fieldError("email")}

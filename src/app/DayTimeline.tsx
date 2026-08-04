@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { buildDaySegments, dragRange } from "@/lib/timeline";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { buildDaySegments, dragRange, pickTagPlacement } from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
 import { MailIcon, TrashIcon, WhatsAppIcon } from "@/components/ui/icons";
@@ -102,6 +102,19 @@ export default function DayTimeline({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // The tag's own width, so a floating tag can be centred on its pick without leaving the bar.
+  const [tagPx, setTagPx] = useState(0);
+  const tagRo = useRef<ResizeObserver | null>(null);
+  // A callback ref, since the tag mounts and unmounts with the pick and its width changes with its class.
+  const tagRef = useCallback((el: HTMLDivElement | null) => {
+    tagRo.current?.disconnect();
+    if (!el) return;
+    const update = () => setTagPx(el.offsetWidth);
+    update();
+    tagRo.current = new ResizeObserver(update);
+    tagRo.current.observe(el);
   }, []);
 
   // One box per hour, pickable only if wholly free and not past.
@@ -304,26 +317,26 @@ export default function DayTimeline({
 
   let tag: { className: string; style: React.CSSProperties } | null = null;
   if (hasPick) {
-    const pickPx = (barPx * (selTo! - selFrom!)) / span;
-    const center = (pct(selFrom!) + pct(selTo!)) / 2;
-    if (barPx === 0 || pickPx >= TAG_FITS_PX) {
-      // Roomy pick: centre the tag inside it.
-      tag = {
-        className: "daycal-pick-tag over",
-        style: { left: `${center}%`, transform: "translate(-50%, -50%)" },
-      };
-    } else if (center <= 12) {
-      // Too tight and hugging the left edge: anchor the floating tag there.
-      tag = { className: "daycal-pick-tag above start", style: { left: 0 } };
-    } else if (center >= 88) {
-      tag = { className: "daycal-pick-tag above end", style: { right: 0 } };
-    } else {
-      // Too tight: float the tag above the pick so it never lands on a neighbour.
-      tag = {
-        className: "daycal-pick-tag above",
-        style: { left: `${center}%`, transform: "translateX(-50%)" },
-      };
-    }
+    const place = pickTagPlacement({
+      barPx,
+      tagPx,
+      fromPct: pct(selFrom!),
+      toPct: pct(selTo!),
+      fitsPx: TAG_FITS_PX,
+    });
+    tag = {
+      // Roomy pick: the tag sits inside it. Too tight: it floats above, clear of any neighbour.
+      className: `daycal-pick-tag ${place.above ? "above" : "over"}`,
+      style:
+        place.leftPx == null
+          ? {
+              left: `${place.centerPct}%`,
+              transform: place.above
+                ? "translateX(-50%)"
+                : "translate(-50%, -50%)",
+            }
+          : { left: place.leftPx },
+    };
   }
 
   return (
@@ -438,7 +451,7 @@ export default function DayTimeline({
         </div>
 
         {tag && (
-          <div className={tag.className} style={tag.style}>
+          <div ref={tagRef} className={tag.className} style={tag.style}>
             {minutesToTime(selFrom!)} - {minutesToTime(selTo!)}
           </div>
         )}

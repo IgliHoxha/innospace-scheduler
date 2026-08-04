@@ -84,6 +84,31 @@ export function dragRange(
   return { from, to };
 }
 
+/** Where the pick's time tag sits: inside a roomy pick, else a chip above it, centred but kept on the bar. */
+export function pickTagPlacement(opts: {
+  barPx: number;
+  /** The tag's measured width, 0 before its first render, when percent centring stands in. */
+  tagPx: number;
+  fromPct: number;
+  toPct: number;
+  /** A pick narrower than this cannot hold the tag, so the tag floats above instead. */
+  fitsPx: number;
+}): { above: boolean; centerPct: number; leftPx: number | null } {
+  const { barPx, tagPx, fromPct, toPct, fitsPx } = opts;
+  const centerPct = (fromPct + toPct) / 2;
+  const above = barPx > 0 && (barPx * (toPct - fromPct)) / 100 < fitsPx;
+  // Nothing to clamp against until both widths are known, and a tag wider than the bar cannot fit anyway.
+  if (!above || tagPx <= 0 || tagPx >= barPx)
+    return { above, centerPct, leftPx: null };
+  const wanted = (barPx * centerPct) / 100 - tagPx / 2;
+  // Only the overhang is given up, so the tag stays over its pick everywhere but the last stretch.
+  return {
+    above,
+    centerPct,
+    leftPx: Math.max(0, Math.min(wanted, barPx - tagPx)),
+  };
+}
+
 /** The end for a start that just moved, clamped to its free stretch; null when it landed in none. */
 export function endForStart(
   startMin: number,

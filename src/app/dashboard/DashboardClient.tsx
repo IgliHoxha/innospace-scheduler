@@ -180,10 +180,12 @@ export default function DashboardClient({
 
       <div className="container">
         <div className="page-head">
-          <div>
-            <span className="eyebrow">Innospace Tirana</span>
-            <h1 className="page-title">Reservations</h1>
-          </div>
+          <span className="eyebrow">Innospace Tirana</span>
+          <h1 className="page-title">Reservations</h1>
+          <p className="page-subtitle">
+            Review booth reservations, approve or cancel, and send the guest
+            their email - all in one place.
+          </p>
         </div>
         <div className="stats">
           <Stat
