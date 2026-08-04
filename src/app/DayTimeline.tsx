@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { buildDaySegments, dragRange } from "@/lib/timeline";
+import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
 import { MailIcon, TrashIcon, WhatsAppIcon } from "@/components/ui/icons";
 import { useTooltip } from "@/components/ui/tooltip";
@@ -16,10 +17,6 @@ interface Reserved {
   /** Present only for a booking this browser made: the proof needed to cancel it. */
   cancelToken?: string;
 }
-
-const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-const toHHMM = (m: number) =>
-  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 // A pick narrower than this (px) can't hold its time tag, so the tag floats beside it.
 const TAG_FITS_PX = 96;
@@ -60,10 +57,10 @@ export default function DayTimeline({
   boothName?: string;
   dateLabel?: string;
 }) {
-  const opensMin = toMin(opens);
-  const closesMin = toMin(closes);
+  const opensMin = timeToMinutes(opens);
+  const closesMin = timeToMinutes(closes);
   const span = Math.max(1, closesMin - opensMin);
-  const earliestMin = Math.max(opensMin, toMin(earliest));
+  const earliestMin = Math.max(opensMin, timeToMinutes(earliest));
 
   const pct = (min: number) =>
     Math.max(0, Math.min(100, ((min - opensMin) / span) * 100));
@@ -71,7 +68,11 @@ export default function DayTimeline({
   const segments = buildDaySegments(
     opensMin,
     closesMin,
-    reserved.map((r) => ({ start: toMin(r.start), end: toMin(r.end), src: r })),
+    reserved.map((r) => ({
+      start: timeToMinutes(r.start),
+      end: timeToMinutes(r.end),
+      src: r,
+    })),
   );
 
   const ticks: number[] = [];
@@ -85,8 +86,8 @@ export default function DayTimeline({
     return { left: `${pct(t)}%`, transform: "translateX(-50%)" };
   };
 
-  const selFrom = selection ? toMin(selection.start) : null;
-  const selTo = selection ? toMin(selection.end) : null;
+  const selFrom = selection ? timeToMinutes(selection.start) : null;
+  const selTo = selection ? timeToMinutes(selection.end) : null;
   const hasPick =
     selFrom != null && selTo != null && selTo > opensMin && selFrom < closesMin;
 
@@ -146,7 +147,7 @@ export default function DayTimeline({
 
   const pickCell = (i: number) => {
     if (onPick && cells[i].free) {
-      onPick(toHHMM(cells[i].from), toHHMM(cells[i].to));
+      onPick(minutesToTime(cells[i].from), minutesToTime(cells[i].to));
     }
   };
 
@@ -172,7 +173,7 @@ export default function DayTimeline({
       step,
       minMinutes,
     );
-    onPick(toHHMM(r.from), toHHMM(r.to));
+    onPick(minutesToTime(r.from), minutesToTime(r.to));
   };
 
   const { tooltip, tip } = useTooltip();
@@ -191,12 +192,12 @@ export default function DayTimeline({
     ? slotEnquiry(
         boothName,
         dateLabel,
-        toHHMM(askOn.fromMin),
-        toHHMM(askOn.toMin),
+        minutesToTime(askOn.fromMin),
+        minutesToTime(askOn.toMin),
       )
     : "";
   const askSubject = askOn
-    ? `Booking enquiry: ${boothName}, ${dateLabel} ${toHHMM(askOn.fromMin)} - ${toHHMM(askOn.toMin)}`
+    ? `Booking enquiry: ${boothName}, ${dateLabel} ${minutesToTime(askOn.fromMin)} - ${minutesToTime(askOn.toMin)}`
     : "";
 
   // Keyed on the range too, so a booking cancelled elsewhere takes its dialog with it.
@@ -373,10 +374,10 @@ export default function DayTimeline({
                 }}
                 {...tooltip(
                   canCancel
-                    ? `Your booking, ${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · click to cancel it`
+                    ? `Your booking, ${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)} · click to cancel it`
                     : src.mine
-                      ? `Your booking, ${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)}${contact ? " · click to contact us about it" : ""}`
-                      : `${toHHMM(s.fromMin)} - ${toHHMM(s.toMin)} · Booked${contact ? " - click to request information" : ""}`,
+                      ? `Your booking, ${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)}${contact ? " · click to contact us about it" : ""}`
+                      : `${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)} · Booked${contact ? " - click to request information" : ""}`,
                 )}
                 aria-haspopup={canCancel || contact ? "dialog" : undefined}
                 disabled={!canCancel && !contact}
@@ -419,7 +420,7 @@ export default function DayTimeline({
                 }}
                 disabled={!c.free}
                 // No title: naming the box contradicts the pick tag once a drag resizes it.
-                aria-label={`Reserve ${toHHMM(c.from)} to ${toHHMM(c.to)}`}
+                aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.to)}`}
                 onPointerDown={(e) => {
                   if (!c.free) return;
                   e.preventDefault(); // no text selection while dragging
@@ -435,7 +436,7 @@ export default function DayTimeline({
 
         {tag && (
           <div className={tag.className} style={tag.style}>
-            {toHHMM(selFrom!)} - {toHHMM(selTo!)}
+            {minutesToTime(selFrom!)} - {minutesToTime(selTo!)}
           </div>
         )}
       </div>
@@ -443,7 +444,7 @@ export default function DayTimeline({
       <div className="daycal-ticks">
         {ticks.map((t) => (
           <span key={t} className="daycal-tick" style={tickStyle(t)}>
-            {toHHMM(t)}
+            {minutesToTime(t)}
           </span>
         ))}
       </div>
@@ -493,7 +494,8 @@ export default function DayTimeline({
               <br />
               {dateLabel}
               <br />
-              {toHHMM(cancelOn.fromMin)} - {toHHMM(cancelOn.toMin)}
+              {minutesToTime(cancelOn.fromMin)} -{" "}
+              {minutesToTime(cancelOn.toMin)}
             </p>
             {cancelError && <p className="error">{cancelError}</p>}
             <div className="ask-actions">
@@ -542,7 +544,8 @@ export default function DayTimeline({
             <h2>Get in touch</h2>
             <p className="modal-sub">
               Choose how you&apos;d like to reach us about {boothName} on{" "}
-              {dateLabel}, {toHHMM(askOn.fromMin)} - {toHHMM(askOn.toMin)}:
+              {dateLabel}, {minutesToTime(askOn.fromMin)} -{" "}
+              {minutesToTime(askOn.toMin)}:
             </p>
             <div className="ask-actions">
               <a

@@ -24,9 +24,8 @@ import {
   type MineEntry,
 } from "@/lib/mine";
 import { endForStart, suggestedEndMin } from "@/lib/timeline";
-import { formatDateLong } from "@/lib/datetime";
+import { formatDateLong, minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { formatDuration } from "@/lib/schedule";
-import { pad2 } from "@/lib/utils";
 
 /** A reservation already taken for the chosen booth+day, as "HH:MM" times. */
 interface Reserved {
@@ -50,11 +49,6 @@ interface DateOption {
   value: string;
   label: string;
 }
-
-const toMinutes = (t: string) =>
-  Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-
-const toTime = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
@@ -228,8 +222,8 @@ export default function ReservationClient({
     loadAvailability();
   }, [loadAvailability]);
 
-  const startMin = start ? toMinutes(start) : null;
-  const endMin = end ? toMinutes(end) : null;
+  const startMin = start ? timeToMinutes(start) : null;
+  const endMin = end ? timeToMinutes(end) : null;
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
 
   // The run belongs to whoever is booking, so it stays unknown until they say who that is.
@@ -251,11 +245,14 @@ export default function ReservationClient({
   // Reservable free stretches; with none, the picker is hidden and the reason shown instead.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
-    const dayEnd = toMinutes(avail.closes);
+    const dayEnd = timeToMinutes(avail.closes);
     const busy = avail.reserved
-      .map((b) => ({ from: toMinutes(b.start), to: toMinutes(b.end) }))
+      .map((b) => ({ from: timeToMinutes(b.start), to: timeToMinutes(b.end) }))
       .sort((a, b) => a.from - b.from);
-    let cursor = Math.max(toMinutes(avail.opens), toMinutes(avail.earliest));
+    let cursor = Math.max(
+      timeToMinutes(avail.opens),
+      timeToMinutes(avail.earliest),
+    );
     const gaps: { from: number; to: number }[] = [];
     for (const b of busy) {
       if (b.from > cursor)
@@ -268,18 +265,18 @@ export default function ReservationClient({
 
   const noTimeLeft = !!avail && freeGaps.length === 0;
   const dayIsOver =
-    !!avail && toMinutes(avail.earliest) >= toMinutes(avail.closes);
+    !!avail && timeToMinutes(avail.earliest) >= timeToMinutes(avail.closes);
 
   // Every check the route makes that the browser can make too; nothing is judged before a board loads.
   const check = checkBooking({
     startMin: avail && start ? startMin : null,
     endMin: avail && end ? endMin : null,
-    openMin: avail ? toMinutes(avail.opens) : 0,
-    closeMin: avail ? toMinutes(avail.closes) : 0,
-    earliestMin: avail ? toMinutes(avail.earliest) : 0,
+    openMin: avail ? timeToMinutes(avail.opens) : 0,
+    closeMin: avail ? timeToMinutes(avail.closes) : 0,
+    earliestMin: avail ? timeToMinutes(avail.earliest) : 0,
     reserved: (avail?.reserved ?? []).map((b) => ({
-      start: toMinutes(b.start),
-      end: toMinutes(b.end),
+      start: timeToMinutes(b.start),
+      end: timeToMinutes(b.end),
       label: b.label,
     })),
     held: myHeld,
@@ -472,18 +469,20 @@ export default function ReservationClient({
                         from === start
                           ? null
                           : endForStart(
-                              toMinutes(from),
+                              timeToMinutes(from),
                               freeGaps,
                               minReservationMinutes,
                               PREFERRED_MINUTES,
                             );
                       setStart(from);
-                      setEnd(reanchored == null ? to : toTime(reanchored));
+                      setEnd(
+                        reanchored == null ? to : minutesToTime(reanchored),
+                      );
                       setError("");
                     }}
                     defaultRange={{
-                      from: toTime(freeGaps[0].from),
-                      to: toTime(
+                      from: minutesToTime(freeGaps[0].from),
+                      to: minutesToTime(
                         suggestedEndMin(
                           freeGaps[0].from,
                           freeGaps[0].to,

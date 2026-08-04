@@ -49,6 +49,11 @@ export function minutesToTime(minutes: number): string {
   return `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`;
 }
 
+/** And for a bare "09:30" -> 570, the format the picker and the board work in. */
+export function timeToMinutes(time: string): number {
+  return Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+}
+
 /** Length of a reservation in minutes. Assumes start/end are the same day. */
 export function durationMinutes(startsAt: string, endsAt: string): number {
   return minutesOfDay(endsAt) - minutesOfDay(startsAt);

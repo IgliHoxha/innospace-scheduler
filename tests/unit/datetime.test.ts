@@ -38,6 +38,31 @@ describe("minutesToTime", () => {
   });
 });
 
+describe("timeToMinutes", () => {
+  it("reads a bare HH:MM", () => {
+    expect(t.timeToMinutes("09:30")).toBe(570);
+    expect(t.timeToMinutes("00:00")).toBe(0);
+    expect(t.timeToMinutes("18:00")).toBe(1080);
+    expect(t.timeToMinutes("23:59")).toBe(1439);
+  });
+
+  it("round-trips with minutesToTime both ways", () => {
+    for (const m of [0, 5, 540, 570, 1080, 1439]) {
+      expect(t.timeToMinutes(t.minutesToTime(m))).toBe(m);
+    }
+    for (const s of ["00:00", "09:05", "13:45", "23:59"]) {
+      expect(t.minutesToTime(t.timeToMinutes(s))).toBe(s);
+    }
+  });
+
+  // The board and picker both hand it "HH:MM"; the extra characters of a datetime must not confuse it.
+  it("agrees with minutesOfDay on the time half of a datetime", () => {
+    expect(t.timeToMinutes(t.timeOf("2026-07-16T15:25"))).toBe(
+      t.minutesOfDay("2026-07-16T15:25"),
+    );
+  });
+});
+
 describe("epochMsOf", () => {
   it("reads a wall-clock string in the server's own timezone", () => {
     expect(t.epochMsOf("2026-07-16T14:30")).toBe(

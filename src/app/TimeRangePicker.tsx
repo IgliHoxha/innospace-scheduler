@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Clock } from "lucide-react";
 import { TimePickerInput } from "@/components/ui/time-picker-input";
+import { pad2 } from "@/lib/utils";
 
 export interface TimeRange {
   /** "HH:MM" */
@@ -11,8 +12,6 @@ export interface TimeRange {
   to: string;
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-
 function toDate(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
   const d = new Date(2000, 0, 1);
@@ -20,7 +19,7 @@ function toDate(hhmm: string) {
   return d;
 }
 
-const toHHMM = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const toHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 
 /** Start/End as typed HH:MM fields; it only collects the times, the form and server enforce the rules. */
 export default function TimeRangePicker({
