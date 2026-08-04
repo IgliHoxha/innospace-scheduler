@@ -22,7 +22,8 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (res.ok) {
-      router.replace("/dashboard");
+      // Already at the top, and the dashboard opens with a sticky topbar there is no scrolling to.
+      router.replace("/dashboard", { scroll: false });
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
