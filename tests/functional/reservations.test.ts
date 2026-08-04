@@ -59,7 +59,7 @@ const ok = {
   ...who,
 };
 // No token: booking is public. `ip` varies the client so the throttle can't leak between tests.
-const post = (body: unknown, ip = "test-ip") =>
+const post = (body: unknown, ip = "10.0.0.1") =>
   route.POST(
     makeRequest("/api/reservations", {
       method: "POST",
@@ -339,7 +339,7 @@ describe("POST /api/reservations - success", () => {
 
 describe("POST /api/reservations - per-IP throttle", () => {
   it("429 with Retry-After once the IP passes the attempt limit", async () => {
-    const ip = "flooder";
+    const ip = "10.0.0.9";
     // Back-to-back quarter-hours: half-open ranges don't clash, so only the throttle can reject one.
     const hhmm = (min: number) =>
       `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
@@ -362,7 +362,54 @@ describe("POST /api/reservations - per-IP throttle", () => {
     expect(res.headers.get("Retry-After")).toBeTruthy();
   });
   it("does not throttle a different IP", async () => {
-    expect((await post(ok, "someone-else")).status).toBe(201);
+    expect((await post(ok, "10.0.0.2")).status).toBe(201);
+  });
+});
+
+// The booking throttle keys on the IP alone, so a forgeable one meant no throttle at all.
+describe("POST /api/reservations - a forged address header cannot escape the throttle", () => {
+  const SECRET = "proof-secret";
+  const hhmm = (min: number) =>
+    `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+  beforeEach(() => vi.stubEnv("TRUSTED_PROXY_SECRET", SECRET));
+
+  /** One booking per call, each from a "different" forged address but the one real peer. */
+  const bookAs = (i: number, cfIp: string, proof?: string) =>
+    route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body: {
+          ...ok,
+          date: "2026-07-17",
+          start: hhmm(9 * 60 + i * 15),
+          end: hhmm(9 * 60 + i * 15 + 15),
+          email: `spoof${i}@example.com`,
+        },
+        headers: {
+          "cf-connecting-ip": cfIp,
+          "fly-client-ip": "198.51.100.9",
+          ...(proof ? { "x-origin-proof": proof } : {}),
+        },
+      }),
+    );
+
+  it("counts every unproven attempt against the real peer, not the address it claims", async () => {
+    // 20 accepted = LOGIN_IP_MAX_ATTEMPTS in the test baseline, each claiming a fresh address.
+    for (let i = 0; i < 20; i++) {
+      expect((await bookAs(i, `203.0.113.${i}`)).status).toBe(201);
+    }
+    const res = await bookAs(20, "203.0.113.99");
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+  });
+
+  it("still gives a proven Cloudflare visitor their own budget", async () => {
+    for (let i = 0; i < 20; i++) {
+      expect((await bookAs(i, "203.0.113.1", SECRET)).status).toBe(201);
+    }
+    // A genuinely different visitor, proven by the header, starts fresh rather than inheriting the block.
+    expect((await bookAs(20, "203.0.113.2", SECRET)).status).toBe(201);
   });
 });
 

@@ -1,6 +1,7 @@
 // In-memory brute-force guard, viable because one long-lived Fly machine serves everything.
 
-import { requireIntEnv } from "./env-app";
+import { optionalEnv, requireIntEnv } from "./env-app";
+import { safeEqual } from "./auth";
 
 type Bucket = {
   fails: number; // consecutive failures in the current window
@@ -14,6 +15,13 @@ const buckets = new Map<string, Bucket>();
 
 // Forget idle records after this long so the Map can't grow unbounded.
 const IDLE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// Sweeping every key on every request is wasted work; once a minute forgets idle records just as well.
+const PRUNE_EVERY_MS = 60 * 1000;
+let lastPrunedAt = 0;
+
+// Hard ceiling, since a spoofed address header mints a key: ~10k buckets is ~2MB on a 256mb machine.
+const MAX_BUCKETS = 10_000;
 
 /** Per-bucket policy. `maxLockouts: null` means "never ban". */
 type Policy = {
@@ -64,10 +72,28 @@ export type RateStatus = {
 const OK: RateStatus = { blocked: false, banned: false, retryAfterSeconds: 0 };
 
 function prune(now: number) {
+  if (now - lastPrunedAt < PRUNE_EVERY_MS) return;
+  lastPrunedAt = now;
   for (const [key, b] of buckets) {
     if (now - b.seen > IDLE_TTL_MS && b.blockedUntil <= now && !b.banned) {
       buckets.delete(key);
     }
+  }
+}
+
+/** Last resort when the cap is hit: drop the least recently seen, sparing live blocks while any spare. */
+function evictOldest(now: number): void {
+  if (buckets.size <= MAX_BUCKETS) return;
+  // By `seen`, not Map order: Map order is first insert, so a busy old key would go before an idle new one.
+  const byAge = [...buckets.entries()].sort((a, b) => a[1].seen - b[1].seen);
+  for (const [key, b] of byAge) {
+    if (buckets.size <= MAX_BUCKETS) return;
+    if (!b.banned && b.blockedUntil <= now) buckets.delete(key);
+  }
+  // Nothing but live blocks left, so the oldest of those goes rather than let the Map grow.
+  for (const [key] of byAge) {
+    if (buckets.size <= MAX_BUCKETS) return;
+    buckets.delete(key);
   }
 }
 
@@ -91,6 +117,7 @@ function peek(key: string): RateStatus {
 function hit(key: string, policy: Policy): RateStatus {
   const now = Date.now();
   prune(now);
+  evictOldest(now);
   const b: Bucket = buckets.get(key) ?? {
     fails: 0,
     lockouts: 0,
@@ -185,13 +212,32 @@ export function registerBooking(ip: string): RateStatus {
   return hit(bookingKey(ip), bookingPolicy());
 }
 
-/** Best-effort client IP from the Cloudflare and Fly headers; always a string, so unknowns share one. */
+// Set by a Cloudflare Transform Rule on every proxied request; absent on anything reaching Fly directly.
+const PROOF_HEADER = "x-origin-proof";
+
+// A shape guard, not a validator: it only stops a junk header becoming an arbitrarily long Map key.
+const IP_RE = /^[0-9a-f:.]{3,45}$/i;
+
+function asIp(value: string | null | undefined): string {
+  const ip = value?.trim() ?? "";
+  return IP_RE.test(ip) ? ip : "";
+}
+
+/** Best-effort client IP; always a string, so unknowns share one bucket. */
 export function clientKey(headers: Headers): string {
+  // fly-client-ip comes from the real TCP peer, so it is the one value a direct caller cannot choose.
+  const peer = asIp(headers.get("fly-client-ip"));
+  const secret = optionalEnv("TRUSTED_PROXY_SECRET");
+  // No proof means this never went through Cloudflare, so the address headers it carries are its own invention.
+  if (secret && !safeEqual(headers.get(PROOF_HEADER) ?? "", secret)) {
+    return peer || "unknown";
+  }
+
   return (
-    headers.get("cf-connecting-ip") ||
-    headers.get("fly-client-ip") ||
-    headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-    headers.get("x-real-ip") ||
+    asIp(headers.get("cf-connecting-ip")) ||
+    peer ||
+    asIp(headers.get("x-forwarded-for")?.split(",")[0]) ||
+    asIp(headers.get("x-real-ip")) ||
     "unknown"
   );
 }

@@ -157,6 +157,74 @@ describe("clientKey", () => {
   it("falls back to 'unknown' when no IP header is present", () => {
     expect(rl.clientKey(new Headers())).toBe("unknown");
   });
+
+  it("ignores a value that is not shaped like an address, so junk can't become a key", () => {
+    const junk = new Headers({
+      "cf-connecting-ip": "x".repeat(5000),
+      "fly-client-ip": "2.2.2.2",
+    });
+    expect(rl.clientKey(junk)).toBe("2.2.2.2");
+    expect(rl.clientKey(new Headers({ "cf-connecting-ip": "not an ip" }))).toBe(
+      "unknown",
+    );
+  });
+
+  it("accepts IPv6 and the IPv4-mapped form", () => {
+    expect(rl.clientKey(new Headers({ "fly-client-ip": "2001:db8::1" }))).toBe(
+      "2001:db8::1",
+    );
+    expect(
+      rl.clientKey(new Headers({ "fly-client-ip": "::ffff:1.2.3.4" })),
+    ).toBe("::ffff:1.2.3.4");
+  });
+});
+
+// Without the proof, cf-connecting-ip is just something the caller typed, so the throttle must not key on it.
+describe("clientKey with TRUSTED_PROXY_SECRET set", () => {
+  const SECRET = "s3cr3t-proof";
+  beforeEach(() => vi.stubEnv("TRUSTED_PROXY_SECRET", SECRET));
+
+  const headers = (proof: string | null, cf = "1.1.1.1", peer = "2.2.2.2") => {
+    const h = new Headers({ "cf-connecting-ip": cf, "fly-client-ip": peer });
+    if (proof !== null) h.set("x-origin-proof", proof);
+    return h;
+  };
+
+  it("trusts cf-connecting-ip when the proof matches", () => {
+    expect(rl.clientKey(headers(SECRET))).toBe("1.1.1.1");
+  });
+
+  it("falls back to the real peer when the proof is missing, wrong, or empty", () => {
+    for (const proof of [null, "wrong", "", `${SECRET}x`]) {
+      expect(rl.clientKey(headers(proof))).toBe("2.2.2.2");
+    }
+  });
+
+  it("ignores x-forwarded-for and x-real-ip on an unproven request too", () => {
+    const h = new Headers({
+      "x-forwarded-for": "9.9.9.9",
+      "x-real-ip": "8.8.8.8",
+      "fly-client-ip": "2.2.2.2",
+    });
+    expect(rl.clientKey(h)).toBe("2.2.2.2");
+  });
+
+  it("collapses an unproven request with no peer onto one shared bucket", () => {
+    expect(rl.clientKey(new Headers({ "cf-connecting-ip": "1.1.1.1" }))).toBe(
+      "unknown",
+    );
+  });
+
+  it("so rotating a forged header cannot escape the throttle", () => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "3");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    // A different forged cf-connecting-ip each time, all from the one real peer.
+    let last = rl.checkBookingBlocked("x");
+    for (let i = 0; i < 3; i++) {
+      last = rl.registerBooking(rl.clientKey(headers(null, `5.5.5.${i}`)));
+    }
+    expect(last.blocked).toBe(true);
+  });
 });
 
 describe("booking throttle (public form)", () => {
@@ -266,6 +334,46 @@ describe("bucket housekeeping and repeat hits", () => {
     expect(rl.checkLoginBlocked("4.4.4.4", "idle-user").blocked).toBe(false);
     for (let i = 0; i < 4; i++) rl.registerLoginFailure("4.4.4.4", "idle-user");
     expect(rl.checkLoginBlocked("4.4.4.4", "idle-user").blocked).toBe(false);
+  });
+});
+
+// A forged address header mints a bucket, so the Map is capped rather than left to eat the machine.
+describe("the bucket cap", () => {
+  // Above MAX_BUCKETS (10k), so eviction runs; the clock is frozen so pruning can't do the work instead.
+  const FLOOD = 10_010;
+  const flood = () => {
+    for (let i = 0; i < FLOOD; i++) rl.registerBooking(`flood-${i}`);
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+  });
+
+  it("forgets the least recently seen bucket rather than growing without bound", () => {
+    rl.registerBooking("early"); // one failure short of blocking
+    flood();
+    // Evicted as the oldest, so its budget starts over: memory wins over a half-used counter.
+    expect(rl.registerBooking("early").blocked).toBe(false);
+  });
+
+  it("spares a bucket that is actively blocked, so a flood can't wash out a lockout", () => {
+    rl.registerBooking("abuser");
+    expect(rl.registerBooking("abuser").blocked).toBe(true);
+    flood();
+    expect(rl.checkBookingBlocked("abuser").blocked).toBe(true);
+  });
+
+  it("spares a banned bucket through the same flood", () => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "1");
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "1");
+    rl.registerLoginFailure("6.6.6.6", "a");
+    vi.advanceTimersByTime(2_000);
+    expect(rl.registerLoginFailure("6.6.6.6", "a").banned).toBe(true);
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
+    flood();
+    expect(rl.checkLoginBlocked("6.6.6.6", "a").banned).toBe(true);
   });
 });
 

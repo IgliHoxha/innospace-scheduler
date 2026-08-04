@@ -125,7 +125,8 @@ export function verifyCancelToken(
   }
 }
 
-function safeEqual(input: string, expected: string): boolean {
+/** Constant-time string compare; length is compared first, and a secret's length is not secret. */
+export function safeEqual(input: string, expected: string): boolean {
   const a = Buffer.from(input);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;

@@ -174,6 +174,53 @@ describe("POST /api/login - oversized input counts like any other failure", () =
   });
 });
 
+// Regression: the Fly origin is reachable without Cloudflare, so cf-connecting-ip is caller-supplied there.
+describe("POST /api/login - a forged address header cannot escape the IP throttle", () => {
+  const SECRET = "proof-secret";
+  const PEER = "198.51.100.9"; // the real TCP peer, the same for every forged attempt
+
+  beforeEach(async () => {
+    resetApp();
+    vi.stubEnv("TRUSTED_PROXY_SECRET", SECRET);
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "50"); // keep the account bucket out of the way
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "2");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+    route = await import("@/app/api/login/route");
+  });
+
+  const attempt = (cfIp: string, proof?: string) =>
+    route.POST(
+      makeRequest("/api/login", {
+        method: "POST",
+        body: { login: DEFAULT_ADMIN_USER, password: "nope" },
+        headers: {
+          "cf-connecting-ip": cfIp,
+          "fly-client-ip": PEER,
+          ...(proof ? { "x-origin-proof": proof } : {}),
+        },
+      }),
+    );
+
+  it("throttles a rotated cf-connecting-ip, since without the proof it is just typed in", async () => {
+    expect((await attempt("203.0.113.1")).status).toBe(401);
+    const res = await attempt("203.0.113.2"); // a "new" IP, same real peer
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("60");
+  });
+
+  it("still gives genuine Cloudflare traffic a bucket per visitor", async () => {
+    expect((await attempt("203.0.113.1", SECRET)).status).toBe(401);
+    expect((await attempt("203.0.113.2", SECRET)).status).toBe(401);
+    // Each proven address has its own budget, so neither has tripped the shared peer's limit.
+    expect((await attempt("203.0.113.3", SECRET)).status).toBe(401);
+  });
+
+  it("refuses a proof header that does not match the secret", async () => {
+    expect((await attempt("203.0.113.1", "wrong")).status).toBe(401);
+    expect((await attempt("203.0.113.2", "wrong")).status).toBe(429);
+  });
+});
+
 describe("POST /api/login - the wait is pluralised properly", () => {
   beforeEach(async () => {
     resetApp();
