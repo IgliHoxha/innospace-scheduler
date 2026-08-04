@@ -42,10 +42,11 @@ export default function TimeRangePicker({
   const fromDate = toDate(from);
   const toDate_ = toDate(to);
 
-  // Pre-fill and reset on booth or day change, so the fields and the form never disagree.
+  // Seeds a parent that has no range yet; announcing one it already holds would read as an edit.
   React.useEffect(() => {
+    if (value) return;
     onChangeRef.current({ from: defaultRange.from, to: defaultRange.to });
-  }, [defaultRange.from, defaultRange.to]);
+  }, [defaultRange.from, defaultRange.to, value]);
 
   const fromH = React.useRef<HTMLInputElement>(null);
   const fromM = React.useRef<HTMLInputElement>(null);

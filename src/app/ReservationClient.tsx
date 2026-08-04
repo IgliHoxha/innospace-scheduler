@@ -177,7 +177,10 @@ export default function ReservationClient({
   // Reload on booth or date change; a request id stops a slow response overwriting a newer one.
   const reqId = useRef(0);
   const loadAvailability = useCallback(
-    async (fresh = false) => {
+    async ({
+      fresh = false,
+      keepPick = false,
+    }: { fresh?: boolean; keepPick?: boolean } = {}) => {
       if (!boothId || !date) return;
       const id = ++reqId.current;
       setLoading(true);
@@ -209,8 +212,11 @@ export default function ReservationClient({
               }
             : null,
         );
-        setStart("");
-        setEnd("");
+        // A reload that did not change the board keeps the pick, or a refused booking loses it.
+        if (!keepPick) {
+          setStart("");
+          setEnd("");
+        }
       } finally {
         if (id === reqId.current) setLoading(false);
       }
@@ -374,7 +380,7 @@ export default function ReservationClient({
             }),
           );
         }
-        await loadAvailability(true);
+        await loadAvailability({ fresh: true });
       } else {
         const message = json.error || "Could not reserve that time.";
         const field = json.field;
@@ -383,7 +389,8 @@ export default function ReservationClient({
         else if (field) setGuestError({ field, error: message });
         else setError(message);
         if (field) document.getElementById(field)?.focus();
-        loadAvailability(true); // someone may have just taken it, so the cached board won't show them
+        // Someone may have just taken it, so the cached board won't show them; the pick stays put.
+        loadAvailability({ fresh: true, keepPick: true });
       }
     } finally {
       setReservation(false);
@@ -529,7 +536,7 @@ export default function ReservationClient({
                     "Your reservation is cancelled. The slot is free for someone else now.",
                   );
                   setError("");
-                  loadAvailability(true);
+                  loadAvailability({ fresh: true, keepPick: true });
                 }}
                 // The graph is another way to choose a range, so it writes the same state the fields do.
                 onPick={(from, to) => {
