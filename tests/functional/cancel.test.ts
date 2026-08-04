@@ -47,13 +47,13 @@ describe("POST /api/cancel", () => {
     const res = await post(createCancelToken(r.id, epochMsOf(ENDS_AT)));
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ ok: true, alreadyCancelled: false });
-    expect((await db.getReservation(r.id))?.status).toBe("cancelled");
+    expect(db.getReservation(r.id)?.status).toBe("cancelled");
   });
 
   it("cancels a pending request too", async () => {
     const r = await seed("pending");
     await post(createCancelToken(r.id, epochMsOf(ENDS_AT)));
-    expect((await db.getReservation(r.id))?.status).toBe("cancelled");
+    expect(db.getReservation(r.id)?.status).toBe("cancelled");
   });
 
   it("400 with no token", async () => {
@@ -84,7 +84,7 @@ describe("POST /api/cancel", () => {
     const token = createCancelToken(r.id, epochMsOf(ENDS_AT));
     vi.setSystemTime(new Date(`${DAY}T15:01:00`));
     expect((await post(token)).status).toBe(400);
-    expect((await db.getReservation(r.id))?.status).toBe("confirmed");
+    expect(db.getReservation(r.id)?.status).toBe("confirmed");
   });
 
   it("rejects a session cookie replayed as a cancel token (purpose-scoped)", async () => {
@@ -95,7 +95,7 @@ describe("POST /api/cancel", () => {
       name: "admin",
     });
     expect((await post(session)).status).toBe(400);
-    expect((await db.getReservation(r.id))?.status).toBe("confirmed");
+    expect(db.getReservation(r.id)?.status).toBe("confirmed");
   });
 
   it("404 when the reservation is gone", async () => {
@@ -125,8 +125,8 @@ describe("POST /api/cancel - the row disappears mid-request", () => {
   it("404s when the reservation is deleted between the read and the write", async () => {
     const r = await seed();
     // Hard-deleted after getReservation succeeds, so the update finds nothing.
-    vi.spyOn(db, "updateReservationStatus").mockImplementation(async (id) => {
-      await db.discardReservation(id);
+    vi.spyOn(db, "updateReservationStatus").mockImplementation((id) => {
+      db.discardReservation(id);
       return null;
     });
     const res = await route.POST(

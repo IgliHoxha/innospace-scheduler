@@ -195,7 +195,7 @@ describe("POST /api/reservations - cancel token for the booking browser", () => 
     );
     expect(res.status).toBe(200);
     expect((await json(res)).ok).toBe(true);
-    const row = await db.getReservation(body.reservation!.id!);
+    const row = db.getReservation(body.reservation!.id!);
     expect(row?.status).toBe("cancelled");
   });
 });
@@ -274,7 +274,7 @@ describe("POST /api/reservations - success", () => {
     expect((await json(res)).error).toContain("nothing was reserved");
 
     // Gone, not soft-deleted: a held slot nobody was told about is worse than no booking at all.
-    expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
+    expect(db.queryReservations({ filter: "all" }).total).toBe(0);
   });
 
   it("frees the slot again after a failed send", async () => {
@@ -287,7 +287,7 @@ describe("POST /api/reservations - success", () => {
   it("still books when email is switched off (no API key)", async () => {
     vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("skipped");
     expect((await post(ok)).status).toBe(201);
-    expect((await db.queryReservations({ filter: "all" })).total).toBe(1);
+    expect(db.queryReservations({ filter: "all" }).total).toBe(1);
   });
 
   it("400 and saves nothing when the domain takes no mail", async () => {
@@ -300,7 +300,7 @@ describe("POST /api/reservations - success", () => {
     const body = await json(res);
     expect(body.field).toBe("email"); // so the form can point at the right box
     expect(body.error).toContain("accept mail");
-    expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
+    expect(db.queryReservations({ filter: "all" }).total).toBe(0);
   });
 
   // Checked before the insert, so a dead address never holds a slot even briefly.
@@ -420,14 +420,14 @@ describe("GET /api/reservations", () => {
     );
   });
   it("returns every reservation plus the stat counts for an admin", async () => {
-    await db.createReservation({
+    db.createReservation({
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
       fullName: "Ada Lovelace",
       email: "ada@example.com",
     });
-    await db.createReservation({
+    db.createReservation({
       boothId: "booth-2",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
@@ -466,13 +466,13 @@ describe("DELETE /api/reservations", () => {
     expect(res.status).toBe(400);
   });
   it("hard-deletes only soft-deleted rows", async () => {
-    const r = await db.createReservation({
+    const r = db.createReservation({
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
       email: "ada@example.com",
     });
-    await db.updateReservationStatus(r.id, "deleted");
+    db.updateReservationStatus(r.id, "deleted");
     const res = await del({ ids: [r.id] }, adminToken());
     expect(res.status).toBe(200);
     expect((await json(res)).removed).toBe(1);
@@ -507,7 +507,7 @@ describe("POST /api/reservations - Turnstile", () => {
     const res = await post(ok);
     expect(res.status).toBe(403);
     expect((await json(res)).error).toContain("verify");
-    expect((await db.queryReservations({})).total).toBe(0);
+    expect(db.queryReservations({}).total).toBe(0);
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });
 
@@ -516,7 +516,7 @@ describe("POST /api/reservations - Turnstile", () => {
     siteverify(false);
     const res = await post({ ...ok, turnstileToken: "bad" });
     expect(res.status).toBe(403);
-    expect((await db.queryReservations({})).total).toBe(0);
+    expect(db.queryReservations({}).total).toBe(0);
   });
 
   // Fails closed: a Cloudflare outage must not become a way in.
@@ -526,7 +526,7 @@ describe("POST /api/reservations - Turnstile", () => {
     // A plain stub, not vi.fn(): a tracked rejection resurfaces as an unhandled error.
     vi.stubGlobal("fetch", () => Promise.reject(new Error("ECONNRESET")));
     expect((await post({ ...ok, turnstileToken: "tok" })).status).toBe(403);
-    expect((await db.queryReservations({})).total).toBe(0);
+    expect(db.queryReservations({}).total).toBe(0);
     err.mockRestore();
   });
 
@@ -535,7 +535,7 @@ describe("POST /api/reservations - Turnstile", () => {
     siteverify(true);
     const res = await post({ ...ok, turnstileToken: "good" });
     expect(res.status).toBe(201);
-    expect((await db.queryReservations({})).total).toBe(1);
+    expect(db.queryReservations({}).total).toBe(1);
   });
 
   // The token is single-use, so it must not be spent on a request that was never going to succeed.
@@ -666,9 +666,9 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
 
 describe("POST /api/reservations - an unexpected failure is not a 500", () => {
   it("400s with a safe message, leaking no SQL or stack", async () => {
-    vi.spyOn(db, "createReservation").mockRejectedValueOnce(
-      new Error("SQLITE_CORRUPT: database disk image is malformed"),
-    );
+    vi.spyOn(db, "createReservation").mockImplementationOnce(() => {
+      throw new Error("SQLITE_CORRUPT: database disk image is malformed");
+    });
     const res = await post(ok, "boom-ip");
     expect(res.status).toBe(400);
     const body = await json(res);

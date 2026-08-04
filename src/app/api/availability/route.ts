@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Times only: the board says a slot is taken, never who by.
-  const reserved = (await reservedRanges(boothId, date)).map((b) => ({
+  const reserved = reservedRanges(boothId, date).map((b) => ({
     start: timeOf(b.startsAt),
     end: timeOf(b.endsAt),
     label: rangeLabel(b.startsAt, b.endsAt),

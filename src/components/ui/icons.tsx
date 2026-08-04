@@ -31,6 +31,36 @@ export function TrashIcon() {
   );
 }
 
+/** Approve, on the dashboard's row actions. Drawn, not a "✓", which each platform renders its own way. */
+export function CheckIcon() {
+  return (
+    <svg
+      className="btn-icon"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" />
+    </svg>
+  );
+}
+
+/** Reject or cancel, likewise drawn rather than a "✕". */
+export function CrossIcon() {
+  return (
+    <svg
+      className="btn-icon"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" />
+    </svg>
+  );
+}
+
 /** WhatsApp's own mark: recognised faster than the word next to it. */
 export function WhatsAppIcon() {
   return (

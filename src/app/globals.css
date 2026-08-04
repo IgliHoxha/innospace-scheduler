@@ -249,18 +249,6 @@ a {
   gap: 16px;
 }
 
-.nav-link {
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 6px 4px;
-}
-
-.nav-link:hover {
-  color: var(--brand);
-}
-
 /* Small-caps eyebrow above a title (matches the marketing site's .eyebrow). */
 .eyebrow {
   display: inline-block;
@@ -297,12 +285,6 @@ a {
   color: var(--muted);
   font-size: 14px;
   margin: 0 0 20px;
-}
-
-.section-title {
-  font-size: 18px;
-  color: var(--text);
-  margin: 32px 0 12px;
 }
 
 .field-label {
@@ -368,10 +350,6 @@ a {
   flex-wrap: wrap;
 }
 
-.slots-card {
-  padding: 16px;
-}
-
 /* Start/end time range picker */
 .time-card {
   padding: 16px;
@@ -407,40 +385,6 @@ a {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-}
-
-.reserved-list {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.reserved-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #fdf1f1;
-  color: #b91c1c;
-  font-weight: 600;
-  font-size: 12px;
-}
-
-/* The holder's name reads as a footnote to the time, not a second label. */
-.reserved-by {
-  font-weight: 500;
-  opacity: 0.75;
-}
-
-.reserved-by::before {
-  content: "·";
-  margin-right: 6px;
 }
 
 /* Availability graph: one booth+day drawn as a read-only horizontal bar. */
@@ -835,74 +779,9 @@ a {
   font-size: 13px;
 }
 
-/* Add-member form */
-.add-user {
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.add-user-fields {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.add-user-fields input {
-  flex: 1;
-  min-width: 160px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 14px;
-  color: var(--text);
-}
-
-.add-user-fields input:focus {
-  outline: none;
-  border-color: var(--brand);
-}
-
 /* Per-row email template preview */
 .email-preview {
   min-width: 280px;
-}
-
-.email-tabs {
-  display: flex;
-  gap: 18px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.email-tab {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 6px 2px;
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-  transition:
-    color 0.15s,
-    border-color 0.15s;
-}
-
-.email-tab:hover {
-  color: var(--text);
-}
-
-.email-tab.active {
-  color: var(--brand);
-  border-bottom-color: var(--brand);
-}
-
-.email-tab.active.cancel {
-  color: #b91c1c;
-  border-bottom-color: #b91c1c;
 }
 
 .email-sent {
@@ -1254,6 +1133,17 @@ tr:last-child td {
 .icon-btn.cross:hover:not(:disabled) {
   background: #fee2e2;
   border-color: #b91c1c;
+}
+
+/* Muted, not red: deleting is not the same act as cancelling, which owns .cross. */
+.icon-btn.trash {
+  color: var(--muted);
+}
+
+.icon-btn.trash:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: var(--muted);
+  color: var(--text);
 }
 
 .icon-btn:disabled {

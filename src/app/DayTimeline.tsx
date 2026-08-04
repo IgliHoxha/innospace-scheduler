@@ -357,7 +357,7 @@ export default function DayTimeline({
             />
           )}
 
-          {segments.map((s, i) => {
+          {segments.map((s) => {
             if (!s.reserved) return null;
             const src = s.reserved.src;
             // Only a booking this browser holds the token for can offer to cancel itself.
@@ -365,7 +365,7 @@ export default function DayTimeline({
             const range = { from: s.fromMin, to: s.toMin };
             return (
               <button
-                key={i}
+                key={`${s.fromMin}-${s.toMin}`}
                 type="button"
                 className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""}`}
                 style={{

@@ -15,7 +15,7 @@ export default async function CancelPage({
 }) {
   const { token } = await searchParams;
   const id = verifyCancelToken(token);
-  const reservation = id ? await getReservation(id) : null;
+  const reservation = id ? getReservation(id) : null;
 
   const dead = !reservation;
   const alreadyGone =

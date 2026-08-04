@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   );
   if (!session) redirect("/login");
 
-  const initialData = await queryReservations({
+  const initialData = queryReservations({
     filter: INITIAL_FILTER,
     page: 1,
     pageSize: PAGE_SIZE,

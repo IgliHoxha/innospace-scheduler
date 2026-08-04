@@ -33,7 +33,7 @@ describe("createReservation + overlap", () => {
     expect(r.status).toBe("confirmed");
     expect(r.id).toBeTruthy();
 
-    const ranges = await db.reservedRanges("booth-1", D);
+    const ranges = db.reservedRanges("booth-1", D);
     expect(ranges).toHaveLength(1);
     // Times only: the name must not leave the row for the public board.
     expect(ranges[0]).toEqual({
@@ -48,7 +48,7 @@ describe("createReservation + overlap", () => {
       db.SlotUnavailableError,
     );
     // the loser did not persist
-    expect(await db.reservedRanges("booth-1", D)).toHaveLength(1);
+    expect(db.reservedRanges("booth-1", D)).toHaveLength(1);
   });
 
   it("allows touching, half-open ranges (11:00 end vs 11:00 start)", async () => {
@@ -106,7 +106,7 @@ describe("createReservation + overlap", () => {
 
   it("a cancelled reservation does not block a new booking", async () => {
     const r = await reserve("10:00", "11:00");
-    await db.updateReservationStatus(r.id, "cancelled");
+    db.updateReservationStatus(r.id, "cancelled");
     await expect(
       reserve("10:00", "11:00", { boothId: "booth-2" }),
     ).resolves.toBeTruthy();
@@ -121,7 +121,7 @@ describe("createReservation + overlap", () => {
 
   it("a pending reservation holds the slot just like a confirmed one", async () => {
     await reserve("13:00", "14:00");
-    await db.createReservation(
+    db.createReservation(
       {
         boothId: "booth-1",
         startsAt: at("15:00"),
@@ -143,7 +143,7 @@ describe("queryReservations", () => {
       email: "bob@example.com",
       fullName: "Bob",
     });
-    await db.createReservation(
+    db.createReservation(
       {
         boothId: "booth-2",
         startsAt: at("11:00"),
@@ -153,63 +153,63 @@ describe("queryReservations", () => {
       "pending",
     );
 
-    const all = await db.queryReservations();
+    const all = db.queryReservations();
     expect(all.total).toBe(3);
     expect(all.counts).toMatchObject({ total: 3, confirmed: 2, pending: 1 });
 
-    const pendingOnly = await db.queryReservations({ filter: "pending" });
+    const pendingOnly = db.queryReservations({ filter: "pending" });
     expect(pendingOnly.total).toBe(1);
 
-    const searchBob = await db.queryReservations({ search: "bob" });
+    const searchBob = db.queryReservations({ search: "bob" });
     expect(searchBob.total).toBe(1);
 
-    const firstPage = await db.queryReservations({ pageSize: 2, page: 1 });
+    const firstPage = db.queryReservations({ pageSize: 2, page: 1 });
     expect(firstPage.reservations).toHaveLength(2);
     expect(firstPage.pageSize).toBe(2);
   });
 
   it("hides soft-deleted rows from the default view", async () => {
     const r = await reserve("10:00", "11:00");
-    await db.updateReservationStatus(r.id, "deleted");
-    expect((await db.queryReservations()).total).toBe(0);
-    expect((await db.queryReservations({ filter: "deleted" })).total).toBe(1);
+    db.updateReservationStatus(r.id, "deleted");
+    expect(db.queryReservations().total).toBe(0);
+    expect(db.queryReservations({ filter: "deleted" }).total).toBe(1);
   });
 });
 
 describe("status update + delete guard", () => {
   it("updates status and returns the row, or null for a missing id", async () => {
     const r = await reserve("10:00", "11:00");
-    const updated = await db.updateReservationStatus(r.id, "cancelled");
+    const updated = db.updateReservationStatus(r.id, "cancelled");
     expect(updated?.status).toBe("cancelled");
-    expect(await db.updateReservationStatus("nope", "cancelled")).toBeNull();
+    expect(db.updateReservationStatus("nope", "cancelled")).toBeNull();
   });
 
   it("hard-deletes only soft-deleted rows", async () => {
     const live = await reserve("10:00", "11:00");
-    expect(await db.deleteReservations([live.id])).toBe(0); // not deleted yet
+    expect(db.deleteReservations([live.id])).toBe(0); // not deleted yet
 
-    await db.updateReservationStatus(live.id, "deleted");
-    expect(await db.deleteReservations([live.id])).toBe(1);
-    expect(await db.getReservation(live.id)).toBeNull();
-    expect(await db.deleteReservations([])).toBe(0);
+    db.updateReservationStatus(live.id, "deleted");
+    expect(db.deleteReservations([live.id])).toBe(1);
+    expect(db.getReservation(live.id)).toBeNull();
+    expect(db.deleteReservations([])).toBe(0);
   });
 });
 
 describe("discardReservation", () => {
   it("removes the row outright and frees the slot", async () => {
     const db = await loadDb();
-    const r = await db.createReservation({
+    const r = db.createReservation({
       boothId: "booth-1",
       startsAt: "2026-07-16T14:00",
       endsAt: "2026-07-16T15:00",
       fullName: "Ada Lovelace",
       email: "ada@example.com",
     });
-    expect(await db.discardReservation(r.id)).toBe(true);
-    expect((await db.queryReservations({ filter: "all" })).total).toBe(0);
+    expect(db.discardReservation(r.id)).toBe(true);
+    expect(db.queryReservations({ filter: "all" }).total).toBe(0);
 
     // The whole point: the same slot books again, which a soft delete would block.
-    await expect(
+    expect(
       db.createReservation({
         boothId: "booth-1",
         startsAt: "2026-07-16T14:00",
@@ -217,12 +217,12 @@ describe("discardReservation", () => {
         fullName: "Grace Hopper",
         email: "grace@example.com",
       }),
-    ).resolves.toBeTruthy();
+    ).toBeTruthy();
   });
 
   it("returns false for an id that is not there", async () => {
     const db = await loadDb();
-    expect(await db.discardReservation("nope")).toBe(false);
+    expect(db.discardReservation("nope")).toBe(false);
   });
 });
 
@@ -230,7 +230,7 @@ describe("heldRangesForEmail", () => {
   it("returns that person's active ranges for the day, in order", async () => {
     await reserve("14:00", "15:00");
     await reserve("09:00", "10:00", { boothId: "booth-2" });
-    const held = await db.heldRangesForEmail("ada@example.com", D);
+    const held = db.heldRangesForEmail("ada@example.com", D);
     expect(held).toEqual([
       { startsAt: at("09:00"), endsAt: at("10:00") },
       { startsAt: at("14:00"), endsAt: at("15:00") },
@@ -240,17 +240,17 @@ describe("heldRangesForEmail", () => {
   it("spans booths, since a run is a run whichever booth each part is on", async () => {
     await reserve("14:00", "15:00");
     await reserve("15:00", "16:00", { boothId: "booth-3" });
-    expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
+    expect(db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
   });
 
   it("matches the email whatever its case", async () => {
     await reserve("14:00", "15:00", { email: "Ada@Example.COM" });
-    expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(1);
+    expect(db.heldRangesForEmail("ada@example.com", D)).toHaveLength(1);
   });
 
   it("leaves out other people", async () => {
     await reserve("14:00", "15:00", { email: "grace@example.com" });
-    expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+    expect(db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
   });
 
   it("matches Gmail past its dots and plus tags, since it is one inbox", async () => {
@@ -259,15 +259,13 @@ describe("heldRangesForEmail", () => {
       boothId: "booth-2",
       email: "igliihoxha+booth@googlemail.com",
     });
-    expect(await db.heldRangesForEmail("igliihoxha@gmail.com", D)).toHaveLength(
-      2,
-    );
+    expect(db.heldRangesForEmail("igliihoxha@gmail.com", D)).toHaveLength(2);
   });
 
   it("ignores a row with no email rather than matching or throwing", async () => {
     await reserve("14:00", "15:00", { email: undefined });
     await reserve("15:00", "16:00", { boothId: "booth-2" });
-    const held = await db.heldRangesForEmail("ada@example.com", D);
+    const held = db.heldRangesForEmail("ada@example.com", D);
     expect(held).toEqual([{ startsAt: at("15:00"), endsAt: at("16:00") }]);
   });
 
@@ -276,18 +274,18 @@ describe("heldRangesForEmail", () => {
       startsAt: "2026-07-17T14:00",
       endsAt: "2026-07-17T15:00",
     });
-    expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+    expect(db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
   });
 
   it("leaves out cancelled ones, which hold nothing", async () => {
     const r = await reserve("14:00", "15:00");
-    await db.updateReservationStatus(r.id, "cancelled");
-    expect(await db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
+    db.updateReservationStatus(r.id, "cancelled");
+    expect(db.heldRangesForEmail("ada@example.com", D)).toEqual([]);
   });
 
   it("counts pending ones, which do hold their slot", async () => {
     await reserve("14:00", "15:00", {}).then(() => undefined);
-    await db.createReservation(
+    db.createReservation(
       {
         boothId: "booth-2",
         startsAt: at("16:00"),
@@ -297,24 +295,24 @@ describe("heldRangesForEmail", () => {
       },
       "pending",
     );
-    expect(await db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
+    expect(db.heldRangesForEmail("ada@example.com", D)).toHaveLength(2);
   });
 });
 
 describe("rows stored with fields left unset", () => {
   it("keeps an absent name, email and note as null rather than the string 'undefined'", async () => {
-    const r = await db.createReservation({
+    const r = db.createReservation({
       boothId: "booth-1",
       startsAt: at("14:00"),
       endsAt: at("15:00"),
     });
-    const back = await db.getReservation(r.id);
+    const back = db.getReservation(r.id);
     expect(back).toMatchObject({ boothId: "booth-1", status: "confirmed" });
     expect(back?.fullName).toBeUndefined();
     expect(back?.email).toBeUndefined();
     expect(back?.note).toBeUndefined();
     // It still lists and searches without throwing on the missing columns.
-    const page = await db.queryReservations({ search: "booth-1" });
+    const page = db.queryReservations({ search: "booth-1" });
     expect(page.total).toBe(1);
   });
 });

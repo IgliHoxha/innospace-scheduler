@@ -145,10 +145,11 @@ export async function POST(req: NextRequest) {
     );
   }
   // The note and approval limits apply to a back-to-back run, or a split stay would dodge them.
-  const held = (await heldRangesForEmail(guest.guest.email, date)).map((h) => ({
+  const held = heldRangesForEmail(guest.guest.email, date).map((h) => ({
     start: minutesOfDay(h.startsAt),
     end: minutesOfDay(h.endsAt),
   }));
+  // The gap that still counts as one sitting is the shortest bookable slot: nobody could take it anyway.
   const runMinutes = runTotalMinutes(
     startMin,
     endMin,
@@ -210,7 +211,7 @@ export async function POST(req: NextRequest) {
   registerBooking(ip);
 
   try {
-    const reservation = await createReservation(
+    const reservation = createReservation(
       {
         boothId,
         startsAt,
@@ -225,7 +226,7 @@ export async function POST(req: NextRequest) {
     if (reservation.email) {
       const outcome = await sendReservationEmail(reservation, status);
       if (outcome === "failed") {
-        await discardReservation(reservation.id);
+        discardReservation(reservation.id);
         return NextResponse.json(
           {
             ok: false,
@@ -278,11 +279,13 @@ export async function GET(req: NextRequest) {
   const filter = (VALID_FILTERS.includes(filterParam) ? filterParam : "all") as
     "all" | ReservationStatus;
 
-  const page = await queryReservations({
+  const page = queryReservations({
     filter,
     search: sp.get("q") ?? "",
     page: Number(sp.get("page")) || 1,
     pageSize: Number(sp.get("pageSize")) || 25,
+    // Opt out, so an unaware caller still gets the tallies it expects.
+    withCounts: sp.get("counts") !== "0",
   });
 
   return NextResponse.json({ ok: true, ...page });
@@ -304,6 +307,6 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  const removed = await deleteReservations(ids as string[]);
+  const removed = deleteReservations(ids as string[]);
   return NextResponse.json({ ok: true, removed });
 }

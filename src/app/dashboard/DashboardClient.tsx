@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_EMAIL_BODY } from "@/lib/types";
 import type { Reservation, ReservationStatus, ContactInfo } from "@/lib/types";
 import { boothNameIn, type Booth } from "@/lib/booths";
-import type { ReservationPage } from "@/lib/db";
+import type { ReservationCounts, ReservationPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useTooltip } from "@/components/ui/tooltip";
+import { CheckIcon, CrossIcon, TrashIcon } from "@/components/ui/icons";
 import {
   boothLabel,
   emailBodyText,
@@ -19,6 +20,9 @@ import {
   type BoothNamer,
 } from "@/lib/templates";
 import { formatDMYShort, formatDateTime } from "@/lib/datetime";
+
+/** A page whose tallies are known: the server render asks for them and a cheap refetch keeps them. */
+type LoadedPage = ReservationPage & { counts: ReservationCounts };
 
 const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [
   { key: "all", label: "All" },
@@ -34,7 +38,7 @@ export default function DashboardClient({
   contact,
   booths,
 }: {
-  initialData: ReservationPage;
+  initialData: LoadedPage;
   username: string;
   contact: ContactInfo;
   booths: Booth[];
@@ -43,7 +47,7 @@ export default function DashboardClient({
   const boothName = (id: string | undefined) => boothNameIn(booths, id);
 
   const { tooltip, tip } = useTooltip();
-  const [data, setData] = useState<ReservationPage>(initialData);
+  const [data, setData] = useState<LoadedPage>(initialData);
   const [filter, setFilter] = useState<"all" | ReservationStatus>(
     INITIAL_FILTER,
   );
@@ -73,30 +77,36 @@ export default function DashboardClient({
   }
 
   const reqId = useRef(0);
-  const loadPage = useCallback(async () => {
-    const id = ++reqId.current;
-    setLoading(true);
-    const params = new URLSearchParams({
-      status: filter,
-      q: debouncedQuery,
-      page: String(page),
-      pageSize: String(PAGE_SIZE),
-    });
-    try {
-      const res = await fetch(`/api/reservations?${params.toString()}`);
-      const json = (await res.json()) as ReservationPage & { ok: boolean };
-      if (id !== reqId.current) return;
-      if (!json.ok) return;
-      const tp = Math.max(1, Math.ceil(json.total / PAGE_SIZE));
-      if (page > tp) {
-        setPage(tp);
-        return;
+  // `withCounts` only for a fetch that follows a write: filtering and paging cannot move the tallies.
+  const loadPage = useCallback(
+    async (withCounts = false) => {
+      const id = ++reqId.current;
+      setLoading(true);
+      const params = new URLSearchParams({
+        status: filter,
+        q: debouncedQuery,
+        page: String(page),
+        pageSize: String(PAGE_SIZE),
+        counts: withCounts ? "1" : "0",
+      });
+      try {
+        const res = await fetch(`/api/reservations?${params.toString()}`);
+        const json = (await res.json()) as ReservationPage & { ok: boolean };
+        if (id !== reqId.current) return;
+        if (!json.ok) return;
+        const tp = Math.max(1, Math.ceil(json.total / PAGE_SIZE));
+        if (page > tp) {
+          setPage(tp);
+          return;
+        }
+        // A countless response must not blank the stat boxes, so the last known set stands.
+        setData((prev) => ({ ...json, counts: json.counts ?? prev.counts }));
+      } finally {
+        if (id === reqId.current) setLoading(false);
       }
-      setData(json);
-    } finally {
-      if (id === reqId.current) setLoading(false);
-    }
-  }, [filter, debouncedQuery, page]);
+    },
+    [filter, debouncedQuery, page],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 300);
@@ -126,7 +136,7 @@ export default function DashboardClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, emailBody }),
     });
-    loadPage();
+    loadPage(true);
   }
 
   function toggleSelected(id: string) {
@@ -157,7 +167,7 @@ export default function DashboardClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
-    loadPage();
+    loadPage(true);
   }
 
   useEffect(() => {
@@ -340,7 +350,7 @@ export default function DashboardClient({
                               })
                             }
                           >
-                            ✓
+                            <CheckIcon />
                           </button>
                         )}
                         <button
@@ -368,7 +378,7 @@ export default function DashboardClient({
                             })
                           }
                         >
-                          ✕
+                          <CrossIcon />
                         </button>
                         <button
                           className="icon-btn trash"
@@ -385,7 +395,7 @@ export default function DashboardClient({
                             })
                           }
                         >
-                          🗑
+                          <TrashIcon />
                         </button>
                       </div>
                     </td>
@@ -491,12 +501,15 @@ export default function DashboardClient({
 // Compact list of page numbers with ellipses, e.g. 1 … 4 5 [6] 7 8 … 20.
 function pageList(page: number, totalPages: number): (number | "…")[] {
   const out: (number | "…")[] = [];
-  const push = (n: number) => out.push(n);
-  const window = 1;
-  const last = totalPages;
-  for (let p = 1; p <= last; p++) {
-    if (p === 1 || p === last || (p >= page - window && p <= page + window)) {
-      push(p);
+  // Pages shown either side of the current one; never `window`, which shadows the real global.
+  const siblings = 1;
+  for (let p = 1; p <= totalPages; p++) {
+    if (
+      p === 1 ||
+      p === totalPages ||
+      (p >= page - siblings && p <= page + siblings)
+    ) {
+      out.push(p);
     } else if (out[out.length - 1] !== "…") {
       out.push("…");
     }

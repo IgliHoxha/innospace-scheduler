@@ -41,7 +41,7 @@ describe("schema init", () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
 
-    await db.queryReservations({}); // first query opens the DB and inits the schema
+    db.queryReservations({}); // first query opens the DB and inits the schema
 
     expect(tableNames(file)).toContain("reservations");
     expect(indexNames(file)).toEqual(
@@ -56,14 +56,14 @@ describe("schema init", () => {
   it("creates no users table", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
-    await db.queryReservations({});
+    db.queryReservations({});
     expect(tableNames(file)).not.toContain("users");
   });
 
   it("stores identity on the reservation itself, with no userId column", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
-    await db.createReservation(seed);
+    db.createReservation(seed);
 
     const cols = columnNames(file, "reservations");
     expect(cols).toEqual(expect.arrayContaining(["fullName", "email"]));
@@ -75,7 +75,7 @@ describe("schema init", () => {
   it("re-opening an existing DB is a no-op and preserves rows", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
-    await db.createReservation(seed);
+    db.createReservation(seed);
 
     // Rebind to the SAME file (a fresh boot): every CREATE is IF NOT EXISTS, so data survives.
     vi.resetModules();
@@ -95,7 +95,7 @@ describe("schema init", () => {
     expect(tableNames(file)).not.toContain("reservations");
 
     const db = await import("@/lib/db");
-    await db.queryReservations({}); // initSchema runs on first access
+    db.queryReservations({}); // initSchema runs on first access
 
     expect(tableNames(file)).toContain("reservations");
   });

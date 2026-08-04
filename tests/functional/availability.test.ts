@@ -20,7 +20,7 @@ function get(query: string) {
 }
 
 async function seatOne(fullName: string) {
-  await db.createReservation({
+  db.createReservation({
     boothId: "booth-1",
     startsAt: `${today}T14:00`,
     endsAt: `${today}T15:00`,
@@ -88,7 +88,7 @@ describe("GET /api/availability", () => {
   });
 
   it("exposes times only: never a name, email, note or id", async () => {
-    await db.createReservation({
+    db.createReservation({
       boothId: "booth-1",
       startsAt: `${today}T14:00`,
       endsAt: `${today}T15:00`,

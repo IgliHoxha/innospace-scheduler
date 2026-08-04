@@ -113,7 +113,7 @@ describe("PATCH /api/reservations/[id]", () => {
 describe("PATCH /api/reservations/[id] - failures that must not lose the change", () => {
   it("404s and tells nobody when the row is already gone", async () => {
     const r = await seed("pending");
-    await db.discardReservation(r.id);
+    db.discardReservation(r.id);
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     expect(res.status).toBe(404);
     // Nothing was updated, so nobody gets told a booking they no longer have is confirmed.
@@ -128,7 +128,7 @@ describe("PATCH /api/reservations/[id] - failures that must not lose the change"
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     // The status change is the point; the email is best effort.
     expect(res.status).toBe(200);
-    expect((await db.getReservation(r.id))?.status).toBe("confirmed");
+    expect(db.getReservation(r.id)?.status).toBe("confirmed");
   });
 });
 
@@ -137,7 +137,7 @@ describe("PATCH /api/reservations/[id] - statuses that send no email", () => {
     const r = await seed();
     const res = await patch(r.id, { status: "deleted" }, adminToken());
     expect(res.status).toBe(200);
-    expect((await db.getReservation(r.id))?.status).toBe("deleted");
+    expect(db.getReservation(r.id)?.status).toBe("deleted");
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });
 });

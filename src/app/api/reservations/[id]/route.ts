@@ -43,7 +43,7 @@ export async function PATCH(
   }
 
   // One atomic UPDATE ... RETURNING: a separate existence read would only add a race window.
-  const reservation = await updateReservationStatus(id, status);
+  const reservation = updateReservationStatus(id, status);
   if (!reservation) {
     return NextResponse.json(
       { ok: false, error: "Not found." },

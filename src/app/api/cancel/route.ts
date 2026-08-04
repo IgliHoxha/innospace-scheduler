@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const existing = await getReservation(id);
+  const existing = getReservation(id);
   if (!existing) {
     return NextResponse.json(
       { ok: false, error: "That reservation no longer exists." },
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, alreadyCancelled: true });
   }
 
-  const reservation = await updateReservationStatus(id, "cancelled");
+  const reservation = updateReservationStatus(id, "cancelled");
   if (!reservation) {
     return NextResponse.json(
       { ok: false, error: "That reservation no longer exists." },

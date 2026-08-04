@@ -73,7 +73,8 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
   const duration = chosen ? endMin - startMin : 0;
   const runMinutes =
     chosen && duration > 0
-      ? runTotalMinutes(startMin, endMin, held, minReservationMinutes)
+      ? // The gap that still counts as one sitting is the shortest bookable slot: nobody could take it anyway.
+        runTotalMinutes(startMin, endMin, held, minReservationMinutes)
       : 0;
   const partOfRun = runMinutes > duration;
   const mustNote = noteRequiredFor(runMinutes, autoApproveMaxHours);

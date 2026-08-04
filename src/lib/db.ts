@@ -138,7 +138,7 @@ export interface ReservationPage {
   total: number; // rows matching the current filter + search
   page: number; // 1-based
   pageSize: number;
-  counts: ReservationCounts; // global tallies for the admin stat boxes
+  counts?: ReservationCounts; // omitted when the caller passed withCounts: false
 }
 
 export interface ReservationQuery {
@@ -146,6 +146,8 @@ export interface ReservationQuery {
   search?: string;
   page?: number;
   pageSize?: number;
+  /** Global tallies for the stat boxes; they only move on a write, so paging can skip the scan. */
+  withCounts?: boolean;
 }
 
 const SEARCH_COLS = ["fullName", "email", "boothId", "note"];
@@ -169,10 +171,14 @@ function reservationCounts(): ReservationCounts {
   };
 }
 
+/** Ask without `withCounts` and the tallies are always there, so the first render can rely on them. */
+export function queryReservations(
+  q?: Omit<ReservationQuery, "withCounts">,
+): ReservationPage & { counts: ReservationCounts };
+export function queryReservations(q: ReservationQuery): ReservationPage;
+
 /** Paginated, filtered, searchable list for the dashboard. */
-export async function queryReservations(
-  q: ReservationQuery = {},
-): Promise<ReservationPage> {
+export function queryReservations(q: ReservationQuery = {}): ReservationPage {
   const db = getDb();
   const page = Math.max(1, Math.trunc(q.page ?? 1));
   const pageSize = Math.min(100, Math.max(1, Math.trunc(q.pageSize ?? 25)));
@@ -220,15 +226,16 @@ export async function queryReservations(
     total,
     page,
     pageSize,
-    counts: reservationCounts(),
+    // Five aggregates over the whole table, so a search keystroke or page click does not pay for them.
+    counts: q.withCounts === false ? undefined : reservationCounts(),
   };
 }
 
 /** Active reservations for a booth on a day; the date is a datetime prefix, so the index is used. */
-export async function reservedRanges(
+export function reservedRanges(
   boothId: string,
   date: string,
-): Promise<{ startsAt: string; endsAt: string }[]> {
+): { startsAt: string; endsAt: string }[] {
   // Times only: this feeds the public board, so no name ever leaves the row.
   const rows = prep(
     `SELECT startsAt, endsAt
@@ -243,10 +250,10 @@ export async function reservedRanges(
 }
 
 /** What this email already holds that day, across every booth, since a run can span booths. */
-export async function heldRangesForEmail(
+export function heldRangesForEmail(
   email: string,
   date: string,
-): Promise<{ startsAt: string; endsAt: string }[]> {
+): { startsAt: string; endsAt: string }[] {
   // A day's rows are few, and SQL can't strip Gmail's dots, so the match happens here.
   const rows = prep(
     `SELECT email, startsAt, endsAt
@@ -264,10 +271,10 @@ export async function heldRangesForEmail(
 }
 
 /** Create a reservation; the overlap check and insert share a transaction, so racers can't both win. */
-export async function createReservation(
+export function createReservation(
   input: ReservationInput,
   status: Extract<ReservationStatus, "confirmed" | "pending"> = "confirmed",
-): Promise<Reservation> {
+): Reservation {
   const db = getDb();
   const now = new Date().toISOString();
   const reservation: Reservation = {
@@ -309,13 +316,13 @@ export async function createReservation(
 }
 
 /** Hard-delete, only for undoing a booking whose confirmation failed: it must free the slot at once. */
-export async function discardReservation(id: string): Promise<boolean> {
+export function discardReservation(id: string): boolean {
   const res = prep("DELETE FROM reservations WHERE id = ?").run(id);
   return res.changes > 0;
 }
 
 /** Permanently remove rows, guarded to soft-deleted ones only. Returns the count removed. */
-export async function deleteReservations(ids: string[]): Promise<number> {
+export function deleteReservations(ids: string[]): number {
   if (ids.length === 0) return 0;
   const db = getDb();
   const placeholders = ids.map(() => "?").join(",");
@@ -327,16 +334,16 @@ export async function deleteReservations(ids: string[]): Promise<number> {
   return res.changes;
 }
 
-export async function getReservation(id: string): Promise<Reservation | null> {
+export function getReservation(id: string): Reservation | null {
   const row = prep("SELECT * FROM reservations WHERE id = ?").get(id) as
     Row | undefined;
   return row ? fromRow(row) : null;
 }
 
-export async function updateReservationStatus(
+export function updateReservationStatus(
   id: string,
   status: ReservationStatus,
-): Promise<Reservation | null> {
+): Reservation | null {
   // RETURNING hands back the updated row in one round-trip; no match -> undefined.
   const row = prep(
     "UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ? RETURNING *",
