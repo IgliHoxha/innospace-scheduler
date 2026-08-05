@@ -3,10 +3,17 @@ import { makeRequest, resetApp } from "../helpers/app";
 import { createCancelToken, createSessionToken } from "@/lib/auth";
 import { epochMsOf } from "@/lib/datetime";
 
+// The channel notice is internal chrome; the suite asserts the call, never the network.
+vi.mock("@/lib/slack", () => ({
+  postReservationToSlack: vi.fn().mockResolvedValue("sent"),
+}));
+
 type Route = typeof import("@/app/api/cancel/route");
 type Db = typeof import("@/lib/db");
+type Slack = typeof import("@/lib/slack");
 let route: Route;
 let db: Db;
+let slack: Slack;
 
 const DAY = "2026-07-16";
 const ENDS_AT = `${DAY}T15:00`;
@@ -17,6 +24,7 @@ beforeEach(async () => {
   resetApp();
   db = await import("@/lib/db");
   route = await import("@/app/api/cancel/route");
+  slack = await import("@/lib/slack");
 });
 
 const seed = (status: "confirmed" | "pending" = "confirmed") =>
@@ -138,5 +146,34 @@ describe("POST /api/cancel - the row disappears mid-request", () => {
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain("no longer exists");
     vi.restoreAllMocks();
+  });
+});
+
+describe("the Slack notice on a guest cancellation", () => {
+  it("announces it as the guest's own doing", async () => {
+    const r = seed();
+    await post(createCancelToken(r.id, epochMsOf(ENDS_AT)));
+    expect(slack.postReservationToSlack).toHaveBeenCalledOnce();
+    const [reservation, status, , by] = vi.mocked(slack.postReservationToSlack)
+      .mock.calls[0];
+    expect(reservation).toMatchObject({ id: r.id, status: "cancelled" });
+    expect(status).toBe("cancelled");
+    expect(by).toBe("guest");
+  });
+
+  // A double-click must not post twice: the second call cancels nothing.
+  it("says nothing when the reservation was already cancelled", async () => {
+    const r = seed();
+    const token = createCancelToken(r.id, epochMsOf(ENDS_AT));
+    await post(token);
+    vi.mocked(slack.postReservationToSlack).mockClear();
+    const res = await post(token);
+    expect((await json(res)).alreadyCancelled).toBe(true);
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when the token is not valid", async () => {
+    await post("nonsense");
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 });

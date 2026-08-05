@@ -3,6 +3,8 @@ import { getReservation, updateReservationStatus } from "@/lib/db";
 import { verifyCancelToken } from "@/lib/auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { ACTIVE_STATUSES } from "@/lib/types";
+import { boothName } from "@/lib/booths";
+import { postReservationToSlack } from "@/lib/slack";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +43,9 @@ export async function POST(req: NextRequest) {
       { status: 404 },
     );
   }
+
+  // The channel hears it even though the guest gets no email: the slot is free again for someone.
+  await postReservationToSlack(reservation, "cancelled", boothName, "guest");
 
   // No email: this is the person's own action, and the template is written for the admin cancelling.
   return NextResponse.json({ ok: true, alreadyCancelled: false });

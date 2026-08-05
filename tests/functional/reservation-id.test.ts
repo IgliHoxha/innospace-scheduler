@@ -5,12 +5,19 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The channel notice is internal chrome; the suite asserts the call, never the network.
+vi.mock("@/lib/slack", () => ({
+  postReservationToSlack: vi.fn().mockResolvedValue("sent"),
+}));
+
 type Route = typeof import("@/app/api/reservations/[id]/route");
 type Db = typeof import("@/lib/db");
 type Email = typeof import("@/lib/email");
+type Slack = typeof import("@/lib/slack");
 let route: Route;
 let db: Db;
 let email: Email;
+let slack: Slack;
 
 const DAY = "2026-07-16";
 
@@ -19,6 +26,7 @@ beforeEach(async () => {
   db = await import("@/lib/db");
   route = await import("@/app/api/reservations/[id]/route");
   email = await import("@/lib/email");
+  slack = await import("@/lib/slack");
 });
 
 const seed = (status: "confirmed" | "pending" = "confirmed") =>
@@ -139,5 +147,54 @@ describe("PATCH /api/reservations/[id] - statuses that send no email", () => {
     expect(res.status).toBe(200);
     expect(db.getReservation(r.id)?.status).toBe("deleted");
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Slack notice on an admin action", () => {
+  it("announces a cancellation as the admin's doing", async () => {
+    const r = seed();
+    await patch(r.id, { status: "cancelled" }, adminToken());
+    expect(slack.postReservationToSlack).toHaveBeenCalledOnce();
+    const [reservation, event, , by] = vi.mocked(slack.postReservationToSlack)
+      .mock.calls[0];
+    expect(reservation).toMatchObject({ id: r.id, status: "cancelled" });
+    expect(event).toBe("cancelled");
+    expect(by).toBe("admin");
+  });
+
+  // The request was announced as pending, so the channel is owed the verdict on it.
+  it("announces an approval, with no actor to credit", async () => {
+    const r = seed("pending");
+    await patch(r.id, { status: "confirmed" }, adminToken());
+    expect(slack.postReservationToSlack).toHaveBeenCalledOnce();
+    const [reservation, event, , by] = vi.mocked(slack.postReservationToSlack)
+      .mock.calls[0];
+    expect(reservation).toMatchObject({ id: r.id, status: "confirmed" });
+    expect(event).toBe("approved");
+    expect(by).toBeUndefined();
+  });
+
+  // Re-confirming a confirmed booking approves nothing, and the channel already heard about it.
+  it("stays quiet when the reservation was already confirmed", async () => {
+    const r = seed();
+    await patch(r.id, { status: "confirmed" }, adminToken());
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet when the reservation is only moved to deleted", async () => {
+    const r = seed();
+    await patch(r.id, { status: "deleted" }, adminToken());
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when the caller is not an admin", async () => {
+    const r = seed();
+    await patch(r.id, { status: "cancelled" });
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when the reservation does not exist", async () => {
+    await patch("missing", { status: "cancelled" }, adminToken());
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 });

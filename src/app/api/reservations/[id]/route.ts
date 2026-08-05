@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateReservationStatus } from "@/lib/db";
+import { getReservation, updateReservationStatus } from "@/lib/db";
 import { sendReservationEmail } from "@/lib/email";
+import { boothName } from "@/lib/booths";
+import { postReservationToSlack } from "@/lib/slack";
 import { requireAdmin } from "@/lib/api-auth";
 import { requireAllowedOrigin } from "@/lib/cors";
 import {
@@ -42,6 +44,8 @@ export async function PATCH(
     );
   }
 
+  // Only a pending row turns into an approval; both calls are synchronous, so nothing interleaves.
+  const before = getReservation(id);
   // One atomic UPDATE ... RETURNING: a separate existence read would only add a race window.
   const reservation = updateReservationStatus(id, status);
   if (!reservation) {
@@ -62,6 +66,13 @@ export async function PATCH(
     } catch (err) {
       console.error("[reservations] status email failed:", err);
     }
+  }
+
+  // The booking was announced when it was made, so only a verdict on it is news.
+  if (status === "cancelled") {
+    await postReservationToSlack(reservation, "cancelled", boothName, "admin");
+  } else if (status === "confirmed" && before?.status === "pending") {
+    await postReservationToSlack(reservation, "approved", boothName);
   }
 
   return NextResponse.json({ ok: true, reservation });

@@ -10,13 +10,20 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue("sent"),
 }));
 
+// The channel notice is internal chrome; the suite asserts the call, never the network.
+vi.mock("@/lib/slack", () => ({
+  postReservationToSlack: vi.fn().mockResolvedValue("sent"),
+}));
+
 type Route = typeof import("@/app/api/reservations/route");
 type Db = typeof import("@/lib/db");
 type Email = typeof import("@/lib/email");
+type Slack = typeof import("@/lib/slack");
 type Verify = typeof import("@/lib/email-verify");
 let route: Route;
 let db: Db;
 let email: Email;
+let slack: Slack;
 let verify: Verify;
 
 const DAY = "2026-07-16";
@@ -45,6 +52,7 @@ beforeEach(async () => {
   db = await import("@/lib/db");
   route = await import("@/app/api/reservations/route");
   email = await import("@/lib/email");
+  slack = await import("@/lib/slack");
   verify = await import("@/lib/email-verify");
 });
 
@@ -691,5 +699,49 @@ describe("GET /api/reservations - the status filter", () => {
     expect((await list("status=bogus")).total).toBe(1);
     expect((await list("status=all")).total).toBe(1);
     expect((await list("status=cancelled")).total).toBe(0);
+  });
+});
+
+describe("POST /api/reservations - the Slack notice", () => {
+  it("announces a booking, naming the reservation and how it was filed", async () => {
+    await post(ok);
+    expect(slack.postReservationToSlack).toHaveBeenCalledOnce();
+    const [reservation, status] = vi.mocked(slack.postReservationToSlack).mock
+      .calls[0];
+    expect(reservation).toMatchObject({
+      boothId: "booth-1",
+      startsAt: `${DAY}T14:00`,
+      endsAt: `${DAY}T15:00`,
+      email: "ada@example.com",
+    });
+    expect(status).toBe("confirmed");
+  });
+
+  it("marks a long booking pending, which is what the channel has to act on", async () => {
+    await post({ ...ok, end: "17:00", note: "Workshop" });
+    expect(vi.mocked(slack.postReservationToSlack).mock.calls[0][1]).toBe(
+      "pending",
+    );
+  });
+
+  // Slack is an internal notice: a booking already emailed and stored must not be undone by it.
+  it("still reserves the slot when Slack fails", async () => {
+    vi.mocked(slack.postReservationToSlack).mockResolvedValueOnce("failed");
+    const res = await post(ok);
+    expect(res.status).toBe(201);
+    expect((await json(res)).ok).toBe(true);
+    expect(db.queryReservations().reservations).toHaveLength(1);
+  });
+
+  it("posts only after the email, so a discarded booking is never announced", async () => {
+    vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("failed");
+    const res = await post(ok);
+    expect(res.status).toBe(502);
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when the booking was refused outright", async () => {
+    await post({ ...ok, fullName: "  " });
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 });
