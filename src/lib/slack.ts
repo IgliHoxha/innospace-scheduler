@@ -1,29 +1,29 @@
-// Posts new bookings to a Slack channel. Server-only: it reads a secret webhook URL.
+// Posts bookings to Slack. Server-only: it reads a secret webhook URL.
 import { optionalEnv } from "./env-app";
 import type { EmailStatus } from "./templates";
 import { boothLabel, dateText, timeText } from "./templates";
 import type { BoothNamer } from "./templates";
 import type { Reservation } from "./types";
 
-/** "sent" is delivered; "skipped" is no webhook configured; only "failed" means Slack refused it. */
+/** "skipped" is no webhook configured; only "failed" means Slack refused it. */
 export type SlackOutcome = "sent" | "skipped" | "failed";
 
-// Slack never runs long, and a hung POST would hold the booking response open behind it.
+// A hung POST would hold the booking's own response open behind it.
 const TIMEOUT_MS = 5000;
 
-// A booth is on the calendar, waiting, or given back: the icon says which before a word is read.
+// The icon says which state the booth is in before a word is read.
 const ICON_BOOKED = ":calendar:";
 const ICON_WAITING = ":hourglass_flowing_sand:";
-// The small triangle, not :x:, which is drawn edge to edge and so looms beside the other two.
+// Not :x:, which is drawn edge to edge and looms beside the other two.
 const ICON_CANCELLED = ":small_red_triangle_down:";
 
-/** Who ended a booking, since a guest dropping a slot and an admin pulling one differ. */
+/** Who ended it: a guest dropping a slot and an admin pulling one differ. */
 export type CancelledBy = "guest" | "admin";
 
-/** What happened, which a status cannot say on its own: an approval also lands on "confirmed". */
+/** What happened: an approval lands on "confirmed" too, so status cannot say. */
 export type SlackEvent = EmailStatus | "approved";
 
-// One place deciding the icon and the wording, so the two can never describe different events.
+// One place for icon and wording, so they cannot describe different events.
 function headline(
   event: SlackEvent,
   actor?: string,
@@ -40,7 +40,7 @@ function headline(
       title: "Reservation awaiting approval",
       lead: "Awaiting approval",
     };
-  // No actor: an approval can only come from the dashboard, so crediting one says nothing.
+  // Only the dashboard can approve, so crediting an actor says nothing.
   if (event === "approved")
     return {
       icon: ICON_BOOKED,
@@ -54,19 +54,19 @@ function headline(
   };
 }
 
-// The three characters Slack reads as markup, so a note or a name cannot forge a link.
+// The three characters Slack reads as markup, so a name cannot forge a link.
 function escapeSlack(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// The booker is worth naming; the admin is one shared login, so its role is the whole identity.
+// The admin is one shared login, so its role is the whole identity.
 function actorLabel(r: Reservation, by?: CancelledBy): string {
   if (by === "admin") return "the admin";
   const name = r.fullName?.trim();
   return name ? `${escapeSlack(name)} (guest)` : "the guest";
 }
 
-/** The one-line summary Slack shows in a notification and in the channel list. */
+/** The one-line summary a notification and the channel list show. */
 export function slackReservationText(
   r: Reservation,
   event: SlackEvent,
@@ -76,7 +76,7 @@ export function slackReservationText(
   return `${headline(event).lead}: ${boothLabel(r, boothName)} · ${dateText(r)} · ${timeText(r)} (${who})`;
 }
 
-/** The message body; a compact block for the channel, `text` for the notification. */
+/** The channel body, plus `text` for the notification. */
 export function slackReservationMessage(
   r: Reservation,
   event: SlackEvent,
@@ -84,7 +84,7 @@ export function slackReservationMessage(
   by?: CancelledBy,
 ): { text: string; blocks: unknown[] } {
   const { icon, title } = headline(event, actorLabel(r, by));
-  // Unlabelled: a date, a booth and an address say what they are, and labels double the height.
+  // Unlabelled: labels double the height and say nothing a date does not.
   const lines = [
     `${icon} *${title}*`,
     `${escapeSlack(boothLabel(r, boothName))} · ${escapeSlack(dateText(r))} · ${escapeSlack(timeText(r))}`,
@@ -95,7 +95,7 @@ export function slackReservationMessage(
     text: slackReservationText(r, event, boothName),
     blocks: [
       {
-        // Context, not section: Slack renders it at a smaller type and a smaller emoji than message text.
+        // Context, not section: Slack renders it smaller than message text.
         type: "context",
         elements: [{ type: "mrkdwn", text: lines.join("\n") }],
       },
@@ -103,7 +103,7 @@ export function slackReservationMessage(
   };
 }
 
-/** Announce a booking in Slack. Never throws: an internal notice must not cost anyone their slot. */
+/** Announce a booking. Never throws: a notice must not cost anyone their slot. */
 export async function postReservationToSlack(
   r: Reservation,
   event: SlackEvent,

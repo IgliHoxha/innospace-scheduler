@@ -44,7 +44,7 @@ export async function PATCH(
     );
   }
 
-  // Only a pending row turns into an approval; both calls are synchronous, so nothing interleaves.
+  // Only a pending row becomes an approval; synchronous reads cannot interleave.
   const before = getReservation(id);
   // One atomic UPDATE ... RETURNING: a separate existence read would only add a race window.
   const reservation = updateReservationStatus(id, status);

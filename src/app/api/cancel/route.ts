@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The channel hears it even though the guest gets no email: the slot is free again for someone.
+  // The channel hears it though the guest gets no email: the slot is free again.
   await postReservationToSlack(reservation, "cancelled", boothName, "guest");
 
   // No email: this is the person's own action, and the template is written for the admin cancelling.

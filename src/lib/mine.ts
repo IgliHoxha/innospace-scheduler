@@ -62,7 +62,7 @@ export interface HeldRange {
   end: number;
 }
 
-/** This booker's bookings the board still shows, so the run rule can warn before the server rejects. */
+/** This booker's bookings the board still shows, so the run rule can warn early. */
 export function heldRangesFor(opts: {
   entries: readonly MineEntry[];
   /** Already canonicalised; empty until the form knows who is booking. */
@@ -83,7 +83,7 @@ export function heldRangesFor(opts: {
         (m) =>
           m.e && m.s.startsWith(`${date}T`) && canonicalEmail(m.m) === booker,
       )
-      // Only what this board still shows: storage outlives the booking, and another booth has no board here.
+      // Only what this board still shows: storage outlives the booking it names.
       .filter((m) => onBoard.has(m.k))
       .map((m) => ({ start: minutesOfDay(m.s), end: minutesOfDay(m.e) }))
   );

@@ -226,7 +226,7 @@ describe("discardReservation", () => {
   });
 });
 
-// The board is what the browser checks its remembered bookings against, so a dead row must leave it.
+// The browser checks its remembered bookings against this board.
 describe("reservedRanges", () => {
   it("drops a cancelled booking, freeing the slot it held", async () => {
     const r = await reserve("10:00", "11:00");
@@ -241,7 +241,7 @@ describe("reservedRanges", () => {
     expect(db.reservedRanges("booth-1", D)).toEqual([]);
   });
 
-  // A pending request holds its slot, so the board has to show it as taken like any other.
+  // A pending request holds its slot, so the board shows it as taken.
   it("keeps a pending booking, which is holding its slot", async () => {
     await reserve("10:00", "11:00");
     db.createReservation(
@@ -268,7 +268,7 @@ describe("reservedRanges", () => {
     expect(db.reservedRanges("booth-1", D)).toEqual([]);
   });
 
-  // The browser matches an entry by its start time, so out-of-order rows would mislabel the board.
+  // The browser matches an entry by its start time.
   it("returns them in time order", async () => {
     await reserve("14:00", "15:00");
     await reserve("09:00", "10:00");

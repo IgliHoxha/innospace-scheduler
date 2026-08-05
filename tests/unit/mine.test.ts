@@ -131,7 +131,7 @@ describe("rememberMine", () => {
 });
 
 describe("heldRangesFor", () => {
-  // The board on screen showing this entry's slot is the only proof the booking still exists.
+  // The board showing this slot is the only proof the booking still exists.
   const base = {
     entries: [entry()],
     booker: "ada@example.com",
@@ -166,20 +166,20 @@ describe("heldRangesFor", () => {
     expect(heldRangesFor({ ...base, entries: [entry({ e: "" })] })).toEqual([]);
   });
 
-  // A booking cancelled elsewhere is still remembered, so the board is the check.
+  // A cancelled booking is still remembered, so the board is the check.
   it("drops an entry the board no longer shows", () => {
     expect(heldRangesFor({ ...base, boardStarts: [] })).toEqual([]);
     expect(heldRangesFor(base)).toHaveLength(1);
   });
 
-  // Storage outlives the booking, and no board on screen can contradict another booth's entry.
+  // No board on screen can contradict another booth's entry.
   it("drops an entry for another booth, which nothing here can confirm", () => {
     expect(
       heldRangesFor({ ...base, boothId: "booth-2", boardStarts: ["14:00"] }),
     ).toEqual([]);
   });
 
-  // The exact shape that blocked a one-hour booking: a phantom neighbour inflating the run.
+  // The shape that blocked a one-hour booking: a phantom neighbour.
   it("does not count a cancelled neighbour still sitting in storage", () => {
     const entries = [
       entry({
@@ -193,7 +193,7 @@ describe("heldRangesFor", () => {
         e: `${DAY}T16:00`,
       }),
     ];
-    // Only 14:00 survives on the board, so the 15:00 one was cancelled and must not extend the run.
+    // Only 14:00 survives the board, so the 15:00 one must not extend the run.
     expect(heldRangesFor({ ...base, entries })).toEqual([
       { start: 840, end: 900 },
     ]);

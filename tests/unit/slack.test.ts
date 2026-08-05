@@ -59,7 +59,7 @@ describe("the Slack message", () => {
     );
   });
 
-  // The icon is the whole point of skimming a busy channel, so it must differ by status.
+  // Skimming a busy channel is the point, so the icon must differ by status.
   it("leads with an icon that tells the statuses apart", () => {
     expect(body(RESERVATION).elements[0].text).toMatch(/^:calendar: /);
     expect(body(RESERVATION, "pending").elements[0].text).toMatch(
@@ -70,7 +70,7 @@ describe("the Slack message", () => {
     );
   });
 
-  // The booker is one of many and worth naming; the admin is a single shared login.
+  // The booker is one of many; the admin is a single shared login.
   it("names the guest who cancelled, but calls the admin only by role", () => {
     expect(body(RESERVATION, "cancelled", "guest").elements[0].text).toContain(
       "Reservation cancelled by Ada Lovelace (guest)",
@@ -83,7 +83,7 @@ describe("the Slack message", () => {
     ).not.toContain("Ada Lovelace (");
   });
 
-  // Only the emailed link and the dashboard can cancel, so an unattributed one came from the link.
+  // Only the link and the dashboard can cancel, so unattributed means the link.
   it("defaults to the guest, falling back to the bare role when unnamed", () => {
     expect(body(RESERVATION, "cancelled").elements[0].text).toContain(
       "cancelled by Ada Lovelace (guest)",
@@ -94,7 +94,7 @@ describe("the Slack message", () => {
     ).toContain("cancelled by the guest");
   });
 
-  // An approval can only come from the dashboard, so it needs no actor, but it is not a new booking.
+  // Only the dashboard approves, so it needs no actor, but it is not a new booking.
   it("announces an approval as its own event, on the confirmed icon", () => {
     const t = body(RESERVATION, "approved").elements[0].text;
     expect(t).toMatch(/^:calendar: /);
@@ -129,7 +129,7 @@ describe("the Slack message", () => {
     expect(t).toContain("Ada Lovelace · ada@example.com");
   });
 
-  // A channel is skimmed, so the whole event has to fit in a glance: heading, when, who.
+  // A channel is skimmed, so the event must fit a glance: heading, when, who.
   it("fits in three lines, four with a note", () => {
     expect(body(RESERVATION).elements[0].text.split("\n")).toHaveLength(3);
     expect(
@@ -149,7 +149,7 @@ describe("the Slack message", () => {
     ).not.toContain("_");
   });
 
-  // Slack reads these three as markup, so a note could otherwise forge a link or a mention.
+  // Slack reads these three as markup, so a note could forge a link.
   it("escapes the characters Slack treats as markup", () => {
     const t = body({
       ...RESERVATION,
@@ -161,7 +161,7 @@ describe("the Slack message", () => {
     expect(t).not.toContain("<https://evil.test");
   });
 
-  // The heading now carries a name the booker chose, so it needs the same escaping as the body.
+  // The heading carries a name the booker chose, so it needs escaping too.
   it("escapes the name it credits a cancellation to", () => {
     expect(
       body({ ...RESERVATION, fullName: "Ada <b> & Co" }, "cancelled", "guest")
@@ -178,7 +178,7 @@ describe("the Slack message", () => {
     ).toContain("(someone)");
   });
 
-  // A section renders at full message size; context is the only block Slack draws small.
+  // A section renders full size; context is the only block Slack draws small.
   it("uses a context block, which is what keeps the type and the icon small", () => {
     expect(body(RESERVATION).type).toBe("context");
     expect(body(RESERVATION).elements[0].type).toBe("mrkdwn");

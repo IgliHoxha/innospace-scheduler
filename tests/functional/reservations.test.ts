@@ -588,20 +588,20 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
     expect((await json(res)).reservation?.status).toBe("confirmed");
   });
 
-  // The browser gave up judging this and defers here, so the route is the only guard left.
+  // The browser no longer judges this, so the route is the only guard.
   it("does not chain onto a booking that was cancelled", async () => {
     const first = await at("14:00", "15:00");
     expect(first.status).toBe(201);
     const id = (await json(first)).reservation?.id;
     expect(id).toBeTruthy();
     db.updateReservationStatus(String(id), "cancelled");
-    // Straight after the freed hour: a 2 hour run, and a 400, if the dead row still counted.
+    // Straight after the freed hour: a 400 if the dead row still counted.
     const res = await at("15:00", "16:00", { boothId: "booth-2" });
     expect(res.status).toBe(201);
     expect((await json(res)).reservation?.status).toBe("confirmed");
   });
 
-  // A pending request holds its slot, so it has to extend a run exactly like a confirmed one.
+  // A pending request holds its slot, so it extends a run too.
   it("chains onto a pending neighbour, which holds its slot too", async () => {
     db.createReservation(
       {
