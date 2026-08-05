@@ -533,4 +533,11 @@ describe("the accent rule under the header", () => {
       "height:2px;line-height:2px;font-size:0;background:#b91c1c",
     );
   });
+
+  // Two stacked lines read as one furred edge, and at 2px the grey one shows through.
+  it("is the only thing closing the header, which carries no border of its own", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain('<div style="padding:22px 28px">');
+    expect(html).not.toContain("padding:22px 28px;border-bottom");
+  });
 });

@@ -53,6 +53,9 @@ interface DateOption {
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
 
+// How long a confirmation stays up; the same words are in the email, so nothing is lost with it.
+const SUCCESS_MS = 5000;
+
 declare global {
   interface Window {
     // Injected by the Cloudflare Turnstile script when the booking widget is on.
@@ -233,6 +236,21 @@ export default function ReservationClient({
     loadAvailability();
   }, [loadAvailability]);
 
+  // Every banner speaks about the board it appeared on, so another booth or day is another subject.
+  useEffect(() => {
+    setSuccess(null);
+    setError("");
+    setNoteError("");
+    setRefused(null);
+  }, [boothId, date]);
+
+  // A confirmation is a moment, not a state, so it retires itself rather than sit over later work.
+  useEffect(() => {
+    if (!success) return;
+    const timer = window.setTimeout(() => setSuccess(null), SUCCESS_MS);
+    return () => window.clearTimeout(timer);
+  }, [success]);
+
   const startMin = start ? timeToMinutes(start) : null;
   const endMin = end ? timeToMinutes(end) : null;
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
@@ -368,6 +386,8 @@ export default function ReservationClient({
         cancelToken?: string;
       };
       if (res.ok && json.ok) {
+        // Any earlier verdict was about a world that no longer exists, and the picker re-seeds next.
+        setRefused(null);
         const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
         const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
         setSuccess(
@@ -548,6 +568,8 @@ export default function ReservationClient({
                     "Your reservation is cancelled. The slot is free for someone else now.",
                   );
                   setError("");
+                  // Freeing a slot can undo the very reason a pick was refused.
+                  setRefused(null);
                   loadAvailability({ fresh: true, keepPick: true });
                 }}
                 // The graph is another way to choose a range, so it writes the same state the fields do.

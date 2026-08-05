@@ -116,7 +116,8 @@ function shell(opts: {
   const footerLink = ` · <a href="${escapeHtml(url)}" style="color:${BRAND};text-decoration:none">${escapeHtml(
     url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
   )}</a>`;
-  const header = `<div style="padding:22px 28px;border-bottom:1px solid ${COLORS.divider}">
+  // No border of its own: the accent rule below already closes the header, and two lines read as one furred edge.
+  const header = `<div style="padding:22px 28px">
         ${logoLockup(org)}
       </div>`;
   // Type zeroed as well as height: an empty div keeps a line box that would fatten a 2px rule.
