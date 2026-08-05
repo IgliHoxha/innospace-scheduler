@@ -237,9 +237,9 @@ describe("the email preheader", () => {
   });
 
   it("adds what the reader should do next, and it differs by status", () => {
-    expect(pre("confirmed")).toContain("cancel link");
+    expect(pre("confirmed")).toContain("link to cancel");
     expect(pre("pending")).toContain("held for you");
-    expect(pre("cancelled")).toContain("reserve another slot");
+    expect(pre("cancelled")).toContain("reserve another one");
   });
 
   // A notification shows about this much, so details must land before the cut.

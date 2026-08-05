@@ -67,11 +67,13 @@ export function emailPreheader(
   boothName: BoothNamer,
 ): string {
   const where = `${reservationSummary(r, boothName)} at ${contact.org}.`;
+  // Long enough to fill the snippet alone: the pad may count for nothing, and
+  // whatever room is left over gets scraped from the body instead.
   if (status === "cancelled")
-    return `Cancelled: ${where} You can reserve another slot whenever suits you.`;
+    return `Cancelled: ${where} That slot is free again, and you can reserve another one whenever suits you.`;
   if (status === "pending")
-    return `Awaiting approval: ${where} The slot is held for you meanwhile.`;
-  return `Confirmed: ${where} Your cancel link is inside if your plans change.`;
+    return `Awaiting approval: ${where} The slot is held for you meanwhile, and we will email you as soon as it is reviewed.`;
+  return `Confirmed: ${where} Nothing else is needed from you, and a link to cancel is inside if your plans change.`;
 }
 
 export function emailHeading(status: EmailStatus): string {

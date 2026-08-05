@@ -95,8 +95,8 @@ function textToHtml(text: string): string {
     .join("");
 }
 
-// Invisible filler, so a client stops scraping before it reaches the logo.
-const PREHEADER_PAD = "&#8199;&#65279;&#847;".repeat(30);
+// Zero-width only: U+2007 is a real space, and Gmail drew thirty as a visible hole.
+const PREHEADER_PAD = "&#847;&#65279;".repeat(60);
 
 // Hidden every way a client might respect: only snippet readers should see it.
 function preheaderHtml(text: string): string {

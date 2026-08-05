@@ -422,8 +422,31 @@ describe("the preheader", () => {
 
   // Without the filler the client reads on into the logo and shows it.
   it("pads past the length a snippet reads", async () => {
-    const html = await reservationHtml();
-    expect(html).toContain("&#8199;&#65279;&#847;".repeat(30));
+    expect(await reservationHtml()).toContain("&#847;&#65279;".repeat(60));
+  });
+
+  // U+2007 is a real space: Gmail drew thirty of them as a visible hole.
+  it("pads with zero-width characters only, leaving no visible gap", async () => {
+    const hidden =
+      /<div style="display:none;[^"]*">([\s\S]*?)<\/div>/.exec(
+        await reservationHtml(),
+      )?.[1] ?? "";
+    expect(hidden).not.toContain("&#8199;");
+    expect(hidden).not.toMatch(/\u2007|\u00a0/);
+  });
+
+  // The pad may count for nothing, so the copy has to fill the snippet alone.
+  it("is long enough to fill a snippet unaided, on every status", async () => {
+    for (const status of ["confirmed", "pending", "cancelled"] as const) {
+      send.mockClear();
+      await email.sendReservationEmail(RESERVATION, status);
+      const hidden =
+        /<div style="display:none;[^"]*">([\s\S]*?)<\/div>/.exec(
+          htmlOf(),
+        )?.[1] ?? "";
+      const copy = hidden.replace(/(&#847;|&#65279;)+/g, "");
+      expect(copy.length).toBeGreaterThan(140);
+    }
   });
 
   it("describes a cancellation as cancelled, since its subject only says 'Update'", async () => {
