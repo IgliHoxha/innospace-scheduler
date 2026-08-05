@@ -119,12 +119,14 @@ function shell(opts: {
   const header = `<div style="padding:22px 28px;border-bottom:1px solid ${COLORS.divider}">
         ${logoLockup(org)}
       </div>`;
+  // Type zeroed as well as height: an empty div keeps a line box that would fatten a 2px rule.
+  const accentRule = `<div style="height:2px;line-height:2px;font-size:0;background:${accent}">&nbsp;</div>`;
   return `
   ${preheaderHtml(preheader)}
   <div style="background:${COLORS.accentBg};padding:28px 12px;font-family:${FONT_STACK}">
     <div style="max-width:560px;margin:0 auto;background:${COLORS.background};border-radius:14px;overflow:hidden;border:1px solid ${COLORS.border}">
       ${header}
-      <div style="height:4px;background:${accent}"></div>
+      ${accentRule}
       <div style="padding:28px">
         <h1 style="margin:0 0 16px;color:${accent};font-size:22px">${heading}</h1>
         ${bodyHtml}

@@ -507,3 +507,30 @@ describe("escaping the env-supplied copy", () => {
     expect(html).not.toContain("&amp;");
   });
 });
+
+describe("the accent rule under the header", () => {
+  it("is a 2px band in the status colour", async () => {
+    expect(await reservationHtml()).toContain(
+      'style="height:2px;line-height:2px;font-size:0;background:#25bdad"',
+    );
+  });
+
+  // An empty div still gets a line box, so a client's own line-height would thicken the rule.
+  it("pins its line-height and font-size so no client can fatten it", async () => {
+    const rule =
+      /<div style="height:2px;[^"]*">.*?<\/div>/.exec(
+        await reservationHtml(),
+      )?.[0] ?? "";
+    expect(rule).toContain("line-height:2px");
+    expect(rule).toContain("font-size:0");
+    // Outlook drops a truly empty box, so the rule carries a space it cannot see.
+    expect(rule).toContain("&nbsp;");
+  });
+
+  it("takes the colour of the status, so a cancellation reads red", async () => {
+    await email.sendReservationEmail(RESERVATION, "cancelled");
+    expect(htmlOf()).toContain(
+      "height:2px;line-height:2px;font-size:0;background:#b91c1c",
+    );
+  });
+});

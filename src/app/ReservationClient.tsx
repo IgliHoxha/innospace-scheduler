@@ -111,6 +111,11 @@ export default function ReservationClient({
   const [error, setError] = useState("");
   // Kept apart from `error` so it can sit at the note box the way the live check does.
   const [noteError, setNoteError] = useState("");
+  // The exact attempt the server refused and why, so pressing Reserve again can't repeat it.
+  const [refused, setRefused] = useState<{
+    attempt: string;
+    message: string;
+  } | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mine, setMine] = useState<MineEntry[]>([]);
 
@@ -294,7 +299,11 @@ export default function ReservationClient({
   const { mustNote, needsApproval: willNeedApproval } = check;
   // A missing note is not shown live: the picker re-seeds itself, so it would scold a range nobody chose.
   const problem = isBlocking(check) ? check.problem : "";
-  const canReserve = !!start && !!end && !problem && !reservation;
+
+  // What the server judged, so its verdict expires the moment any of it changes.
+  const attempt = `${boothId}|${date}|${start}|${end}|${booker}`;
+  const refusal = refused?.attempt === attempt ? refused.message : "";
+  const canReserve = !!start && !!end && !problem && !reservation && !refusal;
 
   /** Clear a field's error as soon as it's edited, so it can't linger. */
   const onGuestEdit = (field: GuestField, set: (v: string) => void) => {
@@ -387,6 +396,9 @@ export default function ReservationClient({
         // Shown at the field it names, so a long form doesn't hide the reason below the fold.
         if (field === "note") setNoteError(message);
         else if (field) setGuestError({ field, error: message });
+        // A verdict on the pick itself: it stands until the range or the booker changes.
+        else if (res.status === 400 || res.status === 409)
+          setRefused({ attempt, message });
         else setError(message);
         if (field) document.getElementById(field)?.focus();
         // Someone may have just taken it, so the cached board won't show them; the pick stays put.
@@ -630,7 +642,7 @@ export default function ReservationClient({
         )}
 
         {problem && <p className="error">{problem}</p>}
-        {error && <p className="error">{error}</p>}
+        {(refusal || error) && <p className="error">{refusal || error}</p>}
         {success && <p className="success">{success}</p>}
 
         <div className="reserve-bar">
