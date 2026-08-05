@@ -1,4 +1,4 @@
-// What this browser remembers of its own bookings: a login-less board's only way to say "You".
+// A login-less board's only way to say "You": what this browser remembers booking.
 import { minutesOfDay } from "./datetime";
 import { canonicalEmail } from "./guest";
 
@@ -7,7 +7,7 @@ const MINE_KEY = "innospace.mine";
 // A convenience, not a record: the server is the truth, so the list stays short.
 const MINE_MAX = 50;
 
-/** One remembered booking. Field names are one letter because they go straight into localStorage. */
+/** One remembered booking; one-letter fields go straight into localStorage. */
 export interface MineEntry {
   /** slotKey(boothId, startsAt), the identity a board block is matched on. */
   k: string;
@@ -24,12 +24,12 @@ export interface MineEntry {
 export const slotKey = (boothId: string, startsAt: string) =>
   `${boothId}|${startsAt}`;
 
-/** Every booking this browser recalls, tolerating whatever shape an older version left behind. */
+/** Every booking recalled, whatever shape an older version left behind. */
 export function readMine(): MineEntry[] {
   try {
     const raw = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as unknown;
     if (!Array.isArray(raw)) return [];
-    // Entries were bare keys before the run rule needed times; those still label "You".
+    // Bare keys predate the run rule needing times, and still label "You".
     return raw.flatMap((x) => {
       if (typeof x === "string") return [{ k: x, s: "", e: "", m: "", t: "" }];
       const e = x as Partial<MineEntry>;
@@ -42,7 +42,7 @@ export function readMine(): MineEntry[] {
   }
 }
 
-/** Record a booking, newest first and deduped by slot; returns the new list so state can follow. */
+/** Record a booking, newest first and deduped by slot; returns the new list. */
 export function rememberMine(entry: MineEntry): MineEntry[] {
   const next = [entry, ...readMine().filter((m) => m.k !== entry.k)].slice(
     0,

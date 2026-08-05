@@ -64,7 +64,7 @@ describe("readMine", () => {
     expect(readMine()).toEqual([entry()]);
   });
 
-  // Entries were bare key strings before the run rule needed times; those must still label "You".
+  // Bare key strings predate the run rule needing times, and must still label "You".
   it("upgrades a legacy bare-string entry instead of dropping it", () => {
     store.set(KEY, JSON.stringify([`booth-1|${DAY}T09:00`]));
     expect(readMine()).toEqual([

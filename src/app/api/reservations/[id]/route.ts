@@ -14,7 +14,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Admin-only approve, cancel or delete; whoever booked uses the signed link in their email. */
+/** Admin-only approve, cancel or delete; the booker uses their emailed link. */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -46,7 +46,7 @@ export async function PATCH(
 
   // Only a pending row becomes an approval; synchronous reads cannot interleave.
   const before = getReservation(id);
-  // One atomic UPDATE ... RETURNING: a separate existence read would only add a race window.
+  // One atomic UPDATE ... RETURNING: a separate existence read adds a race window.
   const reservation = updateReservationStatus(id, status);
   if (!reservation) {
     return NextResponse.json(

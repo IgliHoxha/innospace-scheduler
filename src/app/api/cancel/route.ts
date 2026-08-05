@@ -9,7 +9,7 @@ import { postReservationToSlack } from "@/lib/slack";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Cancel from the emailed link; the signed token names one reservation and expires with it. */
+/** Cancel from the emailed link; the token names one slot and dies with it. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Already cancelled: report success so a double-click reads as done rather than as an error.
+  // Already cancelled: success, so a double-click reads as done, not an error.
   if (!ACTIVE_STATUSES.includes(existing.status as "confirmed" | "pending")) {
     return NextResponse.json({ ok: true, alreadyCancelled: true });
   }
@@ -47,6 +47,6 @@ export async function POST(req: NextRequest) {
   // The channel hears it though the guest gets no email: the slot is free again.
   await postReservationToSlack(reservation, "cancelled", boothName, "guest");
 
-  // No email: this is the person's own action, and the template is written for the admin cancelling.
+  // No email: their own action, and the template is written for an admin cancelling.
   return NextResponse.json({ ok: true, alreadyCancelled: false });
 }

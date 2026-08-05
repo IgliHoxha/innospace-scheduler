@@ -10,7 +10,7 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue("sent"),
 }));
 
-// The channel notice is internal chrome; the suite asserts the call, never the network.
+// Internal chrome: the suite asserts the call, never the network.
 vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));
@@ -66,7 +66,7 @@ const ok = {
   end: "15:00",
   ...who,
 };
-// No token: booking is public. `ip` varies the client so the throttle can't leak between tests.
+// No token: booking is public. `ip` varies so the throttle cannot leak.
 const post = (body: unknown, ip = "10.0.0.1") =>
   route.POST(
     makeRequest("/api/reservations", {
@@ -281,7 +281,7 @@ describe("POST /api/reservations - success", () => {
     expect(res.status).toBe(502);
     expect((await json(res)).error).toContain("nothing was reserved");
 
-    // Gone, not soft-deleted: a held slot nobody was told about is worse than no booking at all.
+    // Gone, not soft-deleted: a slot held in silence is worse than no booking.
     expect(db.queryReservations({ filter: "all" }).total).toBe(0);
   });
 
@@ -348,7 +348,7 @@ describe("POST /api/reservations - success", () => {
 describe("POST /api/reservations - per-IP throttle", () => {
   it("429 with Retry-After once the IP passes the attempt limit", async () => {
     const ip = "10.0.0.9";
-    // Back-to-back quarter-hours: half-open ranges don't clash, so only the throttle can reject one.
+    // Half-open quarter-hours do not clash, so only the throttle can reject one.
     const hhmm = (min: number) =>
       `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
     // 20 accepted bookings = LOGIN_IP_MAX_ATTEMPTS in the test baseline.
@@ -374,7 +374,7 @@ describe("POST /api/reservations - per-IP throttle", () => {
   });
 });
 
-// The booking throttle keys on the IP alone, so a forgeable one meant no throttle at all.
+// The throttle keys on the IP alone, so a forgeable one meant no throttle.
 describe("POST /api/reservations - a forged address header cannot escape the throttle", () => {
   const SECRET = "proof-secret";
   const hhmm = (min: number) =>
@@ -382,7 +382,7 @@ describe("POST /api/reservations - a forged address header cannot escape the thr
 
   beforeEach(() => vi.stubEnv("TRUSTED_PROXY_SECRET", SECRET));
 
-  /** One booking per call, each from a "different" forged address but the one real peer. */
+  /** One booking per call, each forging a different address from one real peer. */
   const bookAs = (i: number, cfIp: string, proof?: string) =>
     route.POST(
       makeRequest("/api/reservations", {
@@ -403,7 +403,7 @@ describe("POST /api/reservations - a forged address header cannot escape the thr
     );
 
   it("counts every unproven attempt against the real peer, not the address it claims", async () => {
-    // 20 accepted = LOGIN_IP_MAX_ATTEMPTS in the test baseline, each claiming a fresh address.
+    // 20 accepted = LOGIN_IP_MAX_ATTEMPTS, each claiming a fresh address.
     for (let i = 0; i < 20; i++) {
       expect((await bookAs(i, `203.0.113.${i}`)).status).toBe(201);
     }
@@ -416,7 +416,7 @@ describe("POST /api/reservations - a forged address header cannot escape the thr
     for (let i = 0; i < 20; i++) {
       expect((await bookAs(i, "203.0.113.1", SECRET)).status).toBe(201);
     }
-    // A genuinely different visitor, proven by the header, starts fresh rather than inheriting the block.
+    // A different visitor, proven by the header, starts fresh instead of inheriting.
     expect((await bookAs(20, "203.0.113.2", SECRET)).status).toBe(201);
   });
 });
@@ -531,7 +531,7 @@ describe("POST /api/reservations - Turnstile", () => {
   it("403 when siteverify itself errors", async () => {
     enable();
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    // A plain stub, not vi.fn(): a tracked rejection resurfaces as an unhandled error.
+    // A plain stub: a tracked rejection resurfaces as an unhandled error.
     vi.stubGlobal("fetch", () => Promise.reject(new Error("ECONNRESET")));
     expect((await post({ ...ok, turnstileToken: "tok" })).status).toBe(403);
     expect(db.queryReservations({}).total).toBe(0);
@@ -546,7 +546,7 @@ describe("POST /api/reservations - Turnstile", () => {
     expect(db.queryReservations({}).total).toBe(1);
   });
 
-  // The token is single-use, so it must not be spent on a request that was never going to succeed.
+  // Single-use, so it must not be spent on a request bound to fail.
   it("does not call siteverify when the slot itself is invalid", async () => {
     enable();
     siteverify(true);
@@ -617,7 +617,7 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
     expect((await json(res)).error).toContain("back to back");
   });
 
-  // A gap nobody else could book is not a break: the tolerance is MIN_RESERVATION_MINUTES.
+  // An unbookable gap is not a break: MIN_RESERVATION_MINUTES is the tolerance.
   it("closes a 5 minute gap: still one sitting", async () => {
     expect((await at("14:00", "15:00")).status).toBe(201);
     const res = await at("15:05", "16:05", { boothId: "booth-2" });
@@ -641,7 +641,7 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
 
   it("counts a gapped run for approval too, not just the note", async () => {
     expect((await at("14:00", "15:00")).status).toBe(201);
-    // 60 held + 65 booked = 2h05 across a 5 minute gap, past the 2 hour auto-approve limit.
+    // 60 held + 65 booked = 2h05 across a 5 minute gap, past the 2 hour limit.
     const res = await at("15:05", "16:10", {
       boothId: "booth-2",
       note: "Workshop",
@@ -753,7 +753,7 @@ describe("POST /api/reservations - the Slack notice", () => {
     );
   });
 
-  // Slack is an internal notice: a booking already emailed and stored must not be undone by it.
+  // An internal notice must not undo a booking already emailed and stored.
   it("still reserves the slot when Slack fails", async () => {
     vi.mocked(slack.postReservationToSlack).mockResolvedValueOnce("failed");
     const res = await post(ok);

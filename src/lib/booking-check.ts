@@ -1,4 +1,4 @@
-// The browser's mirror of the route's booking rules, in the route's own order. Minutes throughout.
+// The browser's mirror of the route's rules, in its order. Minutes throughout.
 import {
   approvalRequiredFor,
   findOverlap,
@@ -8,13 +8,13 @@ import {
   runTotalMinutes,
 } from "./reservation-rules";
 
-/** Where a problem belongs on screen; "note" sits at the note box, the rest by the reserve button. */
+/** Where a problem belongs; "note" at the note box, the rest by the button. */
 export type ProblemField = "note";
 
 export interface BookingCheck {
-  /** Booked minutes of the back-to-back run this booking joins, 0 until both ends are chosen. */
+  /** Booked minutes of the run this joins, 0 until both ends are chosen. */
   runMinutes: number;
-  /** The run is longer than this booking alone, so the wording has to explain why. */
+  /** Longer than this booking alone, so the wording must explain why. */
   partOfRun: boolean;
   /** A note is required at this run length. */
   mustNote: boolean;
@@ -45,11 +45,11 @@ export interface BookingCheckInput {
 
 /** Does this problem block the reserve button, or wait for the press? */
 export function isBlocking(check: BookingCheck): boolean {
-  // A missing note is about a field the booker has not reached yet, not about the times they chose.
+  // A missing note is about a field not reached yet, not the times chosen.
   return !!check.problem && check.field !== "note";
 }
 
-/** The message shown when a note is required, worded for whether a run is what pushed it over. */
+/** The note-required message, worded for whether a run pushed it over. */
 export function noteRequiredMessage(
   partOfRun: boolean,
   autoApproveMaxHours: number,
@@ -59,7 +59,7 @@ export function noteRequiredMessage(
     : `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
 }
 
-/** Every check the route makes that the browser can make too, so the form can't submit a rejection. */
+/** Every route check the browser can make, so the form cannot submit a rejection. */
 export function checkBooking(input: BookingCheckInput): BookingCheck {
   const {
     startMin,
@@ -79,7 +79,7 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
   const duration = chosen ? endMin - startMin : 0;
   const runMinutes =
     chosen && duration > 0
-      ? // The gap that still counts as one sitting is the shortest bookable slot: nobody could take it anyway.
+      ? // One sitting spans the shortest bookable gap: nobody could take it.
         runTotalMinutes(startMin, endMin, held, minReservationMinutes)
       : 0;
   const partOfRun = runMinutes > duration;
@@ -115,7 +115,7 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
   const clash = findOverlap(startMin, endMin, reserved);
   if (clash)
     return no(`That overlaps an existing reservation (${clash.label}).`);
-  // The server rejects holding two booths at once; this browser knows its own bookings.
+  // The server rejects two booths at once; this browser knows its own.
   if (findOverlap(startMin, endMin, held))
     return no("You already have a reservation during that time.");
 
