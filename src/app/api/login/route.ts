@@ -49,7 +49,7 @@ function lockedResponse(retryAfterSeconds: number) {
   );
 }
 
-/** Admin login (env credentials). Booking needs no account, so this is the only one. */
+/** Admin login (env credentials); booking needs no account. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
   return res;
 }
 
-// Session-guarded so a forged cross-site DELETE can't clear the cookie sameSite already withholds.
+// Session-guarded, so a forged cross-site DELETE cannot clear the cookie.
 export async function DELETE(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;

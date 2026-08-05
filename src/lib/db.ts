@@ -41,7 +41,7 @@ export class SlotUnavailableError extends Error {
   }
 }
 
-/** This email already holds an active reservation overlapping this time (any booth). */
+/** This email already holds an overlapping reservation, on any booth. */
 export class UserBusyError extends Error {
   constructor(message = "You already have a reservation during that time.") {
     super(message);
@@ -49,10 +49,10 @@ export class UserBusyError extends Error {
   }
 }
 
-// The whole schema, created on connect. No migration runner: changing a column means wiping the file.
+// The whole schema, made on connect. No migrations: a column change wipes the file.
 function initSchema(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
-  // Serves the dashboard's ORDER BY: reverse-scanned, so LIMIT stops early without a sort.
+  // Serves the dashboard's ORDER BY, so LIMIT stops early without a sort.
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
   );
@@ -61,7 +61,7 @@ function initSchema(db: Database.Database): void {
   );
 }
 
-// Lazy singleton opened on first query, with its statement cache, so neither outlives the other.
+// Lazy singleton with its statement cache, so neither outlives the other.
 let _db: Database.Database | null = null;
 let _stmts: Map<string, Database.Statement> | null = null;
 function getDb(): Database.Database {
@@ -77,7 +77,7 @@ function getDb(): Database.Database {
   return db;
 }
 
-// A statement compiled once per connection; static SQL only, or the cache fills with one-offs.
+// Compiled once per connection; static SQL only, or the cache fills up.
 function prep(sql: string): Database.Statement {
   const db = getDb();
   let stmt = _stmts!.get(sql);
@@ -146,7 +146,7 @@ export interface ReservationQuery {
   search?: string;
   page?: number;
   pageSize?: number;
-  /** Global tallies for the stat boxes; they only move on a write, so paging can skip the scan. */
+  /** Stat-box tallies; they move only on a write, so paging skips the scan. */
   withCounts?: boolean;
 }
 
@@ -171,7 +171,7 @@ function reservationCounts(): ReservationCounts {
   };
 }
 
-/** Ask without `withCounts` and the tallies are always there, so the first render can rely on them. */
+/** Tallies come even without `withCounts`, so a first render can rely on them. */
 export function queryReservations(
   q?: Omit<ReservationQuery, "withCounts">,
 ): ReservationPage & { counts: ReservationCounts };
@@ -226,12 +226,12 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
     total,
     page,
     pageSize,
-    // Five aggregates over the whole table, so a search keystroke or page click does not pay for them.
+    // Five whole-table aggregates, too costly for a keystroke or a page click.
     counts: q.withCounts === false ? undefined : reservationCounts(),
   };
 }
 
-/** Active reservations for a booth on a day; the date is a datetime prefix, so the index is used. */
+/** A booth's active reservations for a day; the date prefixes the datetime index. */
 export function reservedRanges(
   boothId: string,
   date: string,
@@ -249,12 +249,12 @@ export function reservedRanges(
   }));
 }
 
-/** What this email already holds that day, across every booth, since a run can span booths. */
+/** What this email holds that day, across booths, since a run can span them. */
 export function heldRangesForEmail(
   email: string,
   date: string,
 ): { startsAt: string; endsAt: string }[] {
-  // A day's rows are few, and SQL can't strip Gmail's dots, so the match happens here.
+  // A day's rows are few, and SQL cannot strip Gmail's dots.
   const rows = prep(
     `SELECT email, startsAt, endsAt
        FROM reservations
@@ -270,7 +270,7 @@ export function heldRangesForEmail(
     }));
 }
 
-/** Create a reservation; the overlap check and insert share a transaction, so racers can't both win. */
+/** Create one; check and insert share a transaction, so racers cannot both win. */
 export function createReservation(
   input: ReservationInput,
   status: Extract<ReservationStatus, "confirmed" | "pending"> = "confirmed",
@@ -286,7 +286,7 @@ export function createReservation(
   };
 
   const tx = db.transaction((r: Reservation) => {
-    // Half-open, so touching edges don't clash; the day-start bound keeps the scan off all history.
+    // Half-open, so edges do not clash; the day bound keeps history out of the scan.
     const dayStart = `${r.startsAt!.slice(0, 10)}T00:00`;
     const clash = prep(
       `SELECT 1 FROM reservations
@@ -295,7 +295,7 @@ export function createReservation(
          LIMIT 1`,
     ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
     if (clash) throw new SlotUnavailableError();
-    // Self-overlap: one person can't hold two booths at once, keyed on the mailbox they booked with.
+    // One person cannot hold two booths at once, keyed on their mailbox.
     if (r.email) {
       const want = canonicalEmail(r.email);
       const overlapping = prep(
@@ -315,13 +315,13 @@ export function createReservation(
   return reservation;
 }
 
-/** Hard-delete, only for undoing a booking whose confirmation failed: it must free the slot at once. */
+/** Hard-delete, only for a booking whose confirmation failed: free the slot now. */
 export function discardReservation(id: string): boolean {
   const res = prep("DELETE FROM reservations WHERE id = ?").run(id);
   return res.changes > 0;
 }
 
-/** Permanently remove rows, guarded to soft-deleted ones only. Returns the count removed. */
+/** Permanently remove rows, soft-deleted ones only. Returns the count. */
 export function deleteReservations(ids: string[]): number {
   if (ids.length === 0) return 0;
   const db = getDb();

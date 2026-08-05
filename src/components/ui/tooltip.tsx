@@ -15,12 +15,12 @@ interface Spot {
   top: number;
 }
 
-// Portalled and fixed: the timeline bar and the dashboard card both clip their overflow.
+// Portalled and fixed: the bar and the dashboard card both clip overflow.
 function TooltipBubble({ text, x, top }: Spot) {
   const ref = useRef<HTMLDivElement>(null);
   const [left, setLeft] = useState(x);
 
-  // Measured, so a block at either end of the timeline can't push the bubble off screen.
+  // Measured, so a block at either end cannot push the bubble off screen.
   useLayoutEffect(() => {
     const half = (ref.current?.offsetWidth ?? 0) / 2 + 8;
     setLeft(Math.min(Math.max(x, half), window.innerWidth - half));
@@ -30,7 +30,7 @@ function TooltipBubble({ text, x, top }: Spot) {
     <div
       ref={ref}
       role="tooltip"
-      // The trigger keeps its own aria-label, so announcing this too would say it twice.
+      // The trigger has its own aria-label, so this would say it twice.
       aria-hidden="true"
       className="pointer-events-none fixed z-[45] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-semibold leading-tight text-background shadow-lg"
       style={{ left, top: top - 8 }}
@@ -38,7 +38,7 @@ function TooltipBubble({ text, x, top }: Spot) {
       {text}
       <span
         className="absolute top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-foreground"
-        // Follows the trigger rather than the bubble, which edge-clamping may have shifted.
+        // Follows the trigger, not the bubble, which clamping may have shifted.
         style={{ left: `calc(50% + ${x - left}px)` }}
       />
     </div>,
@@ -46,7 +46,7 @@ function TooltipBubble({ text, x, top }: Spot) {
   );
 }
 
-/** Tooltips for triggers that can't wrap: spread `tooltip(text)` on each, render `tip` once. */
+/** For triggers that cannot wrap: spread `tooltip(text)`, render `tip` once. */
 export function useTooltip() {
   const [spot, setSpot] = useState<Spot | null>(null);
   const hide = useCallback(() => setSpot(null), []);

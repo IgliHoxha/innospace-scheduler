@@ -12,7 +12,7 @@ export function Topbar({
   username?: string;
   brandHref?: string;
   brandLabel?: string;
-  /** Right-side nav links rendered before the user menu; omitted on the member screen. */
+  /** Right-side nav links before the user menu; omitted on the member screen. */
   nav?: ReactNode;
 }) {
   return (

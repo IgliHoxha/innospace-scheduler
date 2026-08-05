@@ -1,10 +1,10 @@
-// Cookie auth: an HMAC-signed token for the env-credential admin, the only session there is.
+// Cookie auth: an HMAC token for the env-credential admin, the only session.
 import { createHmac, timingSafeEqual } from "crypto";
 import { requireEnv } from "./env-app";
 
 export const SESSION_COOKIE = "innospace_scheduler_session";
 
-// The signed token carries its own expiry, so tampering with the cookie's max-age achieves nothing.
+// The token carries its own expiry, so editing the cookie's max-age does nothing.
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 export type Role = "admin";
@@ -50,7 +50,7 @@ function verifiedBody(token: string | undefined | null): string | null {
   return body;
 }
 
-/** Mint a token of the form `<base64url(payload)>.<hmac>`, signed over the payload. */
+/** Mint `<base64url(payload)>.<hmac>`, signed over the payload. */
 export function createSessionToken(
   session: Session,
   ttlSeconds = SESSION_TTL_SECONDS,
@@ -85,7 +85,7 @@ export function verifySessionToken(
   }
 }
 
-// Cancel tokens: the session HMAC scheme but purpose-scoped, so neither can be replayed as the other.
+// The session HMAC scheme, purpose-scoped, so neither replays as the other.
 
 interface CancelPayload {
   sub: string; // the reservation id
@@ -93,7 +93,7 @@ interface CancelPayload {
   exp: number;
 }
 
-/** Mint a cancel token expiring at the reservation's end, since a passed slot can't be cancelled. */
+/** A cancel token dying with the slot, which cannot be cancelled once passed. */
 export function createCancelToken(
   reservationId: string,
   expiresAtMs: number,
@@ -125,7 +125,7 @@ export function verifyCancelToken(
   }
 }
 
-/** Constant-time string compare; length is compared first, and a secret's length is not secret. */
+/** Constant-time compare; length goes first, and length is not secret. */
 export function safeEqual(input: string, expected: string): boolean {
   const a = Buffer.from(input);
   const b = Buffer.from(expected);

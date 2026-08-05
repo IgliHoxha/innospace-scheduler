@@ -145,12 +145,12 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  // The note and approval limits apply to a back-to-back run, or a split stay would dodge them.
+  // The limits apply to a back-to-back run, or a split stay would dodge them.
   const held = heldRangesForEmail(guest.guest.email, date).map((h) => ({
     start: minutesOfDay(h.startsAt),
     end: minutesOfDay(h.endsAt),
   }));
-  // The gap that still counts as one sitting is the shortest bookable slot: nobody could take it anyway.
+  // One sitting spans the shortest bookable gap: nobody could take it.
   const runMinutes = runTotalMinutes(
     startMin,
     endMin,
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        // Named so the form can land the cursor on the note instead of a message far below it.
+        // Named so the form lands the cursor on the note, not a message below.
         field: "note",
         error: partOfRun
           ? `Please add a note saying what the reservation is for - back to back with your other bookings this comes to ${autoApproveMaxHours()} hours or more.`
@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
     ? "pending"
     : "confirmed";
 
-  // Last gate before any write, after the cheap checks so a bad request never spends its token.
+  // Last gate before a write, so a bad request never spends its token.
   if (!(await verifyTurnstile(body.turnstileToken, ip))) {
     return NextResponse.json(
       {
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Does the domain take mail? After Turnstile, and before the insert so a dead address holds nothing.
+  // Does the domain take mail? Before the insert, so a dead address holds nothing.
   const deliverable = await checkEmailDeliverable(guest.guest.email);
   if (!deliverable.ok) {
     return NextResponse.json(
@@ -223,7 +223,7 @@ export async function POST(req: NextRequest) {
       status,
     );
 
-    // A booking counts only once the confirmation is away; "skipped" (no API key) is not a refusal.
+    // A booking counts once the confirmation is away; "skipped" is not a refusal.
     if (reservation.email) {
       const outcome = await sendReservationEmail(reservation, status);
       if (outcome === "failed") {
@@ -239,10 +239,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // After the email, so the channel never announces a booking that was then discarded.
+    // After the email, so the channel never announces a discarded booking.
     await postReservationToSlack(reservation, status, boothName);
 
-    // The same proof the email link carries, so the booking browser can cancel without it.
+    // The proof the email link carries, so this browser can cancel without it.
     const expiresAt = epochMsOf(reservation.endsAt ?? endsAt);
     return NextResponse.json(
       {

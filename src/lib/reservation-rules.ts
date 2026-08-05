@@ -1,6 +1,6 @@
-// Pure rule predicates with config injected, so server and client form can't drift. Minutes throughout.
+// Pure predicates with config injected, so server and form cannot drift. Minutes.
 
-/** Inside opening hours and on the step grid: the form checks it before the route repeats it. */
+/** Inside opening hours and on the step grid; the form checks it first. */
 export function isBookableMinute(
   minutes: number,
   openMin: number,
@@ -20,7 +20,7 @@ export function meetsMinDuration(
   return durationMin >= minReservationMin;
 }
 
-/** At or over the threshold a note is required: `>=` needs a note, `>` also needs approval. */
+/** `>=` the threshold needs a note, `>` also needs approval. */
 export function noteRequiredFor(
   durationMin: number,
   autoApproveMaxHours: number,
@@ -36,7 +36,7 @@ export function approvalRequiredFor(
   return durationMin > autoApproveMaxHours * 60;
 }
 
-/** Booked minutes of the back-to-back run this booking joins, so a split stay can't dodge the limits. */
+/** Booked minutes of the run this joins, so a split stay cannot dodge the limits. */
 export function runTotalMinutes(
   startMin: number,
   endMin: number,
@@ -47,14 +47,14 @@ export function runTotalMinutes(
   let runEnd = endMin;
   let total = Math.max(0, endMin - startMin);
 
-  // Each pass can extend the run and bring another booking in reach, so sweep until none joins.
+  // A pass can extend the run and bring another in reach, so sweep until none joins.
   const taken = new Set<number>();
   for (let grew = true; grew;) {
     grew = false;
     held.forEach((h, i) => {
       if (taken.has(i) || h.end <= h.start) return;
       if (h.start > runEnd + maxGapMin || h.end < runStart - maxGapMin) return;
-      // Beside the run, never across it: an overlap is a clash, and would count twice.
+      // Beside the run, never across: an overlap is a clash, and would count twice.
       if (h.end > runStart && h.start < runEnd) return;
       taken.add(i);
       total += h.end - h.start;
@@ -66,7 +66,7 @@ export function runTotalMinutes(
   return total;
 }
 
-/** First reserved range overlapping [startMin, endMin), or null; half-open so touching edges are fine. */
+/** First range overlapping [startMin, endMin), or null; edges never clash. */
 export function findOverlap<T extends { start: number; end: number }>(
   startMin: number,
   endMin: number,

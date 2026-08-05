@@ -8,7 +8,7 @@ const ibmPlexSans = IBM_Plex_Sans({
   weight: ["400", "600", "700"], // only the weights the UI actually uses
   variable: "--font-ibm-plex-sans",
   display: "swap",
-  // No <link rel="preload">: it warns "preloaded but not used" and the swap-in is imperceptible.
+  // No preload link: it warns "preloaded but not used" for no visible gain.
   preload: false,
 });
 

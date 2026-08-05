@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { optionalEnv } from "./env-app";
 
-// An in-app origin gate, not CORS headers: those are browser-enforced, this actually blocks.
+// An in-app origin gate, not CORS headers: those only ask a browser nicely.
 
 /** ALLOWED_ORIGINS parsed; "*" (allow any) when the optional flag is unset. */
 function allowedOrigins(): string[] {
@@ -34,12 +34,12 @@ export function requestOrigin(headers: Headers): string | null {
   return null;
 }
 
-/** Is the Origin our own host? ALLOWED_ORIGINS describes other sites, never this one. */
+/** Is the Origin our own host? ALLOWED_ORIGINS names other sites only. */
 function isSameOrigin(origin: string, headers: Headers): boolean {
   const host = headers.get("host");
   if (!host) return false;
   try {
-    // Host-only: TLS terminates at Cloudflare, so the forwarded scheme isn't the browser's.
+    // Host only: TLS ends at Cloudflare, so the scheme is not the browser's.
     return new URL(origin).host === host;
   } catch {
     return false; // malformed Origin

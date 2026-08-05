@@ -1,4 +1,4 @@
-// Single source of truth for statuses: the type, validators and DB CHECK all derive from this.
+// One source of truth: the type, validators and DB CHECK all derive from this.
 export const RESERVATION_STATUSES = [
   "pending",
   "confirmed",
@@ -14,7 +14,7 @@ export const ACTIVE_STATUSES = [
   "pending",
 ] as const satisfies readonly ReservationStatus[];
 
-// Length caps for free text, enforced server-side so nothing unbounded reaches the DB.
+// Length caps for free text, so nothing unbounded reaches the DB.
 export const MAX_NOTE = 500;
 export const MAX_NAME = 80;
 export const MAX_EMAIL = 254; // RFC 5321
@@ -42,7 +42,7 @@ export interface Reservation extends ReservationInput {
   status: ReservationStatus;
 }
 
-// Email-footer contact fields, all required from env, so a footer always renders complete.
+// Footer contact fields, all required, so a footer always renders complete.
 export type ContactInfo = {
   name: string; // who signs off the confirmation
   org: string;

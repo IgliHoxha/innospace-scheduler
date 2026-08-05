@@ -20,7 +20,7 @@ import { pad2 } from "@/lib/utils";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** What's taken for a booth on a day, plus the first still-reservable time. Public, like the form. */
+/** What's taken for a booth on a day, plus the first reservable time. Public. */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const boothId = sp.get("booth") ?? "";
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   }));
 
   const opens = `${pad2(openHour())}:00`;
-  // Today, anything before now is gone, rounded onto the step grid since the picker seeds from it.
+  // Today, anything past is gone, rounded onto the grid the picker seeds from.
   const earliest =
     date === todayYMD()
       ? minutesToTime(

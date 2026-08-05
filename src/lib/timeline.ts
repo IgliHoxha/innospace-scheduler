@@ -1,4 +1,4 @@
-// Pure day-timeline helpers in minutes-since-midnight; no I/O or env, so they test alone.
+// Pure timeline helpers in minutes since midnight; no I/O, so they test alone.
 
 export interface DaySegment<T> {
   fromMin: number;
@@ -7,7 +7,7 @@ export interface DaySegment<T> {
   reserved: T | null;
 }
 
-/** Split the open day into consecutive reserved and free segments, clamped to the window. */
+/** Split the open day into reserved and free segments, clamped to the window. */
 export function buildDaySegments<T extends { start: number; end: number }>(
   opensMin: number,
   closesMin: number,
@@ -44,7 +44,7 @@ export function snapToStep(min: number, stepMin: number): number {
   return Math.round(min / stepMin) * stepMin;
 }
 
-/** A sensible end for a start, clamped to its free stretch; null when the minimum won't fit. */
+/** An end for a start, clamped to its free stretch; null if it will not fit. */
 export function suggestedEndMin(
   startMin: number,
   limitMin: number,
@@ -55,7 +55,7 @@ export function suggestedEndMin(
   return Math.min(limitMin, startMin + Math.max(minDurationMin, preferredMin));
 }
 
-/** The range a drag covers, snapped outward onto the step grid and kept inside its free stretch. */
+/** What a drag covers, snapped outward onto the grid, inside its free stretch. */
 export function dragRange(
   anchorMin: number,
   atMin: number,
@@ -64,7 +64,7 @@ export function dragRange(
   minDurationMin: number,
 ): { from: number; to: number } {
   const clamp = (m: number) => Math.min(stretch.to, Math.max(stretch.from, m));
-  // Outward, not nearest: a press just shy of the hour would otherwise start the range on it.
+  // Outward, not nearest: a press shy of the hour would else start on it.
   let from = clamp(Math.floor(Math.min(anchorMin, atMin) / stepMin) * stepMin);
   let to = clamp(Math.ceil(Math.max(anchorMin, atMin) / stepMin) * stepMin);
 
@@ -84,7 +84,7 @@ export function dragRange(
   return { from, to };
 }
 
-/** The hour marks that fit under a bar this wide, thinned evenly and always keeping closing time. */
+/** The hour marks fitting this bar, thinned evenly, always keeping closing time. */
 export function tickMinutes(
   opensMin: number,
   closesMin: number,
@@ -96,38 +96,38 @@ export function tickMinutes(
     all.push(m);
   }
   const hours = (closesMin - opensMin) / 60;
-  // Nothing to thin before the bar is measured, and two marks are the ends, which always show.
+  // Nothing to thin before the bar is measured; two marks are the ends.
   if (all.length < 3 || barPx <= 0 || hours <= 0) return all;
   const step = Math.max(1, Math.ceil((labelPx * hours) / barPx));
   if (step === 1) return all;
   const kept = all.filter((_, i) => i % step === 0);
   const last = all[all.length - 1];
   if (kept[kept.length - 1] !== last) {
-    // Closing time earns its place, so the mark before it gives way when it would sit too close.
+    // Closing time earns its place, so a mark too close to it gives way.
     if (kept.length > 1 && last - kept[kept.length - 1] < step * 60) kept.pop();
     kept.push(last);
   }
   return kept;
 }
 
-/** Where the pick's time tag sits: inside a roomy pick, else a chip above it, centred but kept on the bar. */
+/** Where the pick's tag sits: inside a roomy pick, else a chip above it. */
 export function pickTagPlacement(opts: {
   barPx: number;
-  /** The tag's measured width, 0 before its first render, when percent centring stands in. */
+  /** The tag's width, 0 before first render, when percent centring stands in. */
   tagPx: number;
   fromPct: number;
   toPct: number;
-  /** A pick narrower than this cannot hold the tag, so the tag floats above instead. */
+  /** A pick narrower than this cannot hold the tag, so it floats above. */
   fitsPx: number;
 }): { above: boolean; centerPct: number; leftPx: number | null } {
   const { barPx, tagPx, fromPct, toPct, fitsPx } = opts;
   const centerPct = (fromPct + toPct) / 2;
   const above = barPx > 0 && (barPx * (toPct - fromPct)) / 100 < fitsPx;
-  // Nothing to clamp against until both widths are known, and a tag wider than the bar cannot fit anyway.
+  // Nothing to clamp until both widths are known, and an oversized tag never fits.
   if (!above || tagPx <= 0 || tagPx >= barPx)
     return { above, centerPct, leftPx: null };
   const wanted = (barPx * centerPct) / 100 - tagPx / 2;
-  // Only the overhang is given up, so the tag stays over its pick everywhere but the last stretch.
+  // Only the overhang gives way, so the tag stays over its pick until the end.
   return {
     above,
     centerPct,
@@ -135,7 +135,7 @@ export function pickTagPlacement(opts: {
   };
 }
 
-/** The end for a start that just moved, clamped to its free stretch; null when it landed in none. */
+/** The end for a moved start, clamped to its stretch; null if it landed in none. */
 export function endForStart(
   startMin: number,
   gaps: readonly { from: number; to: number }[],

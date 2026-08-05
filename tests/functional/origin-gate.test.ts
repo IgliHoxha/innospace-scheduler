@@ -1,4 +1,4 @@
-// One pass over every state-changing handler: a disallowed Origin must be refused before any work.
+// Every state-changing handler: a bad Origin is refused before any work.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminToken, makeRequest, params, resetApp } from "../helpers/app";
 
@@ -59,7 +59,7 @@ describe("origin gate on mutating handlers", () => {
     await expectForbidden(res);
   });
 
-  // Regression: a page posting to its own API is same-origin, never CSRF, so it must pass unlisted.
+  // Regression: a page posting to its own API is same-origin, never CSRF.
   it("allows the app calling its own API (same-origin, not on the list)", async () => {
     const route = await import("@/app/api/login/route");
     const res = await route.DELETE(

@@ -1,4 +1,4 @@
-// Reservable booths from SCHEDULER_BOOTHS ("id:Name:capacity", comma-separated). Server-side only.
+// Booths from SCHEDULER_BOOTHS ("id:Name:capacity", comma-separated). Server only.
 import { requireEnv } from "./env-app";
 
 export interface Booth {

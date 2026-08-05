@@ -12,7 +12,7 @@ describe("availabilityQuery", () => {
     expect([...p.keys()]).toHaveLength(2);
   });
 
-  // Cloudflare caches the board for 30s and ignores a request's no-store, so only the URL can force a miss.
+  // Cloudflare caches 30s and ignores no-store, so only the URL forces a miss.
   it("adds the timestamp when the caller asks for a fresh board", () => {
     const p = parse(availabilityQuery("booth-1", "2026-07-16", 1_700_000_000));
     expect(p.get("t")).toBe("1700000000");

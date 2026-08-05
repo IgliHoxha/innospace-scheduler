@@ -80,14 +80,14 @@ export function maxOf(type: TimePickerType): number {
   return type === "minutes" ? 59 : 23;
 }
 
-/** Digits a field holds after a keystroke: a fresh field is replaced, then the newest two win. */
+/** Digits after a keystroke: a fresh field is replaced, then the newest two win. */
 export function nextDigits(raw: string, caret: number, fresh: boolean): string {
   const digits = raw.replace(/\D/g, "");
   if (!fresh) return digits.slice(-2);
   return digits.slice(Math.max(0, caret - 1), caret) || digits.slice(-1);
 }
 
-/** Entry finished? Two digits always; one only when no second could follow ("3" isn't 30-39). */
+/** Finished? Two digits always; one when no second could follow. */
 export function isCompleteEntry(digits: string, type: TimePickerType): boolean {
   if (digits.length >= 2) return true;
   if (digits.length !== 1) return false;

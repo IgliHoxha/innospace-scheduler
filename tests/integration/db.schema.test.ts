@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { loadDb, resetApp } from "../helpers/app";
 
-// Inspect a DB file directly, outside the app's singleton, to assert what initSchema created.
+// Inspect the DB file directly, outside the singleton, to assert initSchema.
 function tableNames(file: string): string[] {
   const d = new Database(file);
   const rows = d
@@ -67,7 +67,7 @@ describe("schema init", () => {
 
     const cols = columnNames(file, "reservations");
     expect(cols).toEqual(expect.arrayContaining(["fullName", "email"]));
-    // Nothing collects a phone: name + email is the whole identity a login-less booking carries.
+    // Nothing collects a phone: name and email are the whole identity.
     expect(cols).not.toContain("userId");
     expect(cols).not.toContain("phoneNumber");
   });
@@ -77,7 +77,7 @@ describe("schema init", () => {
     const file = process.env.DATA_FILE as string;
     db.createReservation(seed);
 
-    // Rebind to the SAME file (a fresh boot): every CREATE is IF NOT EXISTS, so data survives.
+    // Rebind to the same file: every CREATE is IF NOT EXISTS, so data survives.
     vi.resetModules();
     process.env.DATA_FILE = file;
     const db2 = await import("@/lib/db");

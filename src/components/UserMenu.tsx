@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-/** Sign out: clear the session cookie, then hard-navigate to /login so no client state survives. */
+/** Sign out: clear the cookie, then hard-navigate so no client state survives. */
 async function logout(): Promise<void> {
   await fetch("/api/login", { method: "DELETE" });
   window.location.replace("/login");
 }
 
-/** Topbar avatar button with a sign-out dropdown. Closes on any outside click or Escape. */
+/** Topbar avatar with a sign-out dropdown; closes on outside click or Escape. */
 export function UserMenu({ username }: { username: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
 

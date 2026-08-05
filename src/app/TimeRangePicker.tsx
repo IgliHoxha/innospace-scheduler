@@ -21,7 +21,7 @@ function toDate(hhmm: string) {
 
 const toHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 
-/** Start/End as typed HH:MM fields; it only collects the times, the form and server enforce the rules. */
+/** Typed HH:MM fields; it only collects times, the form and server enforce rules. */
 export default function TimeRangePicker({
   value,
   onChange,
@@ -30,7 +30,7 @@ export default function TimeRangePicker({
 }: {
   value: TimeRange | null;
   onChange: (range: TimeRange) => void;
-  /** The range the fields open on: a real free slot, so it never opens on a clash. */
+  /** The range the fields open on: a real free slot, never a clash. */
   defaultRange: TimeRange;
   disabled?: boolean;
 }) {
@@ -42,7 +42,7 @@ export default function TimeRangePicker({
   const fromDate = toDate(from);
   const toDate_ = toDate(to);
 
-  // Seeds a parent that has no range yet; announcing one it already holds would read as an edit.
+  // Seeds a parent with no range; re-announcing one would read as an edit.
   React.useEffect(() => {
     if (value) return;
     onChangeRef.current({ from: defaultRange.from, to: defaultRange.to });

@@ -21,7 +21,7 @@ import {
 } from "@/lib/templates";
 import { formatDMYShort, formatDateTime } from "@/lib/datetime";
 
-/** A page whose tallies are known: the server render asks for them and a cheap refetch keeps them. */
+/** A page with known tallies: the server render asks, a refetch keeps them. */
 type LoadedPage = ReservationPage & { counts: ReservationCounts };
 
 const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [
@@ -43,7 +43,7 @@ export default function DashboardClient({
   contact: ContactInfo;
   booths: Booth[];
 }) {
-  // Booth names from props, never env: the env-backed lookup would throw in a client bundle.
+  // Names from props, never env: that lookup would throw in a client bundle.
   const boothName = (id: string | undefined) => boothNameIn(booths, id);
 
   const { tooltip, tip } = useTooltip();
@@ -77,7 +77,7 @@ export default function DashboardClient({
   }
 
   const reqId = useRef(0);
-  // `withCounts` only for a fetch that follows a write: filtering and paging cannot move the tallies.
+  // `withCounts` only after a write: paging cannot move the tallies.
   const loadPage = useCallback(
     async (withCounts = false) => {
       const id = ++reqId.current;
@@ -99,7 +99,7 @@ export default function DashboardClient({
           setPage(tp);
           return;
         }
-        // A countless response must not blank the stat boxes, so the last known set stands.
+        // A countless response must not blank the boxes, so the last set stands.
         setData((prev) => ({ ...json, counts: json.counts ?? prev.counts }));
       } finally {
         if (id === reqId.current) setLoading(false);
@@ -503,7 +503,7 @@ export default function DashboardClient({
 // Compact list of page numbers with ellipses, e.g. 1 … 4 5 [6] 7 8 … 20.
 function pageList(page: number, totalPages: number): (number | "…")[] {
   const out: (number | "…")[] = [];
-  // Pages shown either side of the current one; never `window`, which shadows the real global.
+  // Pages either side of the current one; never `window`, which shadows the global.
   const siblings = 1;
   for (let p = 1; p <= totalPages; p++) {
     if (
@@ -671,7 +671,7 @@ function EmailPreview({
         rows={7}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        // The route rejects a longer body, so the box stops it rather than failing on send.
+        // The route rejects a longer body, so stop it here, not on send.
         maxLength={MAX_EMAIL_BODY}
         aria-label="cancellation email body"
       />

@@ -1,4 +1,4 @@
-// Route guards, split from auth.ts since these pull in Next types; each returns a Session or a 401/403.
+// Route guards, split from auth.ts: each returns a Session or a 401/403.
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, SESSION_COOKIE, type Session } from "./auth";
 

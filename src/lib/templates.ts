@@ -1,4 +1,4 @@
-// Pure helpers shared by the mailer and the dashboard preview, so the preview matches what is sent.
+// Shared by the mailer and the dashboard preview, so the preview matches.
 import type { ContactInfo, Reservation, ReservationStatus } from "./types";
 import { rangeLabel } from "./schedule";
 import { dateOf, formatDateLong } from "./datetime";
@@ -8,7 +8,7 @@ export type EmailStatus = Extract<
   "confirmed" | "cancelled" | "pending"
 >;
 
-/** Booth id to name, injected because the env-backed lookup would throw in a client bundle. */
+/** Booth id to name, injected: the env lookup would throw in a client bundle. */
 export type BoothNamer = (boothId: string | undefined) => string;
 
 /** The reserved time range as text, e.g. "09:30 - 11:00". */
@@ -59,7 +59,7 @@ export function emailSubject(
   return `Your ${booth} reservation is confirmed${date ? ` for ${date}` : ""}`;
 }
 
-/** The snippet a notification shows under the subject; without one the client scrapes the wordmark. */
+/** The snippet under the subject; without one a client scrapes the wordmark. */
 export function emailPreheader(
   r: Reservation,
   status: EmailStatus,
@@ -84,7 +84,7 @@ function firstName(r: Reservation): string {
   return r.fullName?.trim() ? r.fullName.trim().split(" ")[0] : "there";
 }
 
-// The one sign-off every email closes with; the org is absent since EMAIL_SIGNOFF_NAME carries it.
+// The one sign-off every email closes with; EMAIL_SIGNOFF_NAME carries the org.
 export function signOff(contact: ContactInfo): string[] {
   return [
     "Best regards,",

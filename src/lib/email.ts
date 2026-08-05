@@ -22,21 +22,21 @@ function baseUrl(): string {
   return requireEnv("APP_BASE_URL");
 }
 
-// Only the mark is artwork; the wordmark is HTML text so dark-mode clients can invert it.
+// Only the mark is artwork; the wordmark is text, so dark mode can invert it.
 const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
   return `${baseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
-// 329x308 artwork, so 32px tall is 34px wide; clients ignoring CSS need the width attribute.
+// 329x308 artwork, so 32px tall is 34px wide; CSS-less clients need the attribute.
 const MARK_HEIGHT = 32;
 const MARK_WIDTH = 34;
 
 const FONT_STACK =
   "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
 
-// The fixed brand lockup, not BUSINESS_NAME; flat spans, since Gmail cut the table version in two.
+// The fixed lockup, not BUSINESS_NAME; flat spans, since Gmail cut the table in two.
 function logoLockup(org: string): string {
   return `<img src="${escapeHtml(emailLogoUrl())}" alt="${escapeHtml(org)}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
@@ -66,11 +66,11 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// One pass, so the URL branch claims a URL carrying "@" or "+" before a later branch half-eats it.
+// One pass, so the URL branch claims a URL with "@" before another half-eats it.
 const LINKABLE =
   /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(\+\d[\d\s().-]{7,}\d)/g;
 
-// Plain text to safe HTML; addresses are linked here, or clients auto-link them in a clashing blue.
+// Text to safe HTML; linked here, or clients auto-link them in a clashing blue.
 function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
@@ -95,10 +95,10 @@ function textToHtml(text: string): string {
     .join("");
 }
 
-// Invisible filler, so a client stops scraping at the preheader instead of reading on into the logo.
+// Invisible filler, so a client stops scraping before it reaches the logo.
 const PREHEADER_PAD = "&#8199;&#65279;&#847;".repeat(30);
 
-// Hidden every way a mail client might respect, since only snippet readers are meant to see it.
+// Hidden every way a client might respect: only snippet readers should see it.
 function preheaderHtml(text: string): string {
   return `<div style="display:none;font-size:0;line-height:0;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">${escapeHtml(text)}${PREHEADER_PAD}</div>`;
 }
@@ -116,11 +116,11 @@ function shell(opts: {
   const footerLink = ` · <a href="${escapeHtml(url)}" style="color:${BRAND};text-decoration:none">${escapeHtml(
     url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
   )}</a>`;
-  // No border of its own: the accent rule below already closes the header, and two lines read as one furred edge.
+  // No border: the accent rule closes the header, and two read as one furred edge.
   const header = `<div style="padding:22px 28px">
         ${logoLockup(org)}
       </div>`;
-  // Type zeroed as well as height: an empty div keeps a line box that would fatten a 2px rule.
+  // Type zeroed too: an empty div keeps a line box that would fatten a 2px rule.
   const accentRule = `<div style="height:2px;line-height:2px;font-size:0;background:${accent}">&nbsp;</div>`;
   return `
   ${preheaderHtml(preheader)}
@@ -139,7 +139,7 @@ function shell(opts: {
   </div>`;
 }
 
-// The cancel token is the only proof of ownership: one reservation, expiring when that slot ends.
+// The only proof of ownership: one reservation, expiring when that slot ends.
 function cancelButton(r: Reservation): string {
   if (!r.id || !r.endsAt) return "";
   const expiresAt = epochMsOf(r.endsAt);
@@ -155,10 +155,10 @@ function cancelButton(r: Reservation): string {
     </div>`;
 }
 
-/** "skipped" is nothing attempted (no key or address); only "failed" means the address was refused. */
+/** "skipped" is nothing attempted; only "failed" means the address was refused. */
 export type EmailOutcome = "sent" | "skipped" | "failed";
 
-/** Send a confirmation or cancellation to whoever booked; customBody overrides the template. */
+/** Mail whoever booked; customBody overrides the template. */
 export async function sendReservationEmail(
   reservation: Reservation,
   status: EmailStatus,
@@ -176,7 +176,7 @@ export async function sendReservationEmail(
     customBody ?? emailBodyText(reservation, status, contact, boothName)
   ).trim();
 
-  // The SDK reports refusals in the resolved value rather than throwing, so inspect the result.
+  // The SDK reports refusals in the resolved value, so inspect the result.
   let result: { error?: unknown } | undefined;
   try {
     result = await resend.emails.send({

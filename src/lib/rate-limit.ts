@@ -1,4 +1,4 @@
-// In-memory brute-force guard, viable because one long-lived Fly machine serves everything.
+// In-memory guard, viable because one long-lived Fly machine serves everything.
 
 import { optionalEnv, requireIntEnv } from "./env-app";
 import { safeEqual } from "./auth";
@@ -16,11 +16,11 @@ const buckets = new Map<string, Bucket>();
 // Forget idle records after this long so the Map can't grow unbounded.
 const IDLE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// Sweeping every key on every request is wasted work; once a minute forgets idle records just as well.
+// Sweeping every request is wasted work; once a minute forgets idle records too.
 const PRUNE_EVERY_MS = 60 * 1000;
 let lastPrunedAt = 0;
 
-// Hard ceiling, since a spoofed address header mints a key: ~10k buckets is ~2MB on a 256mb machine.
+// A spoofed address header mints a key, so cap it: ~10k buckets is ~2MB.
 const MAX_BUCKETS = 10_000;
 
 /** Per-bucket policy. `maxLockouts: null` means "never ban". */
@@ -36,7 +36,7 @@ function posIntEnv(name: string): number {
   return n;
 }
 
-/** Per-account: strict, but never a permanent ban (never lock the admin out for good). */
+/** Per-account: strict, but never a permanent ban on the admin. */
 function accountPolicy(): Policy {
   return {
     maxAttempts: posIntEnv("LOGIN_MAX_ATTEMPTS"),
@@ -54,7 +54,7 @@ function ipPolicy(): Policy {
   };
 }
 
-/** The login thresholds without banning: a ban would DoS the shared office IP everyone books from. */
+/** Login thresholds without banning: a ban would DoS the shared office IP. */
 function bookingPolicy(): Policy {
   return {
     maxAttempts: posIntEnv("LOGIN_IP_MAX_ATTEMPTS"),
@@ -81,16 +81,16 @@ function prune(now: number) {
   }
 }
 
-/** Last resort when the cap is hit: drop the least recently seen, sparing live blocks while any spare. */
+/** At the cap, drop the least recently seen, sparing live blocks while it can. */
 function evictOldest(now: number): void {
   if (buckets.size <= MAX_BUCKETS) return;
-  // By `seen`, not Map order: Map order is first insert, so a busy old key would go before an idle new one.
+  // By `seen`, not insert order, or a busy old key goes before an idle new one.
   const byAge = [...buckets.entries()].sort((a, b) => a[1].seen - b[1].seen);
   for (const [key, b] of byAge) {
     if (buckets.size <= MAX_BUCKETS) return;
     if (!b.banned && b.blockedUntil <= now) buckets.delete(key);
   }
-  // Nothing but live blocks left, so the oldest of those goes rather than let the Map grow.
+  // Only live blocks left, so the oldest goes rather than let the Map grow.
   for (const [key] of byAge) {
     if (buckets.size <= MAX_BUCKETS) return;
     buckets.delete(key);
@@ -212,10 +212,10 @@ export function registerBooking(ip: string): RateStatus {
   return hit(bookingKey(ip), bookingPolicy());
 }
 
-// Set by a Cloudflare Transform Rule on every proxied request; absent on anything reaching Fly directly.
+// Set by a Cloudflare Transform Rule; absent on anything reaching Fly directly.
 const PROOF_HEADER = "x-origin-proof";
 
-// A shape guard, not a validator: it only stops a junk header becoming an arbitrarily long Map key.
+// A shape guard, not a validator: it stops a junk header becoming a long key.
 const IP_RE = /^[0-9a-f:.]{3,45}$/i;
 
 function asIp(value: string | null | undefined): string {
@@ -225,10 +225,10 @@ function asIp(value: string | null | undefined): string {
 
 /** Best-effort client IP; always a string, so unknowns share one bucket. */
 export function clientKey(headers: Headers): string {
-  // fly-client-ip comes from the real TCP peer, so it is the one value a direct caller cannot choose.
+  // fly-client-ip is the real TCP peer, the one value a caller cannot choose.
   const peer = asIp(headers.get("fly-client-ip"));
   const secret = optionalEnv("TRUSTED_PROXY_SECRET");
-  // No proof means this never went through Cloudflare, so the address headers it carries are its own invention.
+  // No proof means no Cloudflare, so its address headers are its own invention.
   if (secret && !safeEqual(headers.get(PROOF_HEADER) ?? "", secret)) {
     return peer || "unknown";
   }

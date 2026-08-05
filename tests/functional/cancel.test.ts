@@ -3,7 +3,7 @@ import { makeRequest, resetApp } from "../helpers/app";
 import { createCancelToken, createSessionToken } from "@/lib/auth";
 import { epochMsOf } from "@/lib/datetime";
 
-// The channel notice is internal chrome; the suite asserts the call, never the network.
+// Internal chrome: the suite asserts the call, never the network.
 vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));

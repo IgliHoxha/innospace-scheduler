@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The limiter keeps a module-level Map, so re-import per test; fake timers drive expiry.
+// The limiter keeps a module Map, so re-import per test; fake timers drive expiry.
 type RateLimit = typeof import("@/lib/rate-limit");
 let rl: RateLimit;
 
@@ -179,7 +179,7 @@ describe("clientKey", () => {
   });
 });
 
-// Without the proof, cf-connecting-ip is just something the caller typed, so the throttle must not key on it.
+// Without proof, cf-connecting-ip is caller-typed, so never key on it.
 describe("clientKey with TRUSTED_PROXY_SECRET set", () => {
   const SECRET = "s3cr3t-proof";
   beforeEach(() => vi.stubEnv("TRUSTED_PROXY_SECRET", SECRET));
@@ -337,9 +337,9 @@ describe("bucket housekeeping and repeat hits", () => {
   });
 });
 
-// A forged address header mints a bucket, so the Map is capped rather than left to eat the machine.
+// A forged address header mints a bucket, so the Map is capped.
 describe("the bucket cap", () => {
-  // Above MAX_BUCKETS (10k), so eviction runs; the clock is frozen so pruning can't do the work instead.
+  // Above MAX_BUCKETS (10k), so eviction runs; a frozen clock stops pruning.
   const FLOOD = 10_010;
   const flood = () => {
     for (let i = 0; i < FLOOD; i++) rl.registerBooking(`flood-${i}`);
@@ -353,7 +353,7 @@ describe("the bucket cap", () => {
   it("forgets the least recently seen bucket rather than growing without bound", () => {
     rl.registerBooking("early"); // one failure short of blocking
     flood();
-    // Evicted as the oldest, so its budget starts over: memory wins over a half-used counter.
+    // Evicted as oldest, so its budget restarts: memory beats a half-used counter.
     expect(rl.registerBooking("early").blocked).toBe(false);
   });
 

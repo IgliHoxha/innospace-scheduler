@@ -63,7 +63,7 @@ describe("requireAllowedOrigin", () => {
 });
 
 describe("same-origin requests", () => {
-  // Regression guard: the app calls its own API, so it must never have to list itself.
+  // Regression: the app calls its own API, so it never lists itself.
   const app = new Headers({
     origin: "https://scheduler.example.com",
     host: "scheduler.example.com",

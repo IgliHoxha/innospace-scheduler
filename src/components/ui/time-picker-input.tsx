@@ -23,7 +23,7 @@ export interface TimePickerInputProps extends Omit<
   onLeftFocus?: () => void;
 }
 
-/** One editable time field: caret at the end on entry, first keystroke replaces, arrows step. */
+/** One time field: caret at the end, first keystroke replaces, arrows step. */
 const TimePickerInput = React.forwardRef<
   HTMLInputElement,
   TimePickerInputProps
@@ -122,7 +122,7 @@ const TimePickerInput = React.forwardRef<
         type={type}
         inputMode="decimal"
         onChange={handleChange}
-        // Caret to the end on entry and after the click, which would otherwise drop it mid-field.
+        // Caret to the end, which a click would otherwise drop mid-field.
         onFocus={(e) => {
           freshRef.current = true;
           caretToEnd(e.currentTarget);

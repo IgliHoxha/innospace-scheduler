@@ -174,7 +174,7 @@ describe("dragRange", () => {
     expect(dragRange(600, 660, stretch, 5, 15)).toEqual({ from: 600, to: 660 });
   });
 
-  // Pressing at 09:58 used to round the anchor to 10:00, so the range was born on the hour line.
+  // Pressing at 09:58 once rounded to 10:00, born on the hour line.
   it("does not let a press just shy of the hour snap forward onto it", () => {
     expect(dragRange(598, 602, stretch, 5, 15)).toEqual({ from: 595, to: 610 });
   });
@@ -185,14 +185,14 @@ describe("dragRange", () => {
   });
 
   it("grows leftward for a leftward drag, still without rounding inward", () => {
-    // Anchor 10:02 ceils to 10:05 and the minimum is made up going back, the way the pointer moved.
+    // 10:02 ceils to 10:05, the minimum made up going back, as the pointer moved.
     expect(dragRange(602, 598, stretch, 5, 15)).toEqual({ from: 590, to: 605 });
   });
 });
 
 describe("a reservation starting before the window opens", () => {
   it("is clamped to opening time with no free sliver in front of it", () => {
-    // 08:00-10:00 against a 09:00 open: the segment starts at 09:00, nothing before it.
+    // 08:00-10:00 against a 09:00 open: the segment starts at 09:00.
     const segs = buildDaySegments(540, 1380, [{ start: 480, end: 600 }]);
     expect(segs[0]).toMatchObject({ fromMin: 540, toMin: 600 });
     expect(segs[0].reserved).not.toBeNull();
@@ -236,7 +236,7 @@ describe("pickTagPlacement", () => {
     expect(place(0, 9.6).above).toBe(false);
   });
 
-  // The bug: a narrow pick near the right end used to pin its tag to the bar's edge instead.
+  // The bug: a narrow pick near the end pinned its tag to the bar's edge.
   it("centres a floating tag on its pick rather than on the bar's end", () => {
     const p = place(85.71, 92.86);
     expect(p.leftPx).toBeCloseTo(847.85, 1);
@@ -307,7 +307,7 @@ describe("tickMinutes", () => {
     expect(hours(tickMinutes(570, 720, 1000, LABEL))).toEqual([10, 11, 12]);
   });
 
-  // Opening time is never sacrificed to make room for closing time; the two ends are the floor.
+  // Opening time never gives way to closing time; the two ends are the floor.
   it("keeps both ends of a bar with room for nothing else", () => {
     expect(hours(tickMinutes(540, 660, 40, LABEL))).toEqual([9, 11]);
   });

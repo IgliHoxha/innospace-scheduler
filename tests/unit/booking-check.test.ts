@@ -6,7 +6,7 @@ import {
   type BookingCheckInput,
 } from "@/lib/booking-check";
 
-// Mirrors the test baseline: 09:00-18:00, 5-minute grid, 15-minute minimum, 2-hour approval limit.
+// The test baseline: 09:00-18:00, 5-minute grid, 15-minute minimum, 2-hour limit.
 const base: BookingCheckInput = {
   startMin: 10 * 60,
   endMin: 11 * 60,
@@ -160,7 +160,7 @@ describe("checkBooking: the note rule", () => {
   });
 });
 
-// The picker re-seeds itself after a booking, so a live note error scolds a range nobody chose.
+// The picker re-seeds after a booking, so a live note error scolds nobody.
 describe("isBlocking", () => {
   it("does not block on a missing note, which waits for the reserve press", () => {
     const r = check({ endMin: 12 * 60 });
@@ -235,7 +235,7 @@ describe("checkBooking: the back-to-back run", () => {
 });
 
 describe("checkBooking: the route's own order", () => {
-  // The form must fail on the same rule the route would, or it reports a problem the server won't.
+  // The form must fail on the rule the route would, or it invents a problem.
   it("reports the grid before the ordering, and the ordering before the minimum", () => {
     expect(check({ startMin: 10 * 60 + 7, endMin: 9 * 60 }).problem).toContain(
       "5-minute steps",

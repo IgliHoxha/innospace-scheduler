@@ -1,4 +1,4 @@
-// Central env access: required vars throw at read time, read lazily so tests can stub them.
+// Central env access: required vars throw at read time, lazily so tests can stub.
 import type { ContactInfo } from "./types";
 
 /** A required string env var. Throws if unset or blank. */

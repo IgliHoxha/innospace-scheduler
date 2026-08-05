@@ -48,7 +48,7 @@ describe("reservation display helpers", () => {
     );
   });
 
-  // These helpers must never read env themselves, so they stay usable in a browser bundle.
+  // These must never read env, so they stay usable in a browser bundle.
   it("stays pure with SCHEDULER_BOOTHS unset (no env read of its own)", () => {
     vi.stubEnv("SCHEDULER_BOOTHS", "");
     expect(t.boothLabel(base, boothName)).toBe("Booth 1");
@@ -148,7 +148,7 @@ describe("contact footer", () => {
     ]);
   });
 
-  // EMAIL_SIGNOFF_NAME already carries the org and the footer prints it, so don't repeat it.
+  // EMAIL_SIGNOFF_NAME carries the org and the footer prints it: no repeat.
   it("does not repeat the org inside the sign-off", () => {
     expect(t.signOff(contact)).not.toContain("Test Org");
   });
@@ -212,7 +212,7 @@ describe("the note line in a pending request", () => {
   });
 });
 
-// The notification snippet: without one, a client scrapes the wordmark spans and shows "innospaceTIRANA".
+// Without a snippet a client scrapes the wordmark and shows "innospaceTIRANA".
 describe("the email preheader", () => {
   const pre = (status: t.EmailStatus, r: Reservation = base) =>
     t.emailPreheader(r, status, contact, boothName);
@@ -242,7 +242,7 @@ describe("the email preheader", () => {
     expect(pre("cancelled")).toContain("reserve another slot");
   });
 
-  // A notification shows roughly this much, so the details must land before the tail is cut.
+  // A notification shows about this much, so details must land before the cut.
   it("fits the booking details inside the first 100 characters", () => {
     for (const status of ["confirmed", "pending", "cancelled"] as const) {
       expect(pre(status).slice(0, 100)).toContain("09:30 - 11:00");

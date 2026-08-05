@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  /* Light-only UI: without this a dark-mode OS renders native controls in dark chrome. */
+  /* Light-only UI: else a dark-mode OS renders native controls dark. */
   color-scheme: light;
   /* Innospace Tirana brand palette */
   --brand: #25bdad;
@@ -50,17 +50,17 @@ a {
   color: var(--brand-dark);
 }
 
-/* Preflight is off, so a button keeps the UA's own text colour, which iOS Safari renders blue. */
+/* Preflight is off, so a button keeps the UA colour, which iOS renders blue. */
 button {
   color: inherit;
 }
 
-/* Width and rhythm shared with innospace-bookings, so the two back offices read as one product. */
+/* Width and rhythm shared with innospace-bookings, so both read as one. */
 .container {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  /* 40 at the foot, not 72: the last card here is the reserve bar, so the rest read as a void. */
+  /* 40 at the foot: the last card is the reserve bar, so 72 reads as void. */
   padding: 32px 20px 40px;
   flex: 1 0 auto;
 }
@@ -76,7 +76,7 @@ button {
   box-shadow: 0 1px 2px rgba(82, 69, 82, 0.06);
 }
 
-/* Matches .container, or the brand would sit at a different margin to the page under it. */
+/* Matches .container, or the brand sits at a different margin to the page. */
 .topbar-inner {
   max-width: 1200px;
   margin: 0 auto;
@@ -269,7 +269,7 @@ button {
 }
 
 /* Reservation screen */
-/* Type scale shared with innospace-bookings; the ink stays black, which is this app's own choice. */
+/* Type scale shared with innospace-bookings; the black ink is this app's own. */
 .page-title {
   margin: 0;
   font-size: 30px;
@@ -451,7 +451,7 @@ button {
   );
 }
 
-/* Flush and borderless: with no border to clip, the bar needs no clearance around it. */
+/* Flush and borderless: with no border to clip, it needs no clearance. */
 .daycal-block {
   position: absolute;
   top: 0;
@@ -471,7 +471,7 @@ button {
   cursor: pointer;
 }
 
-/* Only where the next block touches this one: alone it would read as a gap in the booking. */
+/* Only where the next block touches: alone it reads as a gap in the booking. */
 .daycal-block.seam {
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.9);
 }
@@ -530,17 +530,17 @@ button {
   position: absolute;
   top: 0;
   bottom: 0;
-  /* Square like the blocks, which carry no border and so clip cleanly against the bar's ends. */
+  /* Square like the blocks, which have no border and clip cleanly at the ends. */
   border-radius: 0;
   /* Light sky blue so the pick is unmistakable next to the teal "You" blocks. */
   background: rgba(56, 189, 248, 0.16);
   border: 2px solid #38bdf8;
-  /* Chrome floors border-width to whole pixels, so the half pixel is an inset ring instead. */
+  /* Chrome floors border-width to whole pixels, so use an inset ring. */
   box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45);
   pointer-events: none;
 }
 
-/* 11px is the bar's 12px less its 1px border: the curve the overflow actually clips children to. */
+/* 11px is the bar's 12px less its border: the curve the overflow clips to. */
 .daycal-pick.at-start {
   border-top-left-radius: 11px;
   border-bottom-left-radius: 11px;
@@ -551,7 +551,7 @@ button {
   border-bottom-right-radius: 11px;
 }
 
-/* One transparent hour box per cell, above everything; a taken hour opts out of pointer events. */
+/* One transparent hour box per cell; a taken hour opts out of pointer events. */
 .daycal-cell {
   position: absolute;
   /* The hour boxes stay full height: they are the hit area, not a drawn block. */
@@ -571,12 +571,12 @@ button {
   cursor: default;
 }
 
-/* Not the pick's sky blue: an hour box tinted with it reads as a second, wider selection. */
+/* Not the pick's sky blue: it would read as a second, wider selection. */
 .daycal-cell.free:hover {
   background: rgba(15, 91, 82, 0.06);
 }
 
-/* Mid-drag the pick is the feedback; box-by-box hovering would read as the selection jumping. */
+/* Mid-drag the pick is the feedback; hover would read as the selection jumping. */
 .daycal-bar.dragging .daycal-cell.free:hover {
   background: transparent;
 }
@@ -717,7 +717,7 @@ button {
   margin: 12px 0 0;
 }
 
-/* One rhythm for the stack that closes the form, so no banner appearing changes the spacing. */
+/* One rhythm for the stack closing the form, so a banner cannot shift it. */
 .note-box,
 .container > .error,
 .success,
@@ -728,7 +728,7 @@ button {
 
 .note-box {
   width: 100%;
-  /* Block, or the textarea's baseline leaves a stray 4px under it that only shows with a banner. */
+  /* Block, or the textarea's baseline leaves a stray 4px under it. */
   display: block;
   padding: 11px 13px;
   border: 1px solid var(--border);
@@ -754,7 +754,7 @@ button {
   border-color: #b45309;
 }
 
-/* Turnstile sizes its own box, so keep the slot collapsed until the interactive callbacks open it. */
+/* Turnstile sizes its own box, so stay collapsed until a callback opens it. */
 .turnstile-slot {
   height: 0;
   overflow: hidden;
@@ -792,7 +792,7 @@ button {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  /* Top margin comes from the stack rhythm above; this only drops the paragraph's own. */
+  /* Top margin comes from the stack rhythm; this drops the paragraph's own. */
   margin-bottom: 0;
 }
 
@@ -1394,7 +1394,7 @@ tr:last-child td {
   border-top: 1px solid var(--border);
 }
 
-/* Same 1200px as .container and .topbar-inner, or the footer sits inset from the page above it. */
+/* Same 1200px as .container, or the footer sits inset from the page above. */
 .site-footer-inner {
   max-width: 1200px;
   margin: 0 auto;
@@ -1419,12 +1419,12 @@ tr:last-child td {
 }
 
 /* ---- Time range picker (openstatus-style typed fields) ---- */
-/* Preflight is off to protect the app's CSS, so the Input's border needs an explicit style. */
+/* Preflight is off, so the Input's border needs an explicit style. */
 .tp-scope input {
   border-style: solid;
 }
 
-/* The input boxes' own height (h-11), so anything beside them centres on them, not on the label too. */
+/* The input height (h-11), so neighbours centre on them, not on the label. */
 .timerange-fields {
   --tp-input-h: 44px;
   display: flex;
@@ -1463,7 +1463,7 @@ tr:last-child td {
   color: var(--muted);
 }
 
-/* Given the inputs' height it ends where they end, so centring inside it is centring on them. */
+/* It ends where the inputs end, so centring inside it centres on them. */
 .tp-sep {
   display: flex;
   align-items: center;
@@ -1475,7 +1475,7 @@ tr:last-child td {
 .tp-clock {
   width: 18px;
   height: 18px;
-  /* The icon is bottom-aligned with the inputs, so half their spare height lifts it to their middle. */
+  /* Bottom-aligned with the inputs, so half their spare height centres it. */
   margin-bottom: calc((var(--tp-input-h) - 18px) / 2);
   color: var(--brand);
 }

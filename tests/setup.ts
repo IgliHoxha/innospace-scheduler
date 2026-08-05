@@ -3,7 +3,7 @@ import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
 import { SIGNING } from "./helpers/fixtures";
 
-// Required vars have no code default, so the suite supplies a baseline mirroring the old ones.
+// Required vars have no code default, so the suite supplies a baseline.
 const REQUIRED_BASELINE: Record<string, string> = {
   AUTH_SECRET: SIGNING,
   SCHEDULER_BOOTHS: "booth-1:Booth 1:2,booth-2:Booth 2:4,booth-3:Booth 3:6",
@@ -32,12 +32,12 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
   process.env[key] = value;
 }
 
-// Optional feature-flags stay OFF for determinism; DATA_FILE is set per-test by loadDb().
+// Optional flags stay off for determinism; loadDb() sets DATA_FILE per test.
 for (const key of ["RESEND_API_KEY", "ALLOWED_ORIGINS", "DATA_FILE"]) {
   delete process.env[key];
 }
 
-// Mocks survive vi.resetModules(), so clear call history each test while implementations stay.
+// Mocks survive vi.resetModules(), so clear history but keep implementations.
 afterEach(() => {
   vi.clearAllMocks();
   cleanupTmp();

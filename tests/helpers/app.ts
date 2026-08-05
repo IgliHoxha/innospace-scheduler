@@ -1,4 +1,4 @@
-// Shared test plumbing: throwaway SQLite DBs, module reset, request/session builders.
+// Shared test plumbing: throwaway DBs, module reset, request builders.
 import { vi } from "vitest";
 import os from "os";
 import path from "path";
@@ -29,7 +29,7 @@ export function cleanupTmp(): void {
   }
 }
 
-/** Reset the module registry and point the DB at a new file, so the lazy singletons start clean. */
+/** Reset the module registry and point the DB at a new file. */
 export function resetApp(): void {
   vi.resetModules();
   process.env.DATA_FILE = freshDataFile();
@@ -51,7 +51,7 @@ export function token(session: Session): string {
   return createSessionToken(session);
 }
 
-/** Build a NextRequest with an optional JSON body and cookie; `rawBody` sends an unserialised payload. */
+/** A NextRequest with optional JSON body and cookie; `rawBody` sends it raw. */
 export function makeRequest(
   url: string,
   opts: {

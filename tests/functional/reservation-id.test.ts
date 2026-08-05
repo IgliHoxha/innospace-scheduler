@@ -5,7 +5,7 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
-// The channel notice is internal chrome; the suite asserts the call, never the network.
+// Internal chrome: the suite asserts the call, never the network.
 vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));
@@ -124,7 +124,7 @@ describe("PATCH /api/reservations/[id] - failures that must not lose the change"
     db.discardReservation(r.id);
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     expect(res.status).toBe(404);
-    // Nothing was updated, so nobody gets told a booking they no longer have is confirmed.
+    // Nothing was updated, so nobody is told of a booking they do not have.
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });
 
@@ -174,7 +174,7 @@ describe("the Slack notice on an admin action", () => {
     expect(by).toBeUndefined();
   });
 
-  // Re-confirming a confirmed booking approves nothing, and the channel already heard about it.
+  // Re-confirming approves nothing, and the channel already heard about it.
   it("stays quiet when the reservation was already confirmed", async () => {
     const r = seed();
     await patch(r.id, { status: "confirmed" }, adminToken());

@@ -1,4 +1,4 @@
-// Throwaway test credentials, not real secrets: named "fixture-*" so scanners don't flag them.
+// Throwaway credentials, named "fixture-*" so scanners do not flag them.
 
 /** A valid member password used across the auth/activation tests. */
 export const CORRECT = "correct-horse-fixture";
@@ -7,7 +7,7 @@ export const CORRECT = "correct-horse-fixture";
 export const ADMIN_USER = "fixture-admin";
 export const ADMIN_PASS = "fixture-admin-pass";
 
-/** The code's built-in admin fallback: real default values, kept out of an inline pair. */
+/** The built-in admin fallback: real defaults, kept out of an inline pair. */
 export const DEFAULT_ADMIN_USER = "admin";
 export const DEFAULT_ADMIN_PASS = "change-me";
 

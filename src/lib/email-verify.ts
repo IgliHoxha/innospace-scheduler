@@ -1,11 +1,11 @@
-// Does the domain accept mail at all? Server-only (node:dns); guest.ts holds the rules the form shares.
+// Does the domain accept mail? Server-only (node:dns); guest.ts holds the rules.
 import { promises as dns } from "node:dns";
 
 const NO_MAIL = "That email domain doesn't accept mail. Please check it.";
 const DISPOSABLE_MSG =
   "Please use a permanent email address so we can reach you about your booking.";
 
-// Throwaway providers, deliberately short: a long list ages badly and is a maintenance liability.
+// Throwaway providers, deliberately short: a long list ages badly.
 const DISPOSABLE = new Set([
   "10minutemail.com",
   "guerrillamail.com",
@@ -19,7 +19,7 @@ const DISPOSABLE = new Set([
   "yopmail.com",
 ]);
 
-// Cached per domain: bookings cluster on a few providers, and DNS outlives one request.
+// Cached per domain: bookings cluster, and DNS outlives one request.
 const TTL_MS = 60 * 60 * 1000;
 const cache = new Map<string, { accepts: boolean; at: number }>();
 
@@ -30,11 +30,11 @@ export function resetEmailVerifyCache(): void {
   cache.clear();
 }
 
-/** true/false, or null when DNS couldn't answer: only a definitive "no such domain" says false. */
+/** null when DNS could not answer: only "no such domain" says false. */
 async function domainAcceptsMail(domain: string): Promise<boolean | null> {
   try {
     const mx = await dns.resolveMx(domain);
-    // A published MX settles it; "." alone is RFC 7505's null MX, an explicit refusal of mail.
+    // A published MX settles it; "." is RFC 7505's null MX, refusing mail.
     if (mx.length > 0) return mx.some((r) => r.exchange && r.exchange !== ".");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;

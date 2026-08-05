@@ -70,7 +70,7 @@ describe("GET /api/availability", () => {
     });
   });
 
-  // The board is CDN-cached, so a post-booking reload busts it with `t`; the route must not mind.
+  // The board is CDN-cached, so a reload busts it with `t`; the route must not mind.
   it("ignores the cache-busting param, answering exactly as it would without it", async () => {
     await seatOne("Ada");
     const plain = await (await get(`booth=booth-1&date=${today}`)).json();
@@ -118,7 +118,7 @@ describe("GET /api/availability earliest (today only)", () => {
     expect(body.earliest).toBe("10:30");
   });
 
-  // Regression: the picker seeds from earliest, so an off-grid value produced a start the API refused.
+  // Regression: seeding from earliest once produced an off-grid, refused start.
   it("rounds earliest up onto the step grid", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(`${DAY}T15:22:00`));
@@ -141,7 +141,7 @@ describe("GET /api/availability earliest (today only)", () => {
   });
 });
 
-// The block above pins a fixed DAY, which is never today, so only the "other day" path ran.
+// The block above pins a fixed DAY, so only the "other day" path ran.
 describe("GET /api/availability earliest (the request is for today)", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
   afterEach(() => vi.useRealTimers());

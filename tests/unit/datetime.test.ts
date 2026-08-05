@@ -55,7 +55,7 @@ describe("timeToMinutes", () => {
     }
   });
 
-  // The board and picker both hand it "HH:MM"; the extra characters of a datetime must not confuse it.
+  // Both hand it "HH:MM", so a datetime's extra characters must not confuse it.
   it("agrees with minutesOfDay on the time half of a datetime", () => {
     expect(t.timeToMinutes(t.timeOf("2026-07-16T15:25"))).toBe(
       t.minutesOfDay("2026-07-16T15:25"),

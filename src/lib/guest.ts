@@ -1,4 +1,4 @@
-// Booking identity, shared verbatim by the form and the route handler so the two can't drift.
+// Booking identity, shared verbatim by the form and the route, so neither drifts.
 import { MAX_EMAIL, MAX_NAME } from "./types";
 
 export interface GuestInput {
@@ -62,7 +62,7 @@ const DOMAIN_ALIASES = new Map([["googlemail.com", "gmail.com"]]);
 // Gmail alone ignores dots; everyone else treats them as part of the address.
 const IGNORES_DOTS = new Set(["gmail.com"]);
 
-// Providers documenting "+tag" as an alias of the same inbox, so a tag buys no second identity.
+// Providers where "+tag" is the same inbox, so a tag buys no second identity.
 const IGNORES_PLUS_TAG = new Set([
   "gmail.com",
   "outlook.com",
@@ -78,7 +78,7 @@ const IGNORES_PLUS_TAG = new Set([
   "fastmail.com",
 ]);
 
-/** One mailbox, one identity: what the booking limits count against, never what we send to. */
+/** One mailbox, one identity: what limits count, never what we send to. */
 export function canonicalEmail(value: string): string {
   const email = value.trim().toLowerCase();
   const at = email.lastIndexOf("@");
@@ -94,7 +94,7 @@ export function canonicalEmail(value: string): string {
   }
   if (IGNORES_DOTS.has(domain)) local = local.replaceAll(".", "");
 
-  // An all-dots or bare "+tag" local part would canonicalise to nothing, so keep the original.
+  // An all-dots or bare "+tag" local part canonicalises to nothing, so keep it.
   return local ? `${local}@${domain}` : email;
 }
 

@@ -32,7 +32,7 @@ interface Reserved {
   start: string;
   end: string;
   label: string;
-  /** Booked from this browser, the only way a login-less screen can know it's yours. */
+  /** Booked from this browser: a login-less screen's only way to know it's yours. */
   mine: boolean;
   /** Present only for a booking this browser made: the proof needed to cancel it. */
   cancelToken?: string;
@@ -53,7 +53,7 @@ interface DateOption {
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
 
-// How long a confirmation stays up; the same words are in the email, so nothing is lost with it.
+// How long a confirmation stays up; the email repeats it, so nothing is lost.
 const SUCCESS_MS = 5000;
 
 declare global {
@@ -92,7 +92,7 @@ export default function ReservationClient({
 }: {
   booths: Booth[];
   dates: DateOption[];
-  /** Reservations longer than this need approval; at this length or longer they need a note. */
+  /** Longer than this needs approval; at this length or longer, a note. */
   autoApproveMaxHours: number;
   /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
@@ -112,9 +112,9 @@ export default function ReservationClient({
   const [loading, setLoading] = useState(false);
   const [reservation, setReservation] = useState(false);
   const [error, setError] = useState("");
-  // Kept apart from `error` so it can sit at the note box the way the live check does.
+  // Apart from `error` so it can sit at the note box, like the live check.
   const [noteError, setNoteError] = useState("");
-  // The exact attempt the server refused and why, so pressing Reserve again can't repeat it.
+  // What the server refused and why, so Reserve cannot repeat it.
   const [refused, setRefused] = useState<{
     attempt: string;
     message: string;
@@ -130,7 +130,7 @@ export default function ReservationClient({
     error: string;
   } | null>(null);
 
-  // Turnstile reserves its box regardless, so the slot stays collapsed until Cloudflare goes interactive.
+  // Turnstile reserves its box, so the slot stays collapsed until challenged.
   const [turnstileToken, setTurnstileToken] = useState("");
   const [challenging, setChallenging] = useState(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
@@ -182,7 +182,7 @@ export default function ReservationClient({
     };
   }, [turnstileSiteKey]);
 
-  // Reload on booth or date change; a request id stops a slow response overwriting a newer one.
+  // Reload on booth or date change; a request id stops a slow response winning.
   const reqId = useRef(0);
   const loadAvailability = useCallback(
     async ({
@@ -194,9 +194,9 @@ export default function ReservationClient({
       setLoading(true);
       try {
         const res = await fetch(
-          // `fresh` is for after a booking or cancellation, where the edge's 30s copy would omit it.
+          // `fresh` is for after a booking, where the edge's 30s copy would omit it.
           `/api/availability?${availabilityQuery(boothId, date, fresh ? Date.now() : undefined)}`,
-          // Stops this browser's own cache only: the CDN ignores it, which is what the fresh URL is for.
+          // This browser's cache only: the CDN ignores it, hence the fresh URL.
           { cache: "no-store" },
         );
         const json = (await res.json()) as { ok: boolean } & Availability;
@@ -220,7 +220,7 @@ export default function ReservationClient({
               }
             : null,
         );
-        // A reload that did not change the board keeps the pick, or a refused booking loses it.
+        // A reload that did not change the board keeps the pick.
         if (!keepPick) {
           setStart("");
           setEnd("");
@@ -236,7 +236,7 @@ export default function ReservationClient({
     loadAvailability();
   }, [loadAvailability]);
 
-  // Every banner speaks about the board it appeared on, so another booth or day is another subject.
+  // A banner speaks about its own board, so another day is another subject.
   useEffect(() => {
     setSuccess(null);
     setError("");
@@ -244,7 +244,7 @@ export default function ReservationClient({
     setRefused(null);
   }, [boothId, date]);
 
-  // A confirmation is a moment, not a state, so it retires itself rather than sit over later work.
+  // A confirmation is a moment, not a state, so it retires itself.
   useEffect(() => {
     if (!success) return;
     const timer = window.setTimeout(() => setSuccess(null), SUCCESS_MS);
@@ -255,10 +255,10 @@ export default function ReservationClient({
   const endMin = end ? timeToMinutes(end) : null;
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
 
-  // The run belongs to whoever is booking, so it stays unknown until they say who that is.
+  // The run belongs to whoever is booking, so it waits for a name.
   const booker = isValidEmail(email.trim()) ? canonicalEmail(email) : "";
 
-  // That person's other bookings that day, so the run rule can warn before the server rejects.
+  // That person's other bookings that day, so the run rule can warn early.
   const myHeld = useMemo(
     () =>
       heldRangesFor({
@@ -271,7 +271,7 @@ export default function ReservationClient({
     [mine, avail, boothId, date, booker],
   );
 
-  // Reservable free stretches; with none, the picker is hidden and the reason shown instead.
+  // Reservable free stretches; with none, the picker gives way to the reason.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
     const dayEnd = timeToMinutes(avail.closes);
@@ -296,7 +296,7 @@ export default function ReservationClient({
   const dayIsOver =
     !!avail && timeToMinutes(avail.earliest) >= timeToMinutes(avail.closes);
 
-  // Every check the route makes that the browser can make too; nothing is judged before a board loads.
+  // Every route check the browser can make; nothing is judged before a board.
   const check = checkBooking({
     startMin: avail && start ? startMin : null,
     endMin: avail && end ? endMin : null,
@@ -315,7 +315,7 @@ export default function ReservationClient({
     autoApproveMaxHours,
   });
   const { mustNote, needsApproval: willNeedApproval } = check;
-  // A missing note is not shown live: the picker re-seeds itself, so it would scold a range nobody chose.
+  // Not live: the picker re-seeds, so it would scold a range nobody chose.
   const problem = isBlocking(check) ? check.problem : "";
 
   // What the server judged, so its verdict expires the moment any of it changes.
@@ -328,7 +328,7 @@ export default function ReservationClient({
     return (value: string) => {
       set(value);
       setError("");
-      // The run the server counted was that email's, so a new address invalidates its verdict.
+      // The run counted was that email's, so a new address voids the verdict.
       if (field === "email") setNoteError("");
       if (guestError?.field === field) setGuestError(null);
     };
@@ -337,7 +337,7 @@ export default function ReservationClient({
   async function reserve() {
     if (!canReserve) return;
 
-    // The same validator the route runs, so the client can't submit what the server would reject.
+    // The route's own validator, so the client cannot submit a rejection.
     const guest = validateGuest({ fullName, email });
     if (!guest.ok) {
       setGuestError({ field: guest.field, error: guest.error });
@@ -346,14 +346,14 @@ export default function ReservationClient({
     }
     setGuestError(null);
 
-    // Held back until now, so the ask lands when they tried to book rather than when the picker moved.
+    // Held back, so the ask lands on the booking attempt, not a picker move.
     if (check.field === "note") {
       setNoteError(check.problem);
       document.getElementById("note")?.focus();
       return;
     }
 
-    // Reveal the widget rather than let the server refuse a token nobody was shown a way to earn.
+    // Reveal the widget rather than refuse a token nobody could earn.
     if (turnstileSiteKey && !turnstileToken) {
       setChallenging(true);
       setError("Please complete the human check below, then reserve again.");
@@ -386,7 +386,7 @@ export default function ReservationClient({
         cancelToken?: string;
       };
       if (res.ok && json.ok) {
-        // Any earlier verdict was about a world that no longer exists, and the picker re-seeds next.
+        // An earlier verdict described a world that is gone; the picker re-seeds.
         setRefused(null);
         const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
         const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
@@ -413,15 +413,15 @@ export default function ReservationClient({
       } else {
         const message = json.error || "Could not reserve that time.";
         const field = json.field;
-        // Shown at the field it names, so a long form doesn't hide the reason below the fold.
+        // Shown at the field it names, so a long form cannot hide the reason.
         if (field === "note") setNoteError(message);
         else if (field) setGuestError({ field, error: message });
-        // A verdict on the pick itself: it stands until the range or the booker changes.
+        // A verdict on the pick: it stands until the range or booker changes.
         else if (res.status === 400 || res.status === 409)
           setRefused({ attempt, message });
         else setError(message);
         if (field) document.getElementById(field)?.focus();
-        // Someone may have just taken it, so the cached board won't show them; the pick stays put.
+        // Someone may have just taken it, which the cached board would not show.
         loadAvailability({ fresh: true, keepPick: true });
       }
     } finally {
@@ -513,7 +513,7 @@ export default function ReservationClient({
                   <TimeRangePicker
                     value={start && end ? { from: start, to: end } : null}
                     onChange={({ from, to }) => {
-                      // A moved start drags the end an hour after it, so the pair stays bookable.
+                      // A moved start drags the end, keeping the pair bookable.
                       const reanchored =
                         from === start
                           ? null
@@ -562,7 +562,7 @@ export default function ReservationClient({
                 contact={contact}
                 boothName={selectedBooth?.name ?? "the booth"}
                 dateLabel={dates.find((d) => d.value === date)?.label ?? date}
-                // Cancelled from the board: the slot is free again, so the graph has to be refetched.
+                // Cancelled from the board, so the graph must refetch.
                 onCancelled={() => {
                   setSuccess(
                     "Your reservation is cancelled. The slot is free for someone else now.",
@@ -572,7 +572,7 @@ export default function ReservationClient({
                   setRefused(null);
                   loadAvailability({ fresh: true, keepPick: true });
                 }}
-                // The graph is another way to choose a range, so it writes the same state the fields do.
+                // Another way to choose a range, writing the same state.
                 onPick={(from, to) => {
                   setStart(from);
                   setEnd(to);

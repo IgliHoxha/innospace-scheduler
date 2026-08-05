@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reservation } from "@/lib/types";
 import { verifyCancelToken } from "@/lib/auth";
 
-// Resend is stubbed at class level; `send` is shared so the lazy singleton stays observable.
+// Resend is stubbed at class level; a shared `send` keeps the singleton observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
 vi.mock("resend", () => ({
   Resend: class {
@@ -72,7 +72,7 @@ describe("email logo", () => {
     expect(await reservationHtml()).toContain('alt="Innospace Tirana"');
   });
 
-  // Gmail can't recolour inside an image, so only the mark ships as artwork, teal on either ground.
+  // Gmail cannot recolour inside an image, so only the mark ships as artwork.
   it("ships a teal-only mark asset with no wordmark and no media query", () => {
     const svg = readFileSync(
       join(process.cwd(), "public", "logo-mark.svg"),
@@ -83,7 +83,7 @@ describe("email logo", () => {
     expect(svg).not.toContain("prefers-color-scheme");
   });
 
-  // The wordmark is HTML text inked neutral so dark mode inverts it; flat spans, never a table.
+  // The wordmark is neutral text so dark mode inverts it; flat spans, never a table.
   it("builds the header without a table, so the card is not split", async () => {
     const html = await reservationHtml();
     expect(html).not.toContain("<table");
@@ -116,7 +116,7 @@ describe("email logo", () => {
 });
 
 describe("body copy colour", () => {
-  // Dark-mode inversion keeps hue and flips lightness, so the old plum ink came back pink.
+  // Inversion keeps hue and flips lightness, so the old plum ink came back pink.
   it("inks paragraphs with a neutral black, never the brand plum", async () => {
     const html = await reservationHtml();
     expect(html).toContain("color:#000000;font-size:14px");
@@ -296,7 +296,7 @@ describe("send outcome", () => {
     ).resolves.toBe("sent");
   });
 
-  // The SDK reports refusals in the resolved value, so catching alone would save a silent booking.
+  // The SDK resolves refusals, so catching alone would save a silent booking.
   it("reports 'failed' when Resend refuses the address", async () => {
     send.mockResolvedValueOnce({
       data: null,
@@ -388,7 +388,7 @@ describe("the linkifier", () => {
   });
 });
 
-// Gmail builds its snippet from the first text in the body, which used to be the wordmark spans.
+// Gmail snippets the first text in the body, once the wordmark spans.
 describe("the preheader", () => {
   it("comes before the logo lockup, or the client scrapes the wordmark instead", async () => {
     const html = await reservationHtml();
@@ -420,7 +420,7 @@ describe("the preheader", () => {
     }
   });
 
-  // Without the filler the client reads straight on into the logo and shows it anyway.
+  // Without the filler the client reads on into the logo and shows it.
   it("pads past the length a snippet reads", async () => {
     const html = await reservationHtml();
     expect(html).toContain("&#8199;&#65279;&#847;".repeat(30));
@@ -436,7 +436,7 @@ describe("the preheader", () => {
     expect(htmlOf()).toContain("Awaiting approval: Booth 1");
   });
 
-  // An admin can rewrite the body from the dashboard, so the snippet cannot be taken from it.
+  // An admin can rewrite the body, so the snippet cannot come from it.
   it("ignores a custom body and keeps describing the reservation", async () => {
     await email.sendReservationEmail(
       RESERVATION,
@@ -446,7 +446,7 @@ describe("the preheader", () => {
     expect(htmlOf()).toContain("Confirmed: Booth 1");
   });
 
-  // The org is env copy, so an angle bracket in it would otherwise close the hidden div early.
+  // The org is env copy, so an angle bracket would close the hidden div early.
   it("escapes the text it is given, so no markup can break out of the hidden div", async () => {
     vi.stubEnv("BUSINESS_NAME", "</div><b>Sale!</b>");
     const hidden =
@@ -458,7 +458,7 @@ describe("the preheader", () => {
   });
 });
 
-// Env copy reaches the HTML verbatim, so a legitimate "&" or "<" in it must not become markup.
+// Env copy reaches the HTML verbatim, so a real "&" must not become markup.
 describe("escaping the env-supplied copy", () => {
   it("escapes the org in the footer and in the logo's alt text", async () => {
     vi.stubEnv("BUSINESS_NAME", 'Smith & Sons <"Tirana">');
@@ -468,7 +468,7 @@ describe("escaping the env-supplied copy", () => {
     expect(html).not.toContain("Smith & Sons");
   });
 
-  // A quote in the URL would otherwise end the href and let the rest become attributes.
+  // A quote in the URL would end the href and let the rest become attributes.
   it("escapes the website URL in both the href and the visible text", async () => {
     vi.stubEnv(
       "BUSINESS_WEBSITE_URL",
@@ -481,7 +481,7 @@ describe("escaping the env-supplied copy", () => {
     expect(html).not.toContain('"onclick="evil()');
   });
 
-  // The button only renders while the slot is ahead, so pin "now" before it or nothing is asserted.
+  // The button renders only while the slot is ahead, so pin "now" before it.
   it("escapes the cancel link, which carries the base URL from env", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-07-16T08:00:00"));
@@ -515,7 +515,7 @@ describe("the accent rule under the header", () => {
     );
   });
 
-  // An empty div still gets a line box, so a client's own line-height would thicken the rule.
+  // An empty div still gets a line box, whose line-height thickens the rule.
   it("pins its line-height and font-size so no client can fatten it", async () => {
     const rule =
       /<div style="height:2px;[^"]*">.*?<\/div>/.exec(
@@ -534,7 +534,7 @@ describe("the accent rule under the header", () => {
     );
   });
 
-  // Two stacked lines read as one furred edge, and at 2px the grey one shows through.
+  // Two stacked lines read as one furred edge, and at 2px the grey shows.
   it("is the only thing closing the header, which carries no border of its own", async () => {
     const html = await reservationHtml();
     expect(html).toContain('<div style="padding:22px 28px">');

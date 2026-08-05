@@ -22,7 +22,7 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (res.ok) {
-      // Already at the top, and the dashboard opens with a sticky topbar there is no scrolling to.
+      // Already at the top, and the dashboard's topbar is sticky anyway.
       router.replace("/dashboard", { scroll: false });
       router.refresh();
     } else {

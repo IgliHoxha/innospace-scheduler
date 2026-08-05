@@ -1,4 +1,4 @@
-// Time rules; a reservation is local "YYYY-MM-DDTHH:MM" with no TZ, so TZ must match the space.
+// Time rules; a reservation carries no TZ, so TZ must match the space.
 import {
   approvalRequiredFor,
   isBookableMinute,
@@ -51,7 +51,7 @@ export function needsApproval(startsAt: string, endsAt: string): boolean {
   );
 }
 
-/** Same threshold as approval, one step wider: `>=` needs a note, `>` also needs approval. */
+/** One step wider than approval: `>=` needs a note, `>` needs approval. */
 export function noteRequired(startsAt: string, endsAt: string): boolean {
   return noteRequiredFor(
     durationMinutes(startsAt, endsAt),
@@ -59,7 +59,7 @@ export function noteRequired(startsAt: string, endsAt: string): boolean {
   );
 }
 
-/** Round a minute onto the step grid, always up: anything off the grid is unreservable. */
+/** Round onto the step grid, always up: off-grid is unreservable. */
 export function ceilToStep(minutes: number): number {
   const step = stepMinutes();
   return Math.ceil(minutes / step) * step;

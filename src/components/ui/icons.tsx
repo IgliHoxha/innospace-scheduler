@@ -31,7 +31,7 @@ export function TrashIcon() {
   );
 }
 
-/** Approve, on the dashboard's row actions. Drawn, not a "✓", which each platform renders its own way. */
+/** Approve, on the dashboard rows. Drawn: platforms render "✓" their own way. */
 export function CheckIcon() {
   return (
     <svg

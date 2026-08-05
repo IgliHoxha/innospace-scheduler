@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
 import { DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_USER } from "../helpers/fixtures";
 
-// resetApp() re-imports the route with a fresh limiter Map, so every test starts clean.
+// resetApp() re-imports the route with a fresh limiter, so tests start clean.
 type Route = typeof import("@/app/api/login/route");
 let route: Route;
 
@@ -81,7 +81,7 @@ describe("POST /api/login brute-force throttling", () => {
 });
 
 describe("POST /api/login - the IP ban, the only permanent block", () => {
-  // A fresh limiter per test, with the IP bucket tight and the account bucket out of the way.
+  // A fresh limiter per test: the IP bucket tight, the account bucket loose.
   beforeEach(async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     resetApp();
@@ -174,7 +174,7 @@ describe("POST /api/login - oversized input counts like any other failure", () =
   });
 });
 
-// Regression: the Fly origin is reachable without Cloudflare, so cf-connecting-ip is caller-supplied there.
+// Regression: the Fly origin skips Cloudflare, so cf-connecting-ip is forgeable.
 describe("POST /api/login - a forged address header cannot escape the IP throttle", () => {
   const SECRET = "proof-secret";
   const PEER = "198.51.100.9"; // the real TCP peer, the same for every forged attempt
@@ -211,7 +211,7 @@ describe("POST /api/login - a forged address header cannot escape the IP throttl
   it("still gives genuine Cloudflare traffic a bucket per visitor", async () => {
     expect((await attempt("203.0.113.1", SECRET)).status).toBe(401);
     expect((await attempt("203.0.113.2", SECRET)).status).toBe(401);
-    // Each proven address has its own budget, so neither has tripped the shared peer's limit.
+    // Each proven address has its own budget, clear of the shared peer's limit.
     expect((await attempt("203.0.113.3", SECRET)).status).toBe(401);
   });
 

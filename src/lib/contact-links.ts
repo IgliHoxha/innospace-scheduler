@@ -1,6 +1,6 @@
-// Builders for the "ask us about this slot" links. Pure, so no env or server imports.
+// Builders for the "ask us about this slot" links. Pure: no env imports.
 
-/** wa.me wants bare digits: a "+", spaces or dashes in the number give a dead link. */
+/** wa.me wants bare digits: a "+" or a space gives a dead link. */
 export function whatsappLink(phone: string, message: string): string {
   const digits = phone.replace(/\D/g, "");
   if (!digits) return "";

@@ -23,16 +23,16 @@ interface Reserved {
   cancelToken?: string;
 }
 
-// A pick narrower than this (px) can't hold its time tag, so the tag floats beside it.
+// A pick narrower than this (px) cannot hold its tag, so it floats.
 const TAG_FITS_PX = 96;
 
-// Travel (px) before a press is a drag; below it the gesture stays a click and keeps its hour.
+// Travel (px) before a press is a drag; below it, it stays a click.
 const DRAG_SLOP_PX = 4;
 
-// Room (px) one "HH:MM" tick needs before it touches its neighbour, so a narrow bar shows fewer.
+// Room (px) a tick needs clear of its neighbour, so a narrow bar shows fewer.
 const TICK_LABEL_PX = 44;
 
-/** Availability graph for one booth+day; with `onPick` it also picks the range, by click or drag. */
+/** Availability graph for one booth and day; `onPick` also picks the range. */
 export default function DayTimeline({
   opens,
   closes,
@@ -60,7 +60,7 @@ export default function DayTimeline({
   minMinutes: number;
   /** Where an enquiry about a taken slot goes. Omit and taken blocks stay inert. */
   contact?: { phone: string; email: string };
-  /** Called after this browser cancels one of its own bookings, so the board can reload. */
+  /** Called after this browser cancels its own booking, so the board reloads. */
   onCancelled?: () => void;
   boothName?: string;
   dateLabel?: string;
@@ -112,13 +112,13 @@ export default function DayTimeline({
     return () => ro.disconnect();
   }, []);
 
-  // Fewer marks get a label on a narrow bar, though the grid behind them still runs hourly.
+  // A narrow bar labels fewer marks, though the grid still runs hourly.
   const tickLabels = tickMinutes(opensMin, closesMin, barPx, TICK_LABEL_PX);
 
-  // The tag's own width, so a floating tag can be centred on its pick without leaving the bar.
+  // The tag's width, so a floating tag centres on its pick inside the bar.
   const [tagPx, setTagPx] = useState(0);
   const tagRo = useRef<ResizeObserver | null>(null);
-  // A callback ref, since the tag mounts and unmounts with the pick and its width changes with its class.
+  // A callback ref: the tag mounts with the pick and its width tracks its class.
   const tagRef = useCallback((el: HTMLDivElement | null) => {
     tagRo.current?.disconnect();
     if (!el) return;
@@ -148,7 +148,7 @@ export default function DayTimeline({
     cell: number;
     stretch: { from: number; to: number };
   } | null>(null);
-  // Set once a press has travelled far enough to count as a drag rather than a click.
+  // Set once a press has travelled far enough to be a drag, not a click.
   const movedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
 
@@ -175,7 +175,7 @@ export default function DayTimeline({
     }
   };
 
-  // Rebound every render so the listeners run against this render's segments and size.
+  // Rebound each render, so listeners see this render's segments and size.
   const onStopRef = useRef<() => void>(() => {});
   onStopRef.current = () => {
     const d = dragRef.current;
@@ -202,7 +202,7 @@ export default function DayTimeline({
 
   const { tooltip, tip } = useTooltip();
 
-  // Keyed on the range, not an index, so the popover closes itself if that booking is gone.
+  // Keyed on the range, so the popover closes itself if the booking is gone.
   const [asking, setAsking] = useState<{ from: number; to: number } | null>(
     null,
   );
@@ -224,7 +224,7 @@ export default function DayTimeline({
     ? `Booking enquiry: ${boothName}, ${dateLabel} ${minutesToTime(askOn.fromMin)} - ${minutesToTime(askOn.toMin)}`
     : "";
 
-  // Keyed on the range too, so a booking cancelled elsewhere takes its dialog with it.
+  // Keyed on the range too, so a cancellation takes its dialog with it.
   const [cancelling, setCancelling] = useState<{
     from: number;
     to: number;
@@ -247,7 +247,7 @@ export default function DayTimeline({
     setCancelError("");
   };
 
-  /** The emailed link's endpoint, with the token this browser kept when it booked. */
+  /** The emailed link's endpoint, with the token kept at booking. */
   async function confirmCancel() {
     if (!cancelToken) return;
     setCancelBusy(true);
@@ -291,11 +291,11 @@ export default function DayTimeline({
   const endRef = useRef<(() => void) | null>(null);
   useEffect(() => () => endRef.current?.(), []);
 
-  /** Track the gesture on the window, subscribed here so no movement slips through a render. */
+  /** Track the gesture on the window, so no movement slips through a render. */
   const beginDrag = (i: number, clientX: number) => {
     const stretch = stretchFor(i);
     if (!stretch) return;
-    // The box pressed, not the pixel: a drag and the click it might have been start alike.
+    // The box pressed, not the pixel: a drag and a click start alike.
     const anchorMin = Math.max(cells[i].from, stretch.from);
     movedRef.current = false;
     dragRef.current = {
@@ -306,7 +306,7 @@ export default function DayTimeline({
     };
 
     const move = (e: PointerEvent) => onMoveRef.current(e.clientX);
-    // A press that never travelled is a click, proven only on release; a cancel commits nothing.
+    // A press that never travelled is a click, proven on release.
     const finish = (commit: boolean) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -336,7 +336,7 @@ export default function DayTimeline({
       fitsPx: TAG_FITS_PX,
     });
     tag = {
-      // Roomy pick: the tag sits inside it. Too tight: it floats above, clear of any neighbour.
+      // Roomy pick: the tag sits inside. Too tight: it floats clear above.
       className: `daycal-pick-tag ${place.above ? "above" : "over"}`,
       style:
         place.leftPx == null
@@ -384,10 +384,10 @@ export default function DayTimeline({
           {segments.map((s, i) => {
             if (!s.reserved) return null;
             const src = s.reserved.src;
-            // Only a booking this browser holds the token for can offer to cancel itself.
+            // Only a booking this browser holds a token for can offer to cancel.
             const canCancel = !!src.cancelToken;
             const range = { from: s.fromMin, to: s.toMin };
-            // Segments are consecutive, so the next one being booked means these two blocks touch.
+            // Segments are consecutive, so a booked next one means these touch.
             const seam = !!segments[i + 1]?.reserved;
             return (
               <button
@@ -425,7 +425,7 @@ export default function DayTimeline({
 
           {hasPick && (
             <div
-              // Against the bar's own end its border has to follow the curve, or the clip slices it.
+              // At the bar's end the border must follow the curve, or it is sliced.
               className={`daycal-pick ${pct(selFrom!) === 0 ? "at-start" : ""} ${
                 pct(selTo!) === 100 ? "at-end" : ""
               }`}
@@ -448,14 +448,14 @@ export default function DayTimeline({
                   width: `${pct(c.to) - pct(c.from)}%`,
                 }}
                 disabled={!c.free}
-                // No title: naming the box contradicts the pick tag once a drag resizes it.
+                // No title: it would contradict the pick tag once a drag resizes.
                 aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.to)}`}
                 onPointerDown={(e) => {
                   if (!c.free) return;
                   e.preventDefault(); // no text selection while dragging
                   beginDrag(i, e.clientX);
                 }}
-                // Keyboard only: detail 0 tells an assistive click from a released press.
+                // Keyboard only: detail 0 tells assistive clicks from presses.
                 onClick={(e) => {
                   if (e.detail === 0) pickCell(i);
                 }}

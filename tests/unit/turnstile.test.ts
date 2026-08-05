@@ -107,7 +107,7 @@ describe("verifyTurnstile", () => {
       await expect(verifyTurnstile(bad)).resolves.toBe(false);
     }
     expect(fetchMock).not.toHaveBeenCalled();
-    // Logged every time: this path never reaches Cloudflare, so it is invisible in analytics.
+    // Logged: this path never reaches Cloudflare, so analytics miss it.
     expect(warn).toHaveBeenCalledTimes(5);
     warn.mockRestore();
   });
@@ -124,7 +124,7 @@ describe("verifyTurnstile", () => {
   it("rejects on a network error", async () => {
     bothKeys();
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    // A plain stub, not vi.fn(): a tracked rejection resurfaces as an unhandled error.
+    // A plain stub: a tracked rejection resurfaces as an unhandled error.
     vi.stubGlobal("fetch", () => Promise.reject(new Error("ECONNRESET")));
     await expect(verifyTurnstile("tok")).resolves.toBe(false);
     err.mockRestore();
