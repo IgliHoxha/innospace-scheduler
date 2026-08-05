@@ -226,6 +226,59 @@ describe("discardReservation", () => {
   });
 });
 
+// The board is what the browser checks its remembered bookings against, so a dead row must leave it.
+describe("reservedRanges", () => {
+  it("drops a cancelled booking, freeing the slot it held", async () => {
+    const r = await reserve("10:00", "11:00");
+    expect(db.reservedRanges("booth-1", D)).toHaveLength(1);
+    db.updateReservationStatus(r.id, "cancelled");
+    expect(db.reservedRanges("booth-1", D)).toEqual([]);
+  });
+
+  it("drops a deleted booking too", async () => {
+    const r = await reserve("10:00", "11:00");
+    db.updateReservationStatus(r.id, "deleted");
+    expect(db.reservedRanges("booth-1", D)).toEqual([]);
+  });
+
+  // A pending request holds its slot, so the board has to show it as taken like any other.
+  it("keeps a pending booking, which is holding its slot", async () => {
+    await reserve("10:00", "11:00");
+    db.createReservation(
+      { boothId: "booth-1", startsAt: at("14:00"), endsAt: at("15:00") },
+      "pending",
+    );
+    expect(db.reservedRanges("booth-1", D)).toEqual([
+      { startsAt: at("10:00"), endsAt: at("11:00") },
+      { startsAt: at("14:00"), endsAt: at("15:00") },
+    ]);
+  });
+
+  it("shows one booth only, so another booth's booking cannot mark this board", async () => {
+    await reserve("10:00", "11:00", { boothId: "booth-2" });
+    expect(db.reservedRanges("booth-1", D)).toEqual([]);
+    expect(db.reservedRanges("booth-2", D)).toHaveLength(1);
+  });
+
+  it("shows one day only", async () => {
+    await reserve("10:00", "11:00", {
+      startsAt: "2026-07-17T10:00",
+      endsAt: "2026-07-17T11:00",
+    });
+    expect(db.reservedRanges("booth-1", D)).toEqual([]);
+  });
+
+  // The browser matches an entry by its start time, so out-of-order rows would mislabel the board.
+  it("returns them in time order", async () => {
+    await reserve("14:00", "15:00");
+    await reserve("09:00", "10:00");
+    expect(db.reservedRanges("booth-1", D).map((r) => r.startsAt)).toEqual([
+      at("09:00"),
+      at("14:00"),
+    ]);
+  });
+});
+
 describe("heldRangesForEmail", () => {
   it("returns that person's active ranges for the day, in order", async () => {
     await reserve("14:00", "15:00");
