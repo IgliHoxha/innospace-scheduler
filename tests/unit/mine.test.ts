@@ -131,12 +131,13 @@ describe("rememberMine", () => {
 });
 
 describe("heldRangesFor", () => {
+  // The board on screen showing this entry's slot is the only proof the booking still exists.
   const base = {
     entries: [entry()],
     booker: "ada@example.com",
-    boothId: "booth-2",
+    boothId: "booth-1",
     date: DAY,
-    boardStarts: [] as string[],
+    boardStarts: ["14:00"] as string[],
   };
 
   it("returns nothing until the form knows who is booking", () => {
@@ -165,26 +166,55 @@ describe("heldRangesFor", () => {
     expect(heldRangesFor({ ...base, entries: [entry({ e: "" })] })).toEqual([]);
   });
 
-  // A booking cancelled elsewhere is still remembered, so the booth on screen is the check.
-  it("drops an entry for the booth on screen that the board no longer shows", () => {
-    const onThisBooth = { ...base, boothId: "booth-1" };
-    expect(heldRangesFor(onThisBooth)).toEqual([]);
+  // A booking cancelled elsewhere is still remembered, so the board is the check.
+  it("drops an entry the board no longer shows", () => {
+    expect(heldRangesFor({ ...base, boardStarts: [] })).toEqual([]);
+    expect(heldRangesFor(base)).toHaveLength(1);
+  });
+
+  // Storage outlives the booking, and no board on screen can contradict another booth's entry.
+  it("drops an entry for another booth, which nothing here can confirm", () => {
     expect(
-      heldRangesFor({ ...onThisBooth, boardStarts: ["14:00"] }),
-    ).toHaveLength(1);
+      heldRangesFor({ ...base, boothId: "booth-2", boardStarts: ["14:00"] }),
+    ).toEqual([]);
   });
 
-  it("keeps an entry for another booth without needing the board to confirm it", () => {
-    // booth-2 is on screen, so booth-1's booking is trusted from storage alone.
-    expect(heldRangesFor({ ...base, boardStarts: [] })).toHaveLength(1);
-  });
-
-  it("returns every qualifying booking, so the run rule sees the whole day", () => {
+  // The exact shape that blocked a one-hour booking: a phantom neighbour inflating the run.
+  it("does not count a cancelled neighbour still sitting in storage", () => {
     const entries = [
-      entry({ k: "booth-2|a", s: `${DAY}T09:00`, e: `${DAY}T10:00` }),
-      entry({ k: "booth-2|b", s: `${DAY}T10:00`, e: `${DAY}T11:00` }),
+      entry({
+        k: `booth-1|${DAY}T14:00`,
+        s: `${DAY}T14:00`,
+        e: `${DAY}T15:00`,
+      }),
+      entry({
+        k: `booth-1|${DAY}T15:00`,
+        s: `${DAY}T15:00`,
+        e: `${DAY}T16:00`,
+      }),
     ];
-    expect(heldRangesFor({ ...base, entries, boothId: "booth-3" })).toEqual([
+    // Only 14:00 survives on the board, so the 15:00 one was cancelled and must not extend the run.
+    expect(heldRangesFor({ ...base, entries })).toEqual([
+      { start: 840, end: 900 },
+    ]);
+  });
+
+  it("returns every qualifying booking, so the run rule sees the whole board", () => {
+    const entries = [
+      entry({
+        k: `booth-1|${DAY}T09:00`,
+        s: `${DAY}T09:00`,
+        e: `${DAY}T10:00`,
+      }),
+      entry({
+        k: `booth-1|${DAY}T10:00`,
+        s: `${DAY}T10:00`,
+        e: `${DAY}T11:00`,
+      }),
+    ];
+    expect(
+      heldRangesFor({ ...base, entries, boardStarts: ["09:00", "10:00"] }),
+    ).toEqual([
       { start: 540, end: 600 },
       { start: 600, end: 660 },
     ]);
