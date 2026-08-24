@@ -11,13 +11,9 @@
 # production
 /build
 
-# env
-.env
-.env*.local
-
-# Cloudflare deploy credentials for `make secret` / `make purge`. Kept out of
-# .env because that file is loaded into the dev server's own process.
-.env.deploy
+# env: every .env variant holds real secrets (.env.deploy too), only the example is committed
+.env*
+!.env.example
 
 # data: the SQLite DB (+ WAL/SHM sidecars), keep out of git
 /data/*.db
