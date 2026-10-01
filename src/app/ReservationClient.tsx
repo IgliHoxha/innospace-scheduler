@@ -218,7 +218,8 @@ export default function ReservationClient({
     }: { fresh?: boolean; keepPick?: boolean } = {}) => {
       if (!boothId || !date) return;
       const id = ++reqId.current;
-      setLoading(true);
+      // A refresh of the board on screen happens in place, so nothing unmounts.
+      if (!keepPick) setLoading(true);
       // Another booth's cached board predates the write too, undoing its count.
       const bust = fresh || edgeMayBeStale(Date.now(), wroteAt.current);
       try {
@@ -254,6 +255,9 @@ export default function ReservationClient({
           setStart("");
           setEnd("");
         }
+      } catch {
+        // A dropped connection or a non-JSON reply: no board beats a stale one.
+        if (id === reqId.current) setAvail(null);
       } finally {
         if (id === reqId.current) setLoading(false);
       }
@@ -370,7 +374,15 @@ export default function ReservationClient({
   useEffect(() => {
     liveAttempt.current = attempt;
   }, [attempt]);
-  const canReserve = !!start && !!end && !problem && !reservation && !refusal;
+  const canReserve =
+    !!avail && !!start && !!end && !problem && !reservation && !refusal;
+
+  // A reply must not pull focus from a field the user has since moved into.
+  const focusUnlessBusy = (id: string) => {
+    const at = document.activeElement;
+    const idle = !at || at === document.body || !!at.closest(".reserve-bar");
+    if (idle || at.id === id) document.getElementById(id)?.focus();
+  };
 
   const onGuestEdit = (field: GuestField, set: (v: string) => void) => {
     return (value: string) => {
@@ -395,7 +407,8 @@ export default function ReservationClient({
 
     // Held back, so the ask lands on the booking attempt, not a picker move.
     if (ask) {
-      setAskedFor(attempt);
+      // Rendered before the focus, so the prompt is there when the box is read.
+      flushSync(() => setAskedFor(attempt));
       document.getElementById("note")?.focus();
       return;
     }
@@ -469,21 +482,29 @@ export default function ReservationClient({
         const needsNote = field === "note" && !note.trim();
         const onPick = !field && (res.status === 400 || res.status === 409);
         // Keyed to the attempt, so these stand for it alone wherever the form is.
-        if (needsNote) setNoteDemands((d) => withVerdict(d, attempt, message));
-        else if (onPick) setRefused((r) => withVerdict(r, attempt, message));
+        const record = () => {
+          if (needsNote)
+            setNoteDemands((d) => withVerdict(d, attempt, message));
+          else if (onPick) setRefused((r) => withVerdict(r, attempt, message));
+        };
         if (liveAttempt.current !== attempt) {
+          record();
           // The form moved on mid-request: name what failed, mark nothing here.
           setError(`${when} was not reserved. ${message}`);
         } else {
           // Rendered before the focus, so the reason is there when it is read.
-          if (field && field !== "note")
-            flushSync(() => setGuestErrors({ [field]: message }));
-          else if (!needsNote && !onPick) setError(message);
-          if (field) document.getElementById(field)?.focus();
+          flushSync(() => {
+            record();
+            if (field && field !== "note") setGuestErrors({ [field]: message });
+            else if (!needsNote && !onPick) setError(message);
+          });
+          if (field) focusUnlessBusy(field);
         }
         // Someone may have just taken it, which a cached board would not show.
         reload.current({ fresh: true, keepPick: true });
       }
+    } catch {
+      setError("Could not reach the server. Please try again.");
     } finally {
       setReservation(false);
       // A token is single-use, so a retry or second booking needs a fresh one.
@@ -557,7 +578,16 @@ export default function ReservationClient({
           {loading ? (
             <span className="muted">Loading availability…</span>
           ) : !avail ? (
-            <span className="muted">Couldn&apos;t load availability.</span>
+            <div className="load-failed">
+              <span className="muted">Couldn&apos;t load availability.</span>
+              <button
+                type="button"
+                className="btn ghost sm"
+                onClick={() => loadAvailability()}
+              >
+                Try again
+              </button>
+            </div>
           ) : noTimeLeft || !seed ? (
             <div className="empty">
               {dayIsOver
@@ -696,7 +726,11 @@ export default function ReservationClient({
           </span>
         </div>
 
-        {noteError && <p className="error">{noteError}</p>}
+        {noteError && (
+          <p id="note-error" className="error">
+            {noteError}
+          </p>
+        )}
         <textarea
           id="note"
           name="note"
@@ -715,6 +749,8 @@ export default function ReservationClient({
             setError("");
           }}
           aria-required={noteNeeded}
+          aria-invalid={!!noteError}
+          aria-describedby={noteError ? "note-error" : undefined}
         />
 
         {turnstileSiteKey && (
