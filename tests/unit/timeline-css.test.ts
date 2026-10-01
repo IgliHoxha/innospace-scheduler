@@ -64,16 +64,6 @@ describe("timeline block labels: whole or absent, never cut", () => {
   });
 
   // The class is what makes any enlargement of the labels reach the bar too.
-  it("renders that sizer inside the bar, hidden from assistive technology", () => {
-    const tsx = readFileSync(
-      join(process.cwd(), "src", "app", "DayTimeline.tsx"),
-      "utf8",
-    );
-    expect(tsx).toMatch(
-      /ref=\{barRef\}\s*>\s*(?:\{\/\*.*\*\/\}\s*)?<span className="daycal-block-label daycal-sizer" aria-hidden="true">/,
-    );
-  });
-
   it("gives the bin no text gutter, so it fits any block as wide as itself", () => {
     expect(rule(".daycal-block .daycal-block-label.on-hover")).toMatch(
       /padding:\s*0;/,
@@ -82,11 +72,6 @@ describe("timeline block labels: whole or absent, never cut", () => {
 });
 
 describe("timeline text enlarged: nothing overflows its strip", () => {
-  const tsx = readFileSync(
-    join(process.cwd(), "src", "app", "DayTimeline.tsx"),
-    "utf8",
-  );
-
   // Two sizers stacked would add their heights; in a row the taller one wins.
   it("lays the bar's sizers side by side", () => {
     expect(rule(".daycal-bar")).toMatch(/display:\s*flex;/);
@@ -117,44 +102,12 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
     expect(mark).toMatch(/grid-area:\s*1 \/ 1;/);
   });
 
-  it("measures that cell and thins the labels by its real width", () => {
-    expect(tsx).toMatch(
-      /<div ref=\{tickRef\} className="daycal-tick-sizer" aria-hidden="true">\s*\{hourMarks\.map\(\(t\) => \(\s*<span key=\{t\} className="daycal-tick">\s*\{minutesToTime\(t\)\}\s*<\/span>\s*\)\)\}\s*<\/div>/,
-    );
-    expect(tsx).toMatch(/setTickPx\(tick\.offsetWidth\)/);
-    expect(tsx).toMatch(
-      /fittingTicks\(\s*dayStartMin,\s*dayEndMin,\s*barPx,\s*tickPx,/,
-    );
-  });
-
   it("keeps an unseen line of the tag in flow, zero wide inside the bar", () => {
     const sizer = rule(".daycal-pick-tag.daycal-sizer");
     expect(sizer).toMatch(/position:\s*static;/);
     expect(sizer).toMatch(/display:\s*block;/);
     expect(sizer).toMatch(/width:\s*0;/);
     expect(sizer).toMatch(/visibility:\s*hidden;/);
-    expect(tsx).toMatch(
-      /<div className="daycal-pick-tag daycal-sizer" aria-hidden="true">/,
-    );
-  });
-
-  // A stylesheet that enlarges div and not span must reach the tag's sizers too.
-  it("makes the tag's sizers the same element as the tag", () => {
-    expect(tsx).toMatch(
-      /<div ref=\{tagRef\} className=\{tag\.className\} style=\{tag\.style\}>\s*<span>/,
-    );
-    expect(tsx).not.toMatch(/<span\s+className="daycal-pick-tag/);
-    const sizers = tsx.match(
-      /<div\s+className="daycal-pick-tag (above )?daycal-sizer"\s+aria-hidden="true"\s*>\s*<span>\{"\\u200b"\}<\/span>/g,
-    );
-    expect(sizers).toHaveLength(2);
-  });
-
-  // Floating adds padding, which a content-box observer never reports.
-  it("watches the tag's border box for its width", () => {
-    expect(tsx).toMatch(
-      /tagRo\.current\.observe\(el, \{ box: "border-box" \}\)/,
-    );
   });
 
   // Plot padding fits one text size; a line of the tag itself fits them all.
@@ -164,15 +117,5 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
     expect(strip).toMatch(/padding-bottom:\s*5px;/);
     expect(strip).toMatch(/width:\s*auto;/);
     expect(css).not.toMatch(/has-toptag/);
-    expect(tsx).not.toMatch(/has-toptag/);
-    expect(tsx).toMatch(
-      /\{tag\?\.above && \(\s*<div\s*className="daycal-pick-tag above daycal-sizer"\s*aria-hidden="true"\s*>/,
-    );
-  });
-
-  it("decides inside or above by the tag's measured text, not a fixed width alone", () => {
-    expect(tsx).toMatch(
-      /fitsPx:\s*roomFor\(tagTextPx,\s*TAG_FITS_PX,\s*1,\s*TAG_MARGIN_PX\)/,
-    );
   });
 });

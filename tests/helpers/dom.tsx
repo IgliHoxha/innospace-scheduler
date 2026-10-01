@@ -143,6 +143,7 @@ export function fakeServer() {
 
 const widths = { bar: 0, tick: 0, tag: 0, tagText: 0 };
 const observers = new Set<{ notify: () => void; watched: Set<Element> }>();
+const boxes = new Map<Element, string>();
 
 const widthOf = (el: Element) => {
   if (el.classList.contains("daycal-bar")) return widths.bar;
@@ -164,7 +165,8 @@ export function fakeLayout(initial: Partial<typeof widths> = {}) {
       constructor(notify: () => void) {
         this.entry = { notify, watched: new Set() };
       }
-      observe(el: Element) {
+      observe(el: Element, options?: { box?: string }) {
+        boxes.set(el, options?.box ?? "content-box");
         this.entry.watched.add(el);
         observers.add(this.entry);
       }
@@ -183,6 +185,8 @@ export function fakeLayout(initial: Partial<typeof widths> = {}) {
     });
   }
   return {
+    /** Which box of this element is being watched, or undefined if none. */
+    boxWatched: (el: Element) => boxes.get(el),
     /** New measurements; like the real thing, only an observer of a changed element hears. */
     resize(next: Partial<typeof widths>) {
       const was = new Map<Element, number>();

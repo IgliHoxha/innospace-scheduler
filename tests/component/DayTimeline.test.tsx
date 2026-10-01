@@ -154,6 +154,12 @@ describe("the pick's tag", () => {
     expect(stripAbove()).not.toBeNull();
   });
 
+  // Floating adds padding, which a content-box observer never reports.
+  it("is measured by its border box", () => {
+    mount({ selection: { start: "19:00", end: "20:00" } });
+    expect(layout.boxWatched(tag())).toBe("border-box");
+  });
+
   it("is clamped inside the bar at the end of the day", () => {
     layout.resize({ tag: 85 });
     mount({ selection: { start: "23:00", end: "23:55" } });

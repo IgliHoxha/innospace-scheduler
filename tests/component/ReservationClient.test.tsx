@@ -126,6 +126,17 @@ describe("name and email", () => {
     expect(document.activeElement).toBe(form.email());
   });
 
+  // A reason rendered after the focus move is never read out.
+  it("has the reason in the page by the time the field takes focus", async () => {
+    const { user } = await ready();
+    let heard = "";
+    form.name().addEventListener("focus", () => {
+      heard = form.reasonFor(form.name());
+    });
+    await user.click(form.reserve());
+    expect(heard).toBe(NAME_REASON);
+  });
+
   it("ties each red field to its own reason for a screen reader", async () => {
     const { user } = await ready();
     await user.click(form.reserve());
@@ -206,6 +217,18 @@ describe("the note", () => {
     expect(form.alerts()).toHaveLength(1);
     expect(form.alerts()[0]).toContain("a note is required for 2 hours");
     expect(document.activeElement).toBe(form.note());
+  });
+
+  it("has its prompt in the page by the time the box takes focus", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    let heard = "";
+    form.note().addEventListener("focus", () => {
+      heard = form.reasonFor(form.note());
+    });
+    server.replies.push(reply.noteDemand);
+    await user.click(form.reserve());
+    await waitFor(() => expect(heard).toBe(NOTE_DEMAND));
   });
 
   it("links its prompt to the box for a screen reader", async () => {
@@ -400,6 +423,19 @@ describe("a booking that goes through", () => {
     expect(document.querySelector(".daycal-block.mine")?.textContent).toContain(
       "You",
     );
+  });
+
+  it("drops the booked pick at once, so it cannot be pressed again mid-reload", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    const post = server.holdPost();
+    await user.click(form.reserve());
+    const board = server.holdBoard();
+    post.open();
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(form.reserve().disabled).toBe(true);
+    board.open();
+    await waitFor(() => expect(form.reserve().disabled).toBe(false));
   });
 
   it("words a booking that waits for approval differently", async () => {
