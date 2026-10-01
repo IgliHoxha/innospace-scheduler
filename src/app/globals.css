@@ -658,16 +658,16 @@ button {
   color: var(--muted);
 }
 
-/* In flow and as wide as its text: sizes the strip and feeds the thinning. */
-.daycal-tick.daycal-sizer {
-  position: static;
+/* Each mark as it really renders: sizes the strip, feeds the thinning. */
+.daycal-tick-sizer {
   /* Every hour's label in one cell: as wide as the widest, one line tall. */
   display: grid;
   width: max-content;
   visibility: hidden;
 }
 
-.daycal-tick.daycal-sizer > span {
+.daycal-tick-sizer > .daycal-tick {
+  position: static;
   grid-area: 1 / 1;
 }
 

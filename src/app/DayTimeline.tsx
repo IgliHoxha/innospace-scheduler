@@ -114,7 +114,7 @@ export default function DayTimeline({
   const barRef = useRef<HTMLDivElement>(null);
   const [barPx, setBarPx] = useState(0);
   // One hour mark as it renders, so enlarged text thins the marks.
-  const tickRef = useRef<HTMLSpanElement>(null);
+  const tickRef = useRef<HTMLDivElement>(null);
   const [tickPx, setTickPx] = useState(0);
   useEffect(() => {
     const bar = barRef.current;
@@ -401,7 +401,7 @@ export default function DayTimeline({
             className="daycal-pick-tag above daycal-sizer"
             aria-hidden="true"
           >
-            {"\u200b"}
+            <span>{"\u200b"}</span>
           </div>
         )}
         <div
@@ -414,7 +414,7 @@ export default function DayTimeline({
           </span>
           {/* A tag sitting inside its pick must fit the bar too. */}
           <div className="daycal-pick-tag daycal-sizer" aria-hidden="true">
-            {"\u200b"}
+            <span>{"\u200b"}</span>
           </div>
           {hourMarks
             .filter((t) => t > dayStartMin && t < dayEndMin)
@@ -526,15 +526,13 @@ export default function DayTimeline({
 
       <div className="daycal-ticks">
         {/* Unseen, in flow: the strip's height and the width to thin by. */}
-        <span
-          ref={tickRef}
-          className="daycal-tick daycal-sizer"
-          aria-hidden="true"
-        >
+        <div ref={tickRef} className="daycal-tick-sizer" aria-hidden="true">
           {hourMarks.map((t) => (
-            <span key={t}>{minutesToTime(t)}</span>
+            <span key={t} className="daycal-tick">
+              {minutesToTime(t)}
+            </span>
           ))}
-        </span>
+        </div>
         {tickLabels.map((t) => (
           <span key={t} className="daycal-tick" style={tickStyle(t)}>
             {minutesToTime(t)}

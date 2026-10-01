@@ -107,20 +107,19 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
 
   // Digits differ in width in some fonts, so one label cannot stand for all.
   it("keeps every hour's label unseen in one cell, as wide as the widest", () => {
-    const sizer = rule(".daycal-tick.daycal-sizer");
-    expect(sizer).toMatch(/position:\s*static;/);
+    const sizer = rule(".daycal-tick-sizer");
     expect(sizer).toMatch(/display:\s*grid;/);
     expect(sizer).toMatch(/width:\s*max-content;/);
     expect(sizer).toMatch(/visibility:\s*hidden;/);
     expect(sizer).not.toMatch(/font-size|line-height/);
-    expect(rule(".daycal-tick.daycal-sizer > span")).toMatch(
-      /grid-area:\s*1 \/ 1;/,
-    );
+    const mark = rule(".daycal-tick-sizer > .daycal-tick");
+    expect(mark).toMatch(/position:\s*static;/);
+    expect(mark).toMatch(/grid-area:\s*1 \/ 1;/);
   });
 
   it("measures that cell and thins the labels by its real width", () => {
     expect(tsx).toMatch(
-      /ref=\{tickRef\}\s*className="daycal-tick daycal-sizer"\s*aria-hidden="true"\s*>\s*\{hourMarks\.map\(\(t\) => \(\s*<span key=\{t\}>\{minutesToTime\(t\)\}<\/span>\s*\)\)\}\s*<\/span>/,
+      /<div ref=\{tickRef\} className="daycal-tick-sizer" aria-hidden="true">\s*\{hourMarks\.map\(\(t\) => \(\s*<span key=\{t\} className="daycal-tick">\s*\{minutesToTime\(t\)\}\s*<\/span>\s*\)\)\}\s*<\/div>/,
     );
     expect(tsx).toMatch(/setTickPx\(tick\.offsetWidth\)/);
     expect(tsx).toMatch(
@@ -141,8 +140,14 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
 
   // A stylesheet that enlarges div and not span must reach the tag's sizers too.
   it("makes the tag's sizers the same element as the tag", () => {
-    expect(tsx).toMatch(/<div ref=\{tagRef\} className=\{tag\.className\}/);
+    expect(tsx).toMatch(
+      /<div ref=\{tagRef\} className=\{tag\.className\} style=\{tag\.style\}>\s*<span>/,
+    );
     expect(tsx).not.toMatch(/<span\s+className="daycal-pick-tag/);
+    const sizers = tsx.match(
+      /<div\s+className="daycal-pick-tag (above )?daycal-sizer"\s+aria-hidden="true"\s*>\s*<span>\{"\\u200b"\}<\/span>/g,
+    );
+    expect(sizers).toHaveLength(2);
   });
 
   // Floating adds padding, which a content-box observer never reports.
