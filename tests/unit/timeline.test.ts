@@ -6,9 +6,11 @@ import {
   dragRange,
   endForStart,
   findFreeGaps,
+  fittingTicks,
   hourCells,
   isDayOver,
   pickTagPlacement,
+  roomFor,
   seedGap,
   snapToStep,
   suggestedEndMin,
@@ -727,5 +729,127 @@ describe("wantedStartMin", () => {
     expect(wantedStartMin(5, MORNING)).toBe(5);
     expect(wantedStartMin(6 * 60, MORNING)).toBe(6 * 60);
     expect(wantedStartMin(13 * 60 + 10, MORNING)).toBe(13 * 60 + 10);
+  });
+});
+
+describe("roomFor", () => {
+  // The booking screen's own figures: a 27px hour mark and a 71px tag at their designed sizes.
+  const tick = (px: number) => roomFor(px, 48, 1.5, 7);
+  const tag = (px: number) => roomFor(px, 96, 1, 24);
+
+  it("keeps the designed figure at the designed text size", () => {
+    expect(tick(27)).toBe(48);
+    expect(tag(71)).toBe(96);
+  });
+
+  it("keeps the designed figure for text smaller than designed", () => {
+    expect(tick(20)).toBe(48);
+    expect(tag(40)).toBe(96);
+  });
+
+  it("grows once the measured text outgrows the design", () => {
+    expect(tick(28)).toBe(49);
+    expect(tick(108)).toBe(169);
+    expect(tag(73)).toBe(97);
+    expect(tag(258)).toBe(282);
+  });
+
+  it("rounds a fractional width up, never short", () => {
+    expect(roomFor(33, 10, 1.5, 0)).toBe(50);
+    expect(roomFor(100.2, 10, 1, 0)).toBe(101);
+  });
+
+  it("falls back to the designed figure before anything is measured", () => {
+    expect(tick(0)).toBe(48);
+    expect(tick(-5)).toBe(48);
+    expect(tick(Number.NaN)).toBe(48);
+    expect(tick(Number.POSITIVE_INFINITY)).toBe(48);
+  });
+});
+
+describe("fittingTicks", () => {
+  const START = 0;
+  const END = 1440;
+  const FLOOR = 48;
+  const GAP = 7;
+  const fit = (barPx: number, labelPx: number) =>
+    fittingTicks(START, END, barPx, labelPx, FLOOR, GAP);
+
+  /** Where each label lies on the bar: the ends anchored to its edges, the rest centred. */
+  const spans = (marks: number[], barPx: number, labelPx: number) =>
+    marks.map((m) => {
+      if (m <= START) return [0, labelPx];
+      if (m >= END) return [barPx - labelPx, barPx];
+      const at = (m / END) * barPx;
+      return [at - labelPx / 2, at + labelPx / 2];
+    });
+
+  it("thins exactly as before while the label is unmeasured", () => {
+    for (let barPx = 0; barPx <= 2600; barPx += 7) {
+      expect(fit(barPx, 0)).toEqual(tickMinutes(START, END, barPx, FLOOR));
+    }
+  });
+
+  it("thins exactly as before at the designed text size", () => {
+    for (let barPx = 61; barPx <= 2600; barPx++) {
+      expect(fit(barPx, 27)).toEqual(tickMinutes(START, END, barPx, FLOOR));
+    }
+  });
+
+  it("labels fewer marks as the text grows", () => {
+    const hours = (px: number) => fit(1126, px).map((m) => m / 60);
+    expect(hours(27)).toHaveLength(13);
+    expect(hours(65)).toEqual([0, 3, 6, 9, 12, 15, 18, 21, 24]);
+    expect(hours(108)).toEqual([0, 4, 8, 12, 16, 20, 24]);
+    expect(hours(173)).toEqual([0, 6, 12, 18, 24]);
+    expect(hours(400)).toEqual([0, 24]);
+  });
+
+  // The whole point: whatever the text measures, no label is drawn over its neighbour.
+  it("never lets two labels touch, at any bar width and any label width", () => {
+    for (let labelPx = 8; labelPx <= 420; labelPx += 3) {
+      for (let barPx = 40; barPx <= 2600; barPx += 11) {
+        const at = spans(fit(barPx, labelPx), barPx, labelPx);
+        for (let i = 1; i < at.length; i++) {
+          expect(at[i][0] - at[i - 1][1]).toBeGreaterThanOrEqual(GAP);
+        }
+        for (const [from, to] of at) {
+          expect(from).toBeGreaterThanOrEqual(0);
+          expect(to).toBeLessThanOrEqual(barPx);
+        }
+      }
+    }
+  });
+
+  it("keeps both ends while the two of them still fit", () => {
+    expect(fit(207, 100)).toEqual([START, END]);
+    expect(fit(300, 100)).toEqual([START, END]);
+  });
+
+  it("keeps the start alone when the two ends would touch", () => {
+    expect(fit(206, 100)).toEqual([START]);
+    expect(fit(100, 100)).toEqual([START]);
+  });
+
+  it("labels nothing when one label is wider than the bar", () => {
+    expect(fit(99, 100)).toEqual([]);
+    expect(fit(300, Number.POSITIVE_INFINITY)).toEqual([]);
+  });
+
+  it("returns every mark before the bar is measured, whatever the label", () => {
+    expect(fit(0, 27)).toHaveLength(25);
+    expect(fit(0, 400)).toHaveLength(25);
+    expect(fit(Number.NaN, 400)).toHaveLength(25);
+    expect(fit(1126, Number.NaN)).toEqual(tickMinutes(START, END, 1126, FLOOR));
+  });
+
+  it("always starts on the day's first mark when it labels anything", () => {
+    for (const labelPx of [27, 60, 150, 300]) {
+      for (let barPx = 50; barPx <= 2000; barPx += 13) {
+        const marks = fit(barPx, labelPx);
+        if (marks.length) expect(marks[0]).toBe(START);
+        if (marks.length > 1) expect(marks[marks.length - 1]).toBe(END);
+      }
+    }
   });
 });

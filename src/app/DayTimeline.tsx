@@ -6,9 +6,10 @@ import {
   barPercent,
   buildDaySegments,
   dragRange,
+  fittingTicks,
   hourCells,
   pickTagPlacement,
-  tickMinutes,
+  roomFor,
 } from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { dayEndMinute } from "@/lib/reservation-rules";
@@ -30,11 +31,17 @@ interface Reserved {
 // A pick narrower than this (px) cannot hold its tag, so it floats.
 const TAG_FITS_PX = 96;
 
+// Clear space (px) a tag keeps inside its pick, so enlarged text floats it sooner.
+const TAG_MARGIN_PX = 24;
+
 // Travel (px) before a press is a drag; below it, it stays a click.
 const DRAG_SLOP_PX = 4;
 
 // Room (px) a tick needs clear of its neighbour, edge labels included, so a narrow bar shows fewer.
 const TICK_LABEL_PX = 48;
+
+// Clear space (px) between two marks, on top of the widths enlarged text measures at.
+const TICK_GAP_PX = 7;
 
 /** Availability graph for one booth and day; `onPick` also picks the range. */
 export default function DayTimeline({
@@ -109,27 +116,49 @@ export default function DayTimeline({
   // Measure the bar so a narrow pick can move its time tag outside the block.
   const barRef = useRef<HTMLDivElement>(null);
   const [barPx, setBarPx] = useState(0);
+  // One hour mark as it really renders, so enlarged text thins the marks instead of piling them up.
+  const tickRef = useRef<HTMLSpanElement>(null);
+  const [tickPx, setTickPx] = useState(0);
   useEffect(() => {
-    const el = barRef.current;
-    if (!el) return;
-    const update = () => setBarPx(el.clientWidth);
+    const bar = barRef.current;
+    const tick = tickRef.current;
+    if (!bar || !tick) return;
+    const update = () => {
+      setBarPx(bar.clientWidth);
+      setTickPx(tick.offsetWidth);
+    };
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(el);
+    ro.observe(bar);
+    ro.observe(tick);
     return () => ro.disconnect();
   }, []);
 
   // A narrow bar labels fewer marks, though the grid still runs hourly.
-  const tickLabels = tickMinutes(dayStartMin, dayEndMin, barPx, TICK_LABEL_PX);
+  const tickLabels = fittingTicks(
+    dayStartMin,
+    dayEndMin,
+    barPx,
+    tickPx,
+    TICK_LABEL_PX,
+    TICK_GAP_PX,
+  );
 
   // The tag's width, so a floating tag centres on its pick inside the bar.
   const [tagPx, setTagPx] = useState(0);
+  // Its text alone, which is the same inside a pick or floating, so the choice cannot flip-flop.
+  const [tagTextPx, setTagTextPx] = useState(0);
   const tagRo = useRef<ResizeObserver | null>(null);
   // A callback ref: the tag mounts with the pick and its width tracks its class.
   const tagRef = useCallback((el: HTMLDivElement | null) => {
     tagRo.current?.disconnect();
     if (!el) return;
-    const update = () => setTagPx(el.offsetWidth);
+    const update = () => {
+      setTagPx(el.offsetWidth);
+      setTagTextPx(
+        (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0,
+      );
+    };
     update();
     tagRo.current = new ResizeObserver(update);
     tagRo.current.observe(el);
@@ -334,16 +363,21 @@ export default function DayTimeline({
     setDragging(true);
   };
 
-  let tag: { className: string; style: React.CSSProperties } | null = null;
+  let tag: {
+    above: boolean;
+    className: string;
+    style: React.CSSProperties;
+  } | null = null;
   if (hasPick) {
     const place = pickTagPlacement({
       barPx,
       tagPx,
       fromPct: pct(selFrom!),
       toPct: pctEnd(selTo!),
-      fitsPx: TAG_FITS_PX,
+      fitsPx: roomFor(tagTextPx, TAG_FITS_PX, 1, TAG_MARGIN_PX),
     });
     tag = {
+      above: place.above,
       // Roomy pick: the tag sits inside. Too tight: it floats clear above.
       className: `daycal-pick-tag ${place.above ? "above" : "over"}`,
       style:
@@ -364,15 +398,26 @@ export default function DayTimeline({
         <span className="daycal-title">Availability</span>
       </div>
 
-      <div
-        className={`daycal-plot ${tag?.className.includes("above") ? "has-toptag" : ""}`}
-      >
+      <div className="daycal-plot">
+        {/* The strip a floating tag sits in: one unseen line of the tag itself, so it grows with it. */}
+        {tag?.above && (
+          <span
+            className="daycal-pick-tag above daycal-sizer"
+            aria-hidden="true"
+          >
+            {"\u200b"}
+          </span>
+        )}
         <div
           className={`daycal-bar ${dragging ? "dragging" : ""}`}
           ref={barRef}
         >
           {/* A zero-width space in the label's own class, so the bar grows with enlarged text. */}
           <span className="daycal-block-label daycal-sizer" aria-hidden="true">
+            {"\u200b"}
+          </span>
+          {/* And one in the tag's class: a tag sitting inside its pick must fit the bar too. */}
+          <span className="daycal-pick-tag daycal-sizer" aria-hidden="true">
             {"\u200b"}
           </span>
           {hourMarks
@@ -477,12 +522,22 @@ export default function DayTimeline({
 
         {tag && (
           <div ref={tagRef} className={tag.className} style={tag.style}>
-            {minutesToTime(selFrom!)} - {minutesToTime(selTo!)}
+            <span>
+              {minutesToTime(selFrom!)} - {minutesToTime(selTo!)}
+            </span>
           </div>
         )}
       </div>
 
       <div className="daycal-ticks">
+        {/* One unseen mark in flow: it gives the strip its height and the thinning a real width. */}
+        <span
+          ref={tickRef}
+          className="daycal-tick daycal-sizer"
+          aria-hidden="true"
+        >
+          00:00
+        </span>
         {tickLabels.map((t) => (
           <span key={t} className="daycal-tick" style={tickStyle(t)}>
             {minutesToTime(t)}

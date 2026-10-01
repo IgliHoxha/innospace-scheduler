@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canonicalEmail, isValidEmail, validateGuest } from "@/lib/guest";
+import {
+  canonicalEmail,
+  guestProblems,
+  isValidEmail,
+  validateGuest,
+} from "@/lib/guest";
 import { MAX_EMAIL, MAX_NAME } from "@/lib/types";
 
 const ok = { fullName: "Ada Lovelace", email: "ada@example.com" };
@@ -208,5 +213,76 @@ describe("canonicalEmail", () => {
   it("passes through anything without a domain", () => {
     expect(canonicalEmail("nope")).toBe("nope");
     expect(canonicalEmail("")).toBe("");
+  });
+});
+
+// The form shows no message, so it has to mark every failing field in one go.
+describe("guestProblems", () => {
+  it("finds nothing wrong with a full name and a valid email", () => {
+    expect(guestProblems(ok)).toEqual({});
+  });
+
+  it("names both fields when both are empty", () => {
+    expect(guestProblems({ fullName: "", email: "" })).toEqual({
+      fullName: "Please enter your full name.",
+      email: "Please enter your email.",
+    });
+    expect(Object.keys(guestProblems({}))).toEqual(["fullName", "email"]);
+  });
+
+  it("names only the name when the email is fine", () => {
+    expect(guestProblems({ ...ok, fullName: "Ada" })).toEqual({
+      fullName: "Please enter your first and last name.",
+    });
+    expect(Object.keys(guestProblems({ ...ok, fullName: "   " }))).toEqual([
+      "fullName",
+    ]);
+  });
+
+  it("names only the email when the name is fine", () => {
+    expect(guestProblems({ ...ok, email: "ada@example" })).toEqual({
+      email: "Please enter a valid email address.",
+    });
+    expect(Object.keys(guestProblems({ ...ok, email: "" }))).toEqual(["email"]);
+  });
+
+  it("names a bad email beside a bad name, each with its own reason", () => {
+    expect(
+      guestProblems({ fullName: "Ada", email: "ada@example.c0m" }),
+    ).toEqual({
+      fullName: "Please enter your first and last name.",
+      email: "Please check the part after the @ in your email.",
+    });
+  });
+
+  it("gives the same reason validateGuest gives for the field it stops on", () => {
+    for (const input of [
+      { fullName: "", email: "" },
+      { fullName: "Ada", email: "nope" },
+      { fullName: "x".repeat(MAX_NAME) + " y", email: "ada@example.com" },
+      { ...ok, email: "a".repeat(MAX_EMAIL) + "@example.com" },
+      { ...ok, email: "ada lovelace@example.com" },
+    ]) {
+      const first = bad(input);
+      expect(guestProblems(input)[first.field]).toBe(first.error);
+    }
+  });
+
+  it("treats non-string input as missing, like the route does", () => {
+    expect(Object.keys(guestProblems({ fullName: 7, email: null }))).toEqual([
+      "fullName",
+      "email",
+    ]);
+  });
+
+  // Agreement with the route's validator: marked fields exist exactly when it refuses.
+  it("marks something exactly when validateGuest refuses", () => {
+    for (const fullName of ["", "Ada", "Ada Lovelace", "  A  B  "]) {
+      for (const email of ["", "x", "ada@example.com", "ADA@Example.COM "]) {
+        const refused = !validateGuest({ fullName, email }).ok;
+        const marked = Object.keys(guestProblems({ fullName, email })).length;
+        expect(marked > 0).toBe(refused);
+      }
+    }
   });
 });

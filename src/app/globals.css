@@ -416,14 +416,11 @@ button {
   position: relative;
 }
 
-/* Reserve a strip above the bar only when a narrow tag floats there. */
-.daycal-plot.has-toptag {
-  padding-top: 20px;
-}
-
 .daycal-bar {
   position: relative;
-  /* A floor, not a height: the sizer inside lifts the bar when text is enlarged past it. */
+  /* A row, so the unseen sizers sit side by side and the taller one sets the height. */
+  display: flex;
+  /* A floor, not a height: the sizers inside lift the bar when text is enlarged past it. */
   min-height: 46px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -641,17 +638,45 @@ button {
     0 0 0 1px rgba(56, 189, 248, 0.6);
 }
 
+/* One unseen line of the tag in flow, so whatever holds a tag is never shorter than its text. */
+.daycal-pick-tag.daycal-sizer {
+  position: static;
+  display: block;
+  width: 0;
+  visibility: hidden;
+}
+
+/* The strip above the bar, present only while a narrow pick's tag floats there. */
+.daycal-pick-tag.above.daycal-sizer {
+  width: auto;
+  /* The designed strip as a floor, so the bar does not move at ordinary text sizes. */
+  min-height: 20px;
+  /* The chip's own padding plus the clearance it keeps from the bar. */
+  padding-bottom: 5px;
+}
+
 .daycal-ticks {
   position: relative;
-  height: 15px;
+  /* A floor, not a height: the unseen mark inside lifts the strip when text is enlarged. */
+  min-height: 15px;
   margin-top: 5px;
 }
 
 .daycal-tick {
   position: absolute;
+  /* Stated, since an in-flow sibling would otherwise push a mark's resting place down a line. */
+  top: 0;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+/* In flow and as wide as its text: the strip is never shorter, nor the thinning blind to it. */
+.daycal-tick.daycal-sizer {
+  position: static;
+  display: block;
+  width: max-content;
+  visibility: hidden;
 }
 
 .daycal-legend {
@@ -740,8 +765,9 @@ button {
   background: #fef2f2;
 }
 
-.guest-card .error {
-  margin: 12px 0 0;
+/* Required is said by the input itself to assistive tech; the star is for the eye. */
+.guest-field b {
+  color: #dc2626;
 }
 
 /* One rhythm for the stack closing the form, so a banner cannot shift it. */

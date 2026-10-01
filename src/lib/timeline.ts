@@ -120,6 +120,42 @@ export function tickMinutes(
   return kept;
 }
 
+/** Room a text needs: its designed floor, or more once its measured width outgrows that. */
+export function roomFor(
+  measuredPx: number,
+  floorPx: number,
+  /** How many of its own widths it needs: 1.5 for a mark beside an edge-anchored one. */
+  widths: number,
+  gapPx: number,
+): number {
+  // Unmeasured, or measured as nonsense, the design's own figure stands.
+  if (!(measuredPx > 0) || !Number.isFinite(measuredPx)) return floorPx;
+  return Math.max(floorPx, Math.ceil(measuredPx * widths) + gapPx);
+}
+
+/** The hour marks to label at this text size: thinned to fit, and never one drawn over another. */
+export function fittingTicks(
+  dayStartMin: number,
+  dayEndMin: number,
+  barPx: number,
+  /** One label's measured width, 0 before first render. */
+  labelPx: number,
+  floorPx: number,
+  gapPx: number,
+): number[] {
+  const marks = tickMinutes(
+    dayStartMin,
+    dayEndMin,
+    barPx,
+    roomFor(labelPx, floorPx, 1.5, gapPx),
+  );
+  // Nothing to judge a collision by until both are measured.
+  if (!(barPx > 0) || !(labelPx > 0) || marks.length < 2) return marks;
+  // Thinning stops at the two ends; when even those would touch, the start alone remains.
+  if (labelPx * 2 + gapPx <= barPx) return marks;
+  return labelPx <= barPx ? marks.slice(0, 1) : [];
+}
+
 /** Where the pick's tag sits: inside a roomy pick, else a chip above it. */
 export function pickTagPlacement(opts: {
   barPx: number;

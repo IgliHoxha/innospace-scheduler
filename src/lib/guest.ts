@@ -146,3 +146,20 @@ export function validateGuest(input: GuestInput): GuestResult {
 
   return { ok: true, guest: { fullName, email } };
 }
+
+/** Every field that fails, with its reason, so a form showing no message can mark them all. */
+export function guestProblems(
+  input: GuestInput,
+): Partial<Record<GuestField, string>> {
+  const first = validateGuest(input);
+  if (first.ok) return {};
+  const problems: Partial<Record<GuestField, string>> = {
+    [first.field]: first.error,
+  };
+  if (first.field === "fullName") {
+    // The name stopped the check, so the email is judged beside a name that passes.
+    const rest = validateGuest({ fullName: "First Last", email: input.email });
+    if (!rest.ok) problems[rest.field] = rest.error;
+  }
+  return problems;
+}

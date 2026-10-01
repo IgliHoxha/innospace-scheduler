@@ -10,6 +10,7 @@ import { type Booth } from "@/lib/booths";
 import { MAX_EMAIL, MAX_NAME, MAX_NOTE, type Reservation } from "@/lib/types";
 import {
   canonicalEmail,
+  guestProblems,
   isValidEmail,
   validateGuest,
   type GuestField,
@@ -141,7 +142,7 @@ export default function ReservationClient({
   const [refused, setRefused] = useState(NO_VERDICTS);
   // The notes the server asked for: it counts runs across days this board cannot see.
   const [noteDemands, setNoteDemands] = useState(NO_VERDICTS);
-  // The attempt a press last asked a note for, so the ask is not shown before any press.
+  // The attempt a press last made the form's own ask on; a server demand needs no such mark.
   const [askedFor, setAskedFor] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mine, setMine] = useState<MineEntry[]>([]);
@@ -149,10 +150,10 @@ export default function ReservationClient({
   // Who's booking. No account, so these come with every reservation.
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [guestError, setGuestError] = useState<{
-    field: GuestField;
-    error: string;
-  } | null>(null);
+  // Shown as a red field only, so every failing field is held, not just the first.
+  const [guestErrors, setGuestErrors] = useState<
+    Partial<Record<GuestField, string>>
+  >({});
 
   // Turnstile reserves its box, so the slot stays collapsed until challenged.
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -211,6 +212,8 @@ export default function ReservationClient({
 
   // Reload on booth or date change; a request id stops a slow response winning.
   const reqId = useRef(0);
+  // A re-seed owed to a changed board, kept so a later reload overtaking that load still pays it.
+  const resetDue = useRef(false);
   const loadAvailability = useCallback(
     async ({
       fresh = false,
@@ -218,6 +221,7 @@ export default function ReservationClient({
     }: { fresh?: boolean; keepPick?: boolean } = {}) => {
       if (!boothId || !date) return;
       const id = ++reqId.current;
+      if (!keepPick) resetDue.current = true;
       setLoading(true);
       // Another booth's cached board predates the write too, and would undo its count.
       const bust = fresh || edgeMayBeStale(Date.now(), wroteAt.current);
@@ -250,7 +254,8 @@ export default function ReservationClient({
             : null,
         );
         // A reload that did not change the board keeps the pick.
-        if (!keepPick) {
+        if (resetDue.current) {
+          resetDue.current = false;
           setStart("");
           setEnd("");
         }
@@ -357,8 +362,8 @@ export default function ReservationClient({
   const demanded = verdictFor(noteDemands, attempt);
   const noteNeeded = mustNote || !!demanded;
   const ask = noteAsk(check, demanded, note);
-  // Derived, so the message cannot outlive the attempt or the demand it speaks for.
-  const noteError = askedFor === attempt ? ask : "";
+  // Derived, so it cannot outlive its attempt; a demand is itself proof that a press asked.
+  const noteError = demanded || askedFor === attempt ? ask : "";
 
   // The attempt on screen now, for a reply that lands after the form has moved on.
   const liveAttempt = useRef(attempt);
@@ -372,7 +377,7 @@ export default function ReservationClient({
     return (value: string) => {
       set(value);
       setError("");
-      if (guestError?.field === field) setGuestError(null);
+      if (guestErrors[field]) setGuestErrors({ ...guestErrors, [field]: "" });
     };
   };
 
@@ -382,11 +387,11 @@ export default function ReservationClient({
     // The route's own validator, so the client cannot submit a rejection.
     const guest = validateGuest({ fullName, email });
     if (!guest.ok) {
-      setGuestError({ field: guest.field, error: guest.error });
+      setGuestErrors(guestProblems({ fullName, email }));
       document.getElementById(guest.field)?.focus();
       return;
     }
-    setGuestError(null);
+    setGuestErrors({});
 
     // Held back, so the ask lands on the booking attempt, not a picker move.
     if (ask) {
@@ -461,11 +466,8 @@ export default function ReservationClient({
         if (field === "note") {
           // A blank note refused is a demand on this attempt; any other fault is about the text.
           if (note.trim()) setError(message);
-          else {
-            setNoteDemands((d) => withVerdict(d, attempt, message));
-            setAskedFor(attempt);
-          }
-        } else if (field) setGuestError({ field, error: message });
+          else setNoteDemands((d) => withVerdict(d, attempt, message));
+        } else if (field) setGuestErrors({ [field]: message });
         // A verdict on the pick: it stands until the range or booker changes.
         else if (res.status === 400 || res.status === 409)
           setRefused((r) => withVerdict(r, attempt, message));
@@ -489,8 +491,7 @@ export default function ReservationClient({
   const selectedBooth = booths.find((b) => b.id === boothId);
   // Only for the day on screen: the previous date's board lingers until the new one lands.
   const counts = countsForDate(avail, date);
-  const fieldError = (field: GuestField) =>
-    guestError?.field === field ? guestError.error : "";
+  const fieldError = (field: GuestField) => guestErrors[field] ?? "";
 
   return (
     <>
@@ -624,7 +625,7 @@ export default function ReservationClient({
                   setRefused(NO_VERDICTS);
                   setNoteDemands(NO_VERDICTS);
                   wroteAt.current = Date.now();
-                  loadAvailability({ fresh: true, keepPick: true });
+                  reload.current({ fresh: true, keepPick: true });
                 }}
                 // Another way to choose a range, writing the same state.
                 onPick={(from, to) => {
@@ -642,7 +643,9 @@ export default function ReservationClient({
         <div className="card guest-card">
           <div className="guest-row">
             <label className="guest-field">
-              <span>Full name</span>
+              <span>
+                Full name <b aria-hidden="true">*</b>
+              </span>
               <input
                 id="fullName"
                 name="fullName"
@@ -660,7 +663,9 @@ export default function ReservationClient({
               />
             </label>
             <label className="guest-field">
-              <span>Email</span>
+              <span>
+                Email <b aria-hidden="true">*</b>
+              </span>
               <input
                 id="email"
                 name="email"
@@ -676,7 +681,12 @@ export default function ReservationClient({
               />
             </label>
           </div>
-          {guestError && <p className="error">{guestError.error}</p>}
+          {/* The red field is the only visible cue; the reason is kept for screen readers. */}
+          <p className="sr-only" role="alert">
+            {[fieldError("fullName"), fieldError("email")]
+              .filter(Boolean)
+              .join(" ")}
+          </p>
         </div>
 
         {/* Note + submit */}
