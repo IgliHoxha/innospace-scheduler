@@ -62,3 +62,29 @@ describe("who's booking: name and email", () => {
     );
   });
 });
+
+describe("switching booth or day", () => {
+  /** The body of the effect that runs when the booth or the date changes. */
+  const reset = (() => {
+    const end = tsx.indexOf("}, [boothId, date]);");
+    expect(end).toBeGreaterThan(-1);
+    return tsx.slice(tsx.lastIndexOf("useEffect(() => {", end), end);
+  })();
+
+  it("clears every error the form was showing", () => {
+    expect(reset).toMatch(/setError\(""\);/);
+    expect(reset).toMatch(/setGuestErrors\(\{\}\);/);
+    expect(reset).toMatch(/setRefused\(NO_VERDICTS\);/);
+    expect(reset).toMatch(/setNoteDemands\(NO_VERDICTS\);/);
+    expect(reset).toMatch(/setAskedFor\(null\);/);
+  });
+
+  it("clears the confirmation banner too, which spoke about the other board", () => {
+    expect(reset).toMatch(/setSuccess\(null\);/);
+  });
+
+  // What was typed is the person's, not the board's, so a switch must not wipe it.
+  it("leaves the name, the email and the note as typed", () => {
+    expect(reset).not.toMatch(/setFullName|setEmail|setNote\(/);
+  });
+});

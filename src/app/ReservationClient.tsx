@@ -273,11 +273,14 @@ export default function ReservationClient({
     loadAvailability();
   }, [loadAvailability]);
 
-  // A banner speaks about its own board, so another day is another subject.
+  // Banners and errors speak about the board they were raised on, so another booth or day starts clean.
   useEffect(() => {
     setSuccess(null);
     setError("");
     setRefused(NO_VERDICTS);
+    setNoteDemands(NO_VERDICTS);
+    setAskedFor(null);
+    setGuestErrors({});
   }, [boothId, date]);
 
   // A confirmation is a moment, not a state, so it retires itself.
