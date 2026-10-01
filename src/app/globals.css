@@ -423,7 +423,8 @@ button {
 
 .daycal-bar {
   position: relative;
-  height: 46px;
+  /* A floor, not a height: the sizer inside lifts the bar when text is enlarged past it. */
+  min-height: 46px;
   border: 1px solid var(--border);
   border-radius: 12px;
   /* The empty bar reads as free time; blocks are painted over it. */
@@ -542,6 +543,14 @@ button {
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
+}
+
+/* One unseen label line in flow: the bar is never shorter than the text its blocks carry. */
+.daycal-block-label.daycal-sizer {
+  display: block;
+  width: 0;
+  padding: 0;
+  visibility: hidden;
 }
 
 .daycal-pick {

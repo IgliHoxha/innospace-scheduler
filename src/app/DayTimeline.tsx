@@ -371,6 +371,10 @@ export default function DayTimeline({
           className={`daycal-bar ${dragging ? "dragging" : ""}`}
           ref={barRef}
         >
+          {/* A zero-width space in the label's own class, so the bar grows with enlarged text. */}
+          <span className="daycal-block-label daycal-sizer" aria-hidden="true">
+            {"\u200b"}
+          </span>
           {hourMarks
             .filter((t) => t > dayStartMin && t < dayEndMin)
             .map((t) => (
