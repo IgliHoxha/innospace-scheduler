@@ -54,7 +54,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Anyone can reserve a booth slot: no account, so the body carries the identity. */
+/** Public: no account, so the body carries the identity. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   const note =
     typeof body.note === "string" ? body.note.trim() || undefined : undefined;
 
-  // Who's booking. Same validator the form runs, so the messages match exactly.
+  // The same validator the form runs, so the messages match exactly.
   const guest = validateGuest(body);
   if (!guest.ok) {
     return NextResponse.json(
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
   const startMin = minutesOfDay(startsAt);
   const endMin = minutesOfDay(endsAt);
 
-  // Both ends must be real clock times on the step grid; any hour of the day is open.
+  // Real clock times on the step grid; any hour of the day is open.
   if (
     !isDateTime(startsAt) ||
     !isDateTime(endsAt) ||
@@ -154,9 +154,9 @@ export async function POST(req: NextRequest) {
       start: minutesOfDay(h.startsAt) + offsetMin,
       end: minutesOfDay(h.endsAt) + offsetMin,
     }));
-  // With no closing time a run can continue past midnight, so both neighbours count.
-  // Shifted by the last bookable minute, not 24h, so the dead step is not a gap.
+  // Shifted by the last bookable minute, not 24h, so the dead step is no gap.
   const dayReach = dayEndMinute(stepMinutes());
+  // No closing time, so a run can cross midnight and both neighbours count.
   const held = [
     ...heldOn(shiftDate(date, -1), -dayReach),
     ...heldOn(date, 0),
@@ -195,7 +195,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Over the limit needs admin approval, counting the whole run for the same reason.
   const status = approvalRequiredFor(runMinutes, autoApproveMaxHours())
     ? "pending"
     : "confirmed";
@@ -211,7 +210,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Does the domain take mail? Before the insert, so a dead address holds nothing.
+  // Before the insert, so a dead address holds nothing.
   const deliverable = await checkEmailDeliverable(guest.guest.email);
   if (!deliverable.ok) {
     return NextResponse.json(
@@ -235,7 +234,7 @@ export async function POST(req: NextRequest) {
       status,
     );
 
-    // A booking counts once the confirmation is away; "skipped" is not a refusal.
+    // A booking counts once the confirmation is away; "skipped" is no refusal.
     if (reservation.email) {
       const outcome = await sendReservationEmail(reservation, status);
       if (outcome === "failed") {

@@ -13,7 +13,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** What's taken for a booth on a day, every booth's count, and the first reservable time. Public. */
+/** Public on purpose: the booking screen reads it with no session. */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const boothId = sp.get("booth") ?? "";
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     label: rangeLabel(b.startsAt, b.endsAt),
   }));
 
-  // Every configured booth and no other, so a card never guesses and a retired id never leaks.
+  // Every configured booth and no other: no card guesses, no retired id leaks.
   const taken = reservationCountsByBooth(date);
   const counts = Object.fromEntries(
     getBooths().map((b) => [b.id, taken.get(b.id) ?? 0]),

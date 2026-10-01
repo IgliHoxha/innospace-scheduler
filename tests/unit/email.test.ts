@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reservation } from "@/lib/types";
 import { verifyCancelToken } from "@/lib/auth";
 
-// Resend is stubbed at class level; a shared `send` keeps the singleton observable.
+// A shared `send` keeps the module's singleton client observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
 vi.mock("resend", () => ({
   Resend: class {
@@ -83,7 +83,7 @@ describe("email logo", () => {
     expect(svg).not.toContain("prefers-color-scheme");
   });
 
-  // The wordmark is neutral text so dark mode inverts it; flat spans, never a table.
+  // The wordmark is neutral text so dark mode inverts it.
   it("builds the header without a table, so the card is not split", async () => {
     const html = await reservationHtml();
     expect(html).not.toContain("<table");
@@ -98,7 +98,6 @@ describe("email logo", () => {
     expect(html).toContain(">TIRANA<");
   });
 
-  // The site asset stays tight and transparent: no panel, no adaptive rule.
   it("keeps the site logo a plain black wordmark", () => {
     const svg = readFileSync(join(process.cwd(), "public", "logo.svg"), "utf8");
     expect(svg).toContain(".cls-2{fill:#000000;}");
@@ -116,7 +115,7 @@ describe("email logo", () => {
 });
 
 describe("body copy colour", () => {
-  // Inversion keeps hue and flips lightness, so the old plum ink came back pink.
+  // Inversion keeps hue and flips lightness, so plum ink comes back pink.
   it("inks paragraphs with a neutral black, never the brand plum", async () => {
     const html = await reservationHtml();
     expect(html).toContain("color:#000000;font-size:14px");
@@ -171,7 +170,7 @@ describe("cancel link", () => {
     expect(await reservationHtml()).not.toContain("/cancel?token=");
   });
 
-  // Same inversion rule as the body copy: neutral ink, never the plum-tinted grey.
+  // Same inversion rule as the body copy: never the plum-tinted grey.
   it("inks the fine print neutral", async () => {
     expect(await reservationHtml()).toContain(
       'color:#767676;font-size:12px">Only you have this link',
@@ -377,7 +376,6 @@ describe("the linkifier", () => {
     vi.stubEnv("BUSINESS_PHONE", "+355 69 219 2666");
     const html = await reservationHtml();
     expect(html).toContain('href="tel:+355692192666"');
-    // The visible text keeps its spacing; only the href is stripped.
     expect(html).toContain(">+355 69 219 2666</a>");
   });
 
@@ -546,7 +544,7 @@ describe("the accent rule under the header", () => {
       )?.[0] ?? "";
     expect(rule).toContain("line-height:2px");
     expect(rule).toContain("font-size:0");
-    // Outlook drops a truly empty box, so the rule carries a space it cannot see.
+    // Outlook drops a truly empty box, so the rule carries an unseen space.
     expect(rule).toContain("&nbsp;");
   });
 

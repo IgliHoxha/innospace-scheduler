@@ -7,7 +7,7 @@ import { createSessionToken, type Session } from "@/lib/auth";
 const req = (token?: string) =>
   makeRequest("http://localhost/api/x", { token });
 
-// A cookie from the account era: correctly signed, but no longer a valid role.
+// Correctly signed, so only the role check can refuse it.
 const retiredMemberToken = () =>
   createSessionToken({
     role: "user",

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { UserMenu } from "@/components/UserMenu";
 
-/** App header: brand, optional right-side nav links, and the admin's user menu. */
 export function Topbar({
   username,
   brandHref = "/dashboard",
@@ -12,7 +11,6 @@ export function Topbar({
   username?: string;
   brandHref?: string;
   brandLabel?: string;
-  /** Right-side nav links before the user menu; omitted on the member screen. */
   nav?: ReactNode;
 }) {
   return (

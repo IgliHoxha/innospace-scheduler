@@ -5,7 +5,6 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Internal chrome: the suite asserts the call, never the network.
 vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));
@@ -124,7 +123,6 @@ describe("PATCH /api/reservations/[id] - failures that must not lose the change"
     db.discardReservation(r.id);
     const res = await patch(r.id, { status: "confirmed" }, adminToken());
     expect(res.status).toBe(404);
-    // Nothing was updated, so nobody is told of a booking they do not have.
     expect(email.sendReservationEmail).not.toHaveBeenCalled();
   });
 

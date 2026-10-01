@@ -12,7 +12,6 @@ export function reservationWindowDays(): number {
   return Math.max(0, requireIntEnv("RESERVATION_WINDOW_DAYS"));
 }
 
-/** Times snap to this many minutes (09:10 yes, 09:07 no). Must divide 60. */
 export function stepMinutes(): number {
   const v = requireIntEnv("TIME_STEP_MINUTES");
   if (!(v > 0 && v <= 60 && 60 % v === 0)) {
@@ -23,17 +22,14 @@ export function stepMinutes(): number {
   return v;
 }
 
-/** Shortest reservable length in minutes, never below one step. */
 export function minReservationMinutes(): number {
   return Math.max(stepMinutes(), requireIntEnv("MIN_RESERVATION_MINUTES"));
 }
 
-/** Longest reservation that auto-confirms; anything longer is created pending. */
 export function autoApproveMaxHours(): number {
   return Math.max(1, requireIntEnv("AUTO_APPROVE_MAX_HOURS"));
 }
 
-/** Over the auto-approve limit, so an admin must approve it. */
 export function needsApproval(startsAt: string, endsAt: string): boolean {
   return approvalRequiredFor(
     durationMinutes(startsAt, endsAt),
@@ -49,23 +45,19 @@ export function noteRequired(startsAt: string, endsAt: string): boolean {
   );
 }
 
-/** Round onto the step grid, always up: off-grid is unreservable. */
 export function ceilToStep(minutes: number): number {
   const step = stepMinutes();
   return Math.ceil(minutes / step) * step;
 }
 
-/** The same rule the form runs, with this server's step supplied. */
 export function isValidTimeOfDay(minutes: number): boolean {
   return isBookableMinute(minutes, stepMinutes());
 }
 
-/** "09:30 - 11:00" for a reservation. */
 export function rangeLabel(startsAt: string, endsAt: string): string {
   return `${timeOf(startsAt)} - ${timeOf(endsAt)}`;
 }
 
-/** "1h 30m" / "45m" for a plain minute count. */
 export function formatDuration(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
@@ -74,22 +66,19 @@ export function formatDuration(mins: number): string {
   return `${m}m`;
 }
 
-/** "0 reservations" / "1 reservation" / "3 reservations" for a booth card. */
 export function reservationCountLabel(count: number): string {
   const n = Math.max(0, count);
   return n === 1 ? "1 reservation" : `${n} reservations`;
 }
 
-/** "1h 30m" / "45m": a human duration for a reservation. */
 export function durationLabel(startsAt: string, endsAt: string): string {
   return formatDuration(durationMinutes(startsAt, endsAt));
 }
 
-/** Reservable dates as YYYY-MM-DD, from today through the window. */
 export function reservableDates(): string[] {
   const out: string[] = [];
   const base = new Date();
-  base.setHours(12, 0, 0, 0); // noon anchor avoids DST off-by-one when adding days
+  base.setHours(12, 0, 0, 0); // noon avoids a DST off-by-one when adding days
   for (let i = 0; i <= reservationWindowDays(); i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
@@ -98,7 +87,6 @@ export function reservableDates(): string[] {
   return out;
 }
 
-/** Is this YYYY-MM-DD within the reservable window (not past, not beyond)? */
 export function isReservableDate(date: string | undefined): boolean {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   return reservableDates().includes(date);

@@ -23,7 +23,6 @@ export interface TimePickerInputProps extends Omit<
   onLeftFocus?: () => void;
 }
 
-/** One time field: caret at the end, first keystroke replaces, arrows step. */
 const TimePickerInput = React.forwardRef<
   HTMLInputElement,
   TimePickerInputProps

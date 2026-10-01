@@ -131,10 +131,8 @@ describe("a malformed Origin header", () => {
 describe("same-origin without a Host header", () => {
   it("cannot call a hostless request same-origin, so the allowlist decides", () => {
     vi.stubEnv("ALLOWED_ORIGINS", "https://elsewhere.example.com");
-    // No Host to compare against, and the Origin is not on the list either.
     const headers = new Headers({ origin: "https://booking.example.com" });
     expect(isRequestOriginAllowed(headers)).toBe(false);
-    // Same request with a matching Host would have passed as same-origin.
     headers.set("host", "booking.example.com");
     expect(isRequestOriginAllowed(headers)).toBe(true);
   });

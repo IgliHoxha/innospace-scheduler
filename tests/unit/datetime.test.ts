@@ -5,9 +5,9 @@ describe("datetime string primitives", () => {
   it("accepts well-formed local datetimes and rejects malformed ones", () => {
     expect(t.isDateTime("2026-07-16T09:30")).toBe(true);
     expect(t.isDateTime("2026-07-16T23:59")).toBe(true);
-    expect(t.isDateTime("2026-07-16T24:00")).toBe(false); // hour > 23
-    expect(t.isDateTime("2026-07-16T09:60")).toBe(false); // minute > 59
-    expect(t.isDateTime("2026-07-16 09:30")).toBe(false); // missing T
+    expect(t.isDateTime("2026-07-16T24:00")).toBe(false);
+    expect(t.isDateTime("2026-07-16T09:60")).toBe(false);
+    expect(t.isDateTime("2026-07-16 09:30")).toBe(false);
     expect(t.isDateTime(undefined)).toBe(false);
   });
 

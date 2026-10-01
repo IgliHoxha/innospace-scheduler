@@ -8,23 +8,20 @@ export type EmailStatus = Extract<
   "confirmed" | "cancelled" | "pending"
 >;
 
-/** Booth id to name, injected: the env lookup would throw in a client bundle. */
+/** Injected: the env lookup would throw in a client bundle. */
 export type BoothNamer = (boothId: string | undefined) => string;
 
-/** The reserved time range as text, e.g. "09:30 - 11:00". */
 export function timeText(reservation: Reservation): string {
   if (!reservation.startsAt || !reservation.endsAt) return "-";
   return rangeLabel(reservation.startsAt, reservation.endsAt);
 }
 
-/** The reserved day, YYYY-MM-DD, taken from the start datetime. */
 export function dateOfReservation(
   reservation: Reservation,
 ): string | undefined {
   return reservation.startsAt ? dateOf(reservation.startsAt) : undefined;
 }
 
-/** "Monday, 14 July 2026" for a reservation's day. */
 export function dateText(reservation: Reservation): string {
   return formatDateLong(dateOfReservation(reservation));
 }
@@ -36,7 +33,6 @@ export function boothLabel(
   return boothName(reservation.boothId);
 }
 
-/** One-line summary used in emails and the confirmation screen. */
 export function reservationSummary(
   reservation: Reservation,
   boothName: BoothNamer,
@@ -67,8 +63,7 @@ export function emailPreheader(
   boothName: BoothNamer,
 ): string {
   const where = `${reservationSummary(r, boothName)} at ${contact.org}.`;
-  // Long enough to fill the snippet alone: the pad may count for nothing, and
-  // whatever room is left over gets scraped from the body instead.
+  // Long enough to fill the snippet alone, or a client scrapes the body.
   if (status === "cancelled")
     return `Cancelled: ${where} That slot is free again, and you can reserve another one whenever suits you.`;
   if (status === "pending")
@@ -164,7 +159,7 @@ function pendingBody(
   ].join("\n");
 }
 
-// Editable body shown in the dashboard textarea; subject/shell added by the mailer.
+// The editable body only; the mailer adds the subject and shell.
 export function emailBodyText(
   r: Reservation,
   status: EmailStatus,

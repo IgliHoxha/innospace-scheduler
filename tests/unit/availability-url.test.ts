@@ -18,7 +18,7 @@ describe("countsForDate", () => {
     );
   });
 
-  // The old board lingers while the next one loads; its numbers are another day's.
+  // The old board lingers while the next loads; its numbers are another day's.
   it("withholds the counts of a board for a different day", () => {
     expect(
       countsForDate({ date: "2026-07-16", counts }, "2026-07-17"),

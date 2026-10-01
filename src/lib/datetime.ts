@@ -1,15 +1,14 @@
-// Helpers for the "YYYY-MM-DDTHH:MM" local format, with no env, so all can share.
+// No env read here, so client components can import these helpers.
 import { pad2 } from "./utils";
 
 const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
 
-/** Is this a well-formed "YYYY-MM-DDTHH:MM" local datetime? */
 export function isDateTime(value: string | undefined): boolean {
   const m = DATETIME_RE.exec(value ?? "");
   return !!m && Number(m[2]) <= 23 && Number(m[3]) <= 59;
 }
 
-/** Epoch ms for a local "YYYY-MM-DDTHH:MM" in the server TZ. NaN if malformed. */
+/** Read in the server TZ; NaN if malformed. */
 export function epochMsOf(dt: string): number {
   // Range-checked, not just shaped: "T25:00" would roll into the next day.
   if (!isDateTime(dt)) return NaN;
@@ -19,7 +18,6 @@ export function epochMsOf(dt: string): number {
   return new Date(y, mo - 1, d, Number(m[2]), Number(m[3])).getTime();
 }
 
-/** "2026-07-16" from "2026-07-16T09:30". */
 export function dateOf(dt: string): string {
   return dt.slice(0, 10);
 }
@@ -34,54 +32,47 @@ export function maxTime(a: string, b: string): string {
   return a >= b ? a : b;
 }
 
-/** Join a date and a "HH:MM" time into a datetime string. */
 export function toDateTime(date: string, time: string): string {
   return `${date}T${time}`;
 }
 
-/** Minutes since midnight for a datetime, e.g. 570 for "…T09:30". */
 export function minutesOfDay(dt: string): number {
   return Number(dt.slice(11, 13)) * 60 + Number(dt.slice(14, 16));
 }
 
-/** The inverse: 570 -> "09:30". */
 export function minutesToTime(minutes: number): string {
   return `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`;
 }
 
-/** And for a bare "09:30" -> 570, the format the picker and the board work in. */
 export function timeToMinutes(time: string): number {
   return Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 }
 
-/** Length of a reservation in minutes. Assumes start/end are the same day. */
+/** Assumes start/end are the same day. */
 export function durationMinutes(startsAt: string, endsAt: string): number {
   return minutesOfDay(endsAt) - minutesOfDay(startsAt);
 }
 
-/** Length of a reservation in hours, e.g. 1.5. */
 export function durationHours(startsAt: string, endsAt: string): number {
   return durationMinutes(startsAt, endsAt) / 60;
 }
 
-/** Format a Date as YYYY-MM-DD in the server's local time. */
 export function ymd(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/** The calendar date `days` away; noon keeps a DST shift from skipping a day. */
+/** Noon keeps a DST shift from skipping a day. */
 export function shiftDate(date: string, days: number): string {
   const p = parseYMD(date);
   if (!p) return date;
   return ymd(new Date(p.y, p.m - 1, p.d + days, 12));
 }
 
-/** Server-local today as YYYY-MM-DD. */
 export function todayYMD(): string {
   return ymd(new Date());
 }
 
-/** Server-local now as "YYYY-MM-DDTHH:MM": compares directly against startsAt. */
+/** Same format as startsAt, so the two compare as plain text. */
 export function nowDateTime(): string {
   const now = new Date();
   return `${ymd(now)}T${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
@@ -134,13 +125,11 @@ function parseYMD(v: string | undefined) {
   return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
 }
 
-/** Compact DD/MM/YY for the dashboard table, e.g. "14/07/26". */
 export function formatDMYShort(value: string | undefined): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
   return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : "-";
 }
 
-/** "Monday, 14 July 2026" for a YYYY-MM-DD. Timezone-free (parses the parts). */
 export function formatDateLong(value: string | undefined): string {
   const p = parseYMD(value);
   if (!p) return "your requested date";
@@ -149,7 +138,6 @@ export function formatDateLong(value: string | undefined): string {
   return `${WEEKDAYS[wd]}, ${p.d} ${MONTHS[p.m - 1]} ${p.y}`;
 }
 
-/** "Mon, 14 Jul" for a YYYY-MM-DD: compact label for the date picker. */
 export function formatDateMedium(value: string | undefined): string {
   const p = parseYMD(value);
   if (!p) return "";

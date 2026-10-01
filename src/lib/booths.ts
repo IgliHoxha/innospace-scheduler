@@ -1,4 +1,4 @@
-// Booths from SCHEDULER_BOOTHS ("id:Name:capacity", comma-separated). Server only.
+// SCHEDULER_BOOTHS is "id:Name:capacity", comma-separated. Server only.
 import { requireEnv } from "./env-app";
 
 export interface Booth {
@@ -24,7 +24,6 @@ function parseBooths(raw: string): Booth[] {
 
 let _booths: Booth[] | null = null;
 
-/** The resolved booth list, parsed from the required SCHEDULER_BOOTHS var. */
 export function getBooths(): Booth[] {
   if (_booths) return _booths;
   const booths = parseBooths(requireEnv("SCHEDULER_BOOTHS"));
@@ -40,7 +39,7 @@ export function isBoothId(id: string | undefined): boolean {
   return getBooths().some((b) => b.id === id);
 }
 
-/** Name lookup against a supplied booth list. Pure and client-safe (no env read). */
+/** Client-safe: the booth list is supplied, so there is no env read. */
 export function boothNameIn(booths: Booth[], id: string | undefined): string {
   if (!id) return "Booth";
   return booths.find((b) => b.id === id)?.name ?? id;

@@ -40,7 +40,7 @@ describe("attemptKey", () => {
     }
   });
 
-  // The note is what the server asks for, so writing one must not void its demand.
+  // The server asks for the note, so writing one must not void its demand.
   it("ignores everything that is not part of the attempt, the note included", () => {
     const withNote = { ...ada, note: "Board meeting", fullName: "Ada L" };
     expect(attemptKey(withNote)).toBe(attemptKey(ada));
@@ -110,7 +110,6 @@ describe("verdictFor and withVerdict", () => {
   });
 });
 
-// The test baseline: 5-minute grid, 15-minute minimum, 2-hour limit.
 const base: BookingCheckInput = {
   startMin: 10 * 60,
   endMin: 11 * 60,
@@ -180,7 +179,7 @@ describe("checkBooking: the grid and the clock", () => {
     expect(check({ startMin: 23 * 60, endMin: 23 * 60 + 55 }).problem).toBe("");
   });
 
-  // 24:00 is on the grid but is not a clock time, so the day stops a step short.
+  // 24:00 is on the grid but not a clock time, so the day stops a step short.
   it("refuses an end at 24:00", () => {
     expect(check({ startMin: 23 * 60, endMin: 24 * 60 }).problem).toContain(
       "5-minute steps",
@@ -272,7 +271,6 @@ describe("checkBooking: the note rule", () => {
   });
 });
 
-// What holds a Reserve press back at the note box, and what it says there.
 describe("noteAsk", () => {
   const demand = "Please add a note - back to back this comes to 2 hours.";
 
@@ -286,7 +284,7 @@ describe("noteAsk", () => {
     expect(noteAsk(r, "", "")).toBe(noteRequiredMessage(false, 2));
   });
 
-  // The server counts days this board cannot see, so the form alone says nothing.
+  // The server counts days this board cannot see, so the form alone is silent.
   it("gives the server's demand while the note is still empty", () => {
     expect(check().mustNote).toBe(false);
     expect(noteAsk(check(), demand, "")).toBe(demand);
@@ -357,7 +355,7 @@ describe("checkBooking: approval", () => {
 });
 
 describe("checkBooking: the back-to-back run", () => {
-  // A booking that is fine alone can still cross the limit joined to a neighbour.
+  // A booking fine alone can still cross the limit joined to a neighbour.
   it("counts an adjacent booking into the run and then demands a note", () => {
     const r = check({ held: [{ start: 9 * 60, end: 10 * 60 }] });
     expect(r.runMinutes).toBe(120);

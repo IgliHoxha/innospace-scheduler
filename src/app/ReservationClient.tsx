@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import Script from "next/script";
 import TimeRangePicker from "./TimeRangePicker";
 import DayTimeline from "./DayTimeline";
@@ -53,17 +54,17 @@ interface Reserved {
   start: string;
   end: string;
   label: string;
-  /** Booked from this browser: a login-less screen's only way to know it's yours. */
+  /** Booked from this browser, the only way a login-less screen can tell. */
   mine: boolean;
-  /** Present only for a booking this browser made: the proof needed to cancel it. */
+  /** The proof needed to cancel; only on a booking this browser made. */
   cancelToken?: string;
 }
 
 interface Availability {
-  /** The day this board answers for, so a count is never shown against another date. */
+  /** The day this board answers for, so no count shows against another date. */
   date: string;
   reserved: Reserved[];
-  /** Active reservations per booth that day; absent on a copy cached before a deploy. */
+  /** Active reservations per booth; absent on a copy cached before a deploy. */
   counts?: Record<string, number>;
   earliest: string;
 }
@@ -73,7 +74,7 @@ interface DateOption {
   label: string;
 }
 
-// The length a booking opens on, and the one a moved start re-anchors its end to.
+// The length a booking opens on and a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
 
 // Where an untouched day opens the picker.
@@ -84,7 +85,7 @@ const SUCCESS_MS = 5000;
 
 declare global {
   interface Window {
-    // Injected by the Cloudflare Turnstile script when the booking widget is on.
+    // Injected by Cloudflare's Turnstile script when the booking widget is on.
     turnstile?: {
       render: (
         container: HTMLElement,
@@ -120,13 +121,12 @@ export default function ReservationClient({
   dates: DateOption[];
   /** Longer than this needs approval; at this length or longer, a note. */
   autoApproveMaxHours: number;
-  /** Shortest allowed reservation, in minutes. */
   minReservationMinutes: number;
   /** The minute grid every time snaps to. */
   stepMinutes: number;
   /** Where an enquiry about somebody else's booking goes. */
   contact: { phone: string; email: string };
-  /** Cloudflare widget key. Undefined when Turnstile is switched off. */
+  /** Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
 }) {
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
@@ -140,17 +140,16 @@ export default function ReservationClient({
   const [error, setError] = useState("");
   // What the server refused and why, so Reserve cannot repeat it.
   const [refused, setRefused] = useState(NO_VERDICTS);
-  // The notes the server asked for: it counts runs across days this board cannot see.
+  // Notes the server asked for, as it counts runs this board cannot see.
   const [noteDemands, setNoteDemands] = useState(NO_VERDICTS);
-  // The attempt a press last made the form's own ask on; a server demand needs no such mark.
+  // The attempt Reserve last asked a note for; a server demand needs no mark.
   const [askedFor, setAskedFor] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mine, setMine] = useState<MineEntry[]>([]);
 
-  // Who's booking. No account, so these come with every reservation.
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  // Shown as a red field only, so every failing field is held, not just the first.
+  // Shown as a red field only, so every failing field is held.
   const [guestErrors, setGuestErrors] = useState<
     Partial<Record<GuestField, string>>
   >({});
@@ -207,13 +206,11 @@ export default function ReservationClient({
     };
   }, [turnstileSiteKey]);
 
-  // When this browser last booked or cancelled, so later loads skip the edge's older copy.
+  // When this browser last wrote, so later loads skip the edge's older copy.
   const wroteAt = useRef(0);
 
-  // Reload on booth or date change; a request id stops a slow response winning.
+  // A request id stops a slow response winning.
   const reqId = useRef(0);
-  // A re-seed owed to a changed board, kept so a later reload overtaking that load still pays it.
-  const resetDue = useRef(false);
   const loadAvailability = useCallback(
     async ({
       fresh = false,
@@ -221,13 +218,12 @@ export default function ReservationClient({
     }: { fresh?: boolean; keepPick?: boolean } = {}) => {
       if (!boothId || !date) return;
       const id = ++reqId.current;
-      if (!keepPick) resetDue.current = true;
       setLoading(true);
-      // Another booth's cached board predates the write too, and would undo its count.
+      // Another booth's cached board predates the write too, undoing its count.
       const bust = fresh || edgeMayBeStale(Date.now(), wroteAt.current);
       try {
         const res = await fetch(
-          // `fresh` is for after a booking, where the edge's 30s copy would omit it.
+          // After a booking the edge's 30s copy would omit it, hence `fresh`.
           `/api/availability?${availabilityQuery(boothId, date, bust ? Date.now() : undefined)}`,
           // This browser's cache only: the CDN ignores it, hence the fresh URL.
           { cache: "no-store" },
@@ -254,8 +250,7 @@ export default function ReservationClient({
             : null,
         );
         // A reload that did not change the board keeps the pick.
-        if (resetDue.current) {
-          resetDue.current = false;
+        if (!keepPick) {
           setStart("");
           setEnd("");
         }
@@ -266,14 +261,14 @@ export default function ReservationClient({
     [boothId, date],
   );
 
-  // The newest loader, so a reply landing after a booth switch reloads the board on screen.
+  // The newest loader, so a late reply reloads the board on screen.
   const reload = useRef(loadAvailability);
   useEffect(() => {
     reload.current = loadAvailability;
     loadAvailability();
   }, [loadAvailability]);
 
-  // Banners and errors speak about the board they were raised on, so another booth or day starts clean.
+  // Banners and errors belong to the board they were raised on.
   useEffect(() => {
     setSuccess(null);
     setError("");
@@ -281,9 +276,11 @@ export default function ReservationClient({
     setNoteDemands(NO_VERDICTS);
     setAskedFor(null);
     setGuestErrors({});
+    // Dropped at once, so Reserve waits for the new board whichever reload wins.
+    setStart("");
+    setEnd("");
   }, [boothId, date]);
 
-  // A confirmation is a moment, not a state, so it retires itself.
   useEffect(() => {
     if (!success) return;
     const timer = window.setTimeout(() => setSuccess(null), SUCCESS_MS);
@@ -294,7 +291,7 @@ export default function ReservationClient({
   const endMin = end ? timeToMinutes(end) : null;
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
 
-  // The run belongs to whoever is booking, so it waits for a name.
+  // The run belongs to whoever is booking, so it waits for a valid email.
   const booker = isValidEmail(email.trim()) ? canonicalEmail(email) : "";
 
   // That person's other bookings that day, so the run rule can warn early.
@@ -358,24 +355,23 @@ export default function ReservationClient({
   // Not live: the picker re-seeds, so it would scold a range nobody chose.
   const problem = isBlocking(check) ? check.problem : "";
 
-  // What the server judged, so its verdict expires the moment any of it changes.
+  // What the server judged, so its verdict expires once any of it changes.
   const attempt = attemptKey({ boothId, date, start, end, booker });
   const refusal = verdictFor(refused, attempt);
-  // Outlives every keystroke in the note box: typing does not change the attempt.
+  // Outlives typing in the note box, which does not change the attempt.
   const demanded = verdictFor(noteDemands, attempt);
   const noteNeeded = mustNote || !!demanded;
   const ask = noteAsk(check, demanded, note);
-  // Derived, so it cannot outlive its attempt; a demand is itself proof that a press asked.
+  // Derived, so it cannot outlive its attempt; a demand is proof a press asked.
   const noteError = demanded || askedFor === attempt ? ask : "";
 
-  // The attempt on screen now, for a reply that lands after the form has moved on.
+  // The attempt on screen now, for a reply landing after the form moved on.
   const liveAttempt = useRef(attempt);
   useEffect(() => {
     liveAttempt.current = attempt;
   }, [attempt]);
   const canReserve = !!start && !!end && !problem && !reservation && !refusal;
 
-  /** Clear a field's error as soon as it's edited, so it can't linger. */
   const onGuestEdit = (field: GuestField, set: (v: string) => void) => {
     return (value: string) => {
       set(value);
@@ -390,7 +386,8 @@ export default function ReservationClient({
     // The route's own validator, so the client cannot submit a rejection.
     const guest = validateGuest({ fullName, email });
     if (!guest.ok) {
-      setGuestErrors(guestProblems({ fullName, email }));
+      // Rendered before the focus, so the reason is there when the field is read.
+      flushSync(() => setGuestErrors(guestProblems({ fullName, email })));
       document.getElementById(guest.field)?.focus();
       return;
     }
@@ -434,14 +431,17 @@ export default function ReservationClient({
         reservation?: Reservation;
         cancelToken?: string;
       };
+      const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
+      const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
       if (res.ok && json.ok) {
-        // An earlier verdict described a world that is gone; the picker re-seeds.
+        // An earlier verdict described a world now gone; the picker re-seeds.
         setRefused(NO_VERDICTS);
         setNoteDemands(NO_VERDICTS);
         setAskedFor(null);
+        // Dropped at once, so the booked range cannot be pressed again mid-reload.
+        setStart("");
+        setEnd("");
         wroteAt.current = Date.now();
-        const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
-        const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
         setSuccess(
           json.reservation?.status === "pending"
             ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. The slot is held for you meanwhile.`
@@ -465,25 +465,28 @@ export default function ReservationClient({
       } else {
         const message = json.error || "Could not reserve that time.";
         const field = json.field;
-        // Shown at the field it names, so a long form cannot hide the reason.
-        if (field === "note") {
-          // A blank note refused is a demand on this attempt; any other fault is about the text.
-          if (note.trim()) setError(message);
-          else setNoteDemands((d) => withVerdict(d, attempt, message));
-        } else if (field) setGuestErrors({ [field]: message });
-        // A verdict on the pick: it stands until the range or booker changes.
-        else if (res.status === 400 || res.status === 409)
-          setRefused((r) => withVerdict(r, attempt, message));
-        else setError(message);
-        // Not onto a form that has moved on: the reply was about an attempt no longer on screen.
-        if (field && liveAttempt.current === attempt)
-          document.getElementById(field)?.focus();
-        // Someone may have just taken it, which the cached board would not show.
+        // A blank note refused is a demand; any other fault is in the text.
+        const needsNote = field === "note" && !note.trim();
+        const onPick = !field && (res.status === 400 || res.status === 409);
+        // Keyed to the attempt, so these stand for it alone wherever the form is.
+        if (needsNote) setNoteDemands((d) => withVerdict(d, attempt, message));
+        else if (onPick) setRefused((r) => withVerdict(r, attempt, message));
+        if (liveAttempt.current !== attempt) {
+          // The form moved on mid-request: name what failed, mark nothing here.
+          setError(`${when} was not reserved. ${message}`);
+        } else {
+          // Rendered before the focus, so the reason is there when it is read.
+          if (field && field !== "note")
+            flushSync(() => setGuestErrors({ [field]: message }));
+          else if (!needsNote && !onPick) setError(message);
+          if (field) document.getElementById(field)?.focus();
+        }
+        // Someone may have just taken it, which a cached board would not show.
         reload.current({ fresh: true, keepPick: true });
       }
     } finally {
       setReservation(false);
-      // A token is single-use, so a retry or a second booking needs a fresh one.
+      // A token is single-use, so a retry or second booking needs a fresh one.
       if (turnstileSiteKey) {
         setTurnstileToken("");
         window.turnstile?.reset(widgetIdRef.current ?? undefined);
@@ -492,7 +495,7 @@ export default function ReservationClient({
   }
 
   const selectedBooth = booths.find((b) => b.id === boothId);
-  // Only for the day on screen: the previous date's board lingers until the new one lands.
+  // The previous date's board lingers until the new one lands.
   const counts = countsForDate(avail, date);
   const fieldError = (field: GuestField) => guestErrors[field] ?? "";
 
@@ -514,7 +517,6 @@ export default function ReservationClient({
           </p>
         </div>
 
-        {/* Step 1: booth */}
         <div className="field-label">Booth</div>
         <div className="booth-grid">
           {booths.map((b) => (
@@ -527,7 +529,7 @@ export default function ReservationClient({
               {b.capacity ? (
                 <span className="booth-cap">{b.capacity} seats</span>
               ) : null}
-              {/* Always rendered, so the cards do not grow when the counts land. */}
+              {/* Always rendered, so cards do not grow when counts land. */}
               <span className="booth-count">
                 {counts?.[b.id] == null
                   ? " "
@@ -537,7 +539,6 @@ export default function ReservationClient({
           ))}
         </div>
 
-        {/* Step 2: date */}
         <div className="field-label">Date</div>
         <div className="date-row">
           {dates.map((d) => (
@@ -551,7 +552,6 @@ export default function ReservationClient({
           ))}
         </div>
 
-        {/* Step 3: time range */}
         <div className="field-label">Time</div>
         <div className="card time-card">
           {loading ? (
@@ -618,19 +618,17 @@ export default function ReservationClient({
                 contact={contact}
                 boothName={selectedBooth?.name ?? "the booth"}
                 dateLabel={dates.find((d) => d.value === date)?.label ?? date}
-                // Cancelled from the board, so the graph must refetch.
                 onCancelled={() => {
                   setSuccess(
                     "Your reservation is cancelled. The slot is free for someone else now.",
                   );
                   setError("");
-                  // Freeing a slot can undo the very reason a pick was refused or needed a note.
+                  // A freed slot can undo a refusal or a note demand.
                   setRefused(NO_VERDICTS);
                   setNoteDemands(NO_VERDICTS);
                   wroteAt.current = Date.now();
                   reload.current({ fresh: true, keepPick: true });
                 }}
-                // Another way to choose a range, writing the same state.
                 onPick={(from, to) => {
                   setStart(from);
                   setEnd(to);
@@ -641,7 +639,6 @@ export default function ReservationClient({
           )}
         </div>
 
-        {/* Step 4: who's booking */}
         <div className="field-label">Your details</div>
         <div className="card guest-card">
           <div className="guest-row">
@@ -658,6 +655,9 @@ export default function ReservationClient({
                 maxLength={MAX_NAME}
                 required
                 aria-invalid={!!fieldError("fullName")}
+                aria-describedby={
+                  fieldError("fullName") ? "fullName-error" : undefined
+                }
                 className={fieldError("fullName") ? "invalid" : ""}
                 value={fullName}
                 onChange={(e) =>
@@ -678,21 +678,24 @@ export default function ReservationClient({
                 maxLength={MAX_EMAIL}
                 required
                 aria-invalid={!!fieldError("email")}
+                aria-describedby={
+                  fieldError("email") ? "email-error" : undefined
+                }
                 className={fieldError("email") ? "invalid" : ""}
                 value={email}
                 onChange={(e) => onGuestEdit("email", setEmail)(e.target.value)}
               />
             </label>
           </div>
-          {/* The red field is the only visible cue; the reason is kept for screen readers. */}
-          <p className="sr-only" role="alert">
-            {[fieldError("fullName"), fieldError("email")]
-              .filter(Boolean)
-              .join(" ")}
-          </p>
+          {/* A red field is the only visible cue; its reason is read on focus. */}
+          <span id="fullName-error" className="sr-only">
+            {fieldError("fullName")}
+          </span>
+          <span id="email-error" className="sr-only">
+            {fieldError("email")}
+          </span>
         </div>
 
-        {/* Note + submit */}
         {noteError && <p className="error">{noteError}</p>}
         <textarea
           id="note"
@@ -714,7 +717,6 @@ export default function ReservationClient({
           aria-required={noteNeeded}
         />
 
-        {/* Collapsed until Cloudflare challenges, so an ordinary booking sees no gap. */}
         {turnstileSiteKey && (
           <>
             <Script

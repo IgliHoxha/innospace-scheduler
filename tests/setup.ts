@@ -1,4 +1,3 @@
-// Deterministic baseline env for every test file, then per-test temp-DB cleanup.
 import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
 import { SIGNING } from "./helpers/fixtures";

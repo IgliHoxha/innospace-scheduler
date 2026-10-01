@@ -5,7 +5,7 @@ import { safeEqual } from "./auth";
 
 type Bucket = {
   fails: number; // consecutive failures in the current window
-  lockouts: number; // how many times this key has been locked out (escalation)
+  lockouts: number;
   blockedUntil: number; // epoch ms; 0 when not blocked
   banned: boolean; // permanent block (only used by the IP bucket)
   seen: number; // epoch ms of last activity (for pruning)
@@ -14,9 +14,9 @@ type Bucket = {
 const buckets = new Map<string, Bucket>();
 
 // Forget idle records after this long so the Map can't grow unbounded.
-const IDLE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const IDLE_TTL_MS = 60 * 60 * 1000;
 
-// Sweeping every request is wasted work; once a minute forgets idle records too.
+// Sweeping on every request is wasted work; once a minute is enough.
 const PRUNE_EVERY_MS = 60 * 1000;
 let lastPrunedAt = 0;
 
@@ -45,7 +45,7 @@ function accountPolicy(): Policy {
   };
 }
 
-/** Per-IP: lenient threshold (shared office IP), bans only under sustained abuse. */
+/** Per-IP: lenient, as an office shares one IP; bans only sustained abuse. */
 function ipPolicy(): Policy {
   return {
     maxAttempts: posIntEnv("LOGIN_IP_MAX_ATTEMPTS"),
@@ -81,7 +81,7 @@ function prune(now: number) {
   }
 }
 
-/** At the cap, drop the least recently seen, sparing live blocks while it can. */
+/** Drops the least recently seen first, sparing live blocks while it can. */
 function evictOldest(now: number): void {
   if (buckets.size <= MAX_BUCKETS) return;
   // By `seen`, not insert order, or a busy old key goes before an idle new one.
@@ -97,7 +97,6 @@ function evictOldest(now: number): void {
   }
 }
 
-/** Read-only status of a single bucket. */
 function peek(key: string): RateStatus {
   const now = Date.now();
   const b = buckets.get(key);
@@ -113,7 +112,6 @@ function peek(key: string): RateStatus {
   return OK;
 }
 
-/** Record a failure against a single bucket and return its resulting status. */
 function hit(key: string, policy: Policy): RateStatus {
   const now = Date.now();
   prune(now);
@@ -153,7 +151,7 @@ function hit(key: string, policy: Policy): RateStatus {
       return { blocked: true, banned: true, retryAfterSeconds: 0 };
     }
 
-    const seconds = policy.blockBaseSeconds * b.lockouts; // 60s, 120s, 180s, …
+    const seconds = policy.blockBaseSeconds * b.lockouts;
     b.blockedUntil = now + seconds * 1000;
     buckets.set(key, b);
     return { blocked: true, banned: false, retryAfterSeconds: seconds };
@@ -163,7 +161,6 @@ function hit(key: string, policy: Policy): RateStatus {
   return OK;
 }
 
-/** Combine two statuses into the strongest block (ban > longer lockout > ok). */
 function strongest(a: RateStatus, b: RateStatus): RateStatus {
   if (a.banned) return a;
   if (b.banned) return b;
@@ -171,7 +168,7 @@ function strongest(a: RateStatus, b: RateStatus): RateStatus {
   return a.retryAfterSeconds >= b.retryAfterSeconds ? a : b;
 }
 
-// Namespaced keys so an account can never collide with an IP of the same string.
+// Namespaced, so an account can never collide with an IP of the same string.
 function acctKey(loginId: string): string {
   return `acct:${loginId.trim().toLowerCase()}`;
 }
@@ -183,31 +180,26 @@ function bookingKey(ip: string): string {
   return `booking:${ip}`;
 }
 
-/** Is this client currently blocked by either bucket? Read-only. */
 export function checkLoginBlocked(ip: string, loginId: string): RateStatus {
   return strongest(peek(ipKey(ip)), peek(acctKey(loginId)));
 }
 
-/** Record a failed login against both the account and the IP buckets. */
 export function registerLoginFailure(ip: string, loginId: string): RateStatus {
-  // Hit both (no short-circuit) so each bucket's counter advances every attempt.
+  // No short-circuit: each bucket's counter must advance on every attempt.
   const ipStatus = hit(ipKey(ip), ipPolicy());
   const acctStatus = hit(acctKey(loginId), accountPolicy());
   return strongest(ipStatus, acctStatus);
 }
 
-/** Successful login - clear both buckets for this client. */
 export function registerLoginSuccess(ip: string, loginId: string): void {
   buckets.delete(ipKey(ip));
   buckets.delete(acctKey(loginId));
 }
 
-/** Is this IP currently throttled from booking? Read-only. */
 export function checkBookingBlocked(ip: string): RateStatus {
   return peek(bookingKey(ip));
 }
 
-/** Record a booking attempt against the per-IP booking throttle. */
 export function registerBooking(ip: string): RateStatus {
   return hit(bookingKey(ip), bookingPolicy());
 }

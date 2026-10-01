@@ -1,7 +1,5 @@
-// Helpers for the typed time fields. 24-hour, hours + minutes.
 export type TimePickerType = "hours" | "minutes";
 
-/** Clamp (or loop) a typed value into range and pad to two digits. */
 export function getValidNumber(
   value: string,
   { max, min = 0, loop = false }: { max: number; min?: number; loop?: boolean },
@@ -80,7 +78,7 @@ export function maxOf(type: TimePickerType): number {
   return type === "minutes" ? 59 : 23;
 }
 
-/** Digits after a keystroke: a fresh field is replaced, then the newest two win. */
+/** A fresh field is replaced outright; after that the newest two digits win. */
 export function nextDigits(raw: string, caret: number, fresh: boolean): string {
   const digits = raw.replace(/\D/g, "");
   if (!fresh) return digits.slice(-2);

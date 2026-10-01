@@ -94,7 +94,7 @@ describe("the Slack message", () => {
     ).toContain("cancelled by the guest");
   });
 
-  // Only the dashboard approves, so it needs no actor, but it is not a new booking.
+  // Only the dashboard approves, so the event needs no actor.
   it("announces an approval as its own event, on the confirmed icon", () => {
     const t = body(RESERVATION, "approved").elements[0].text;
     expect(t).toMatch(/^:calendar: /);

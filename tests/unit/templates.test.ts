@@ -18,7 +18,6 @@ const base: Reservation = {
 const booths = [{ id: "booth-1", name: "Booth 1" }];
 const boothName = (id: string | undefined) => boothNameIn(booths, id);
 
-// Every ContactInfo field is required now (populated from env in production).
 const contact: ContactInfo = {
   name: "Alex",
   org: "Test Org",

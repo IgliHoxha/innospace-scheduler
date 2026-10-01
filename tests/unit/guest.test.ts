@@ -119,7 +119,6 @@ describe("isValidEmail", () => {
     expect(isValidEmail("ada@-example.com")).toBe(false);
     expect(isValidEmail("ada@example-.com")).toBe(false);
     expect(isValidEmail("ada@ex_ample.com")).toBe(false);
-    // A hyphen inside a label is legitimate and must survive.
     expect(isValidEmail("ada@my-example.com")).toBe(true);
   });
 
@@ -275,7 +274,6 @@ describe("guestProblems", () => {
     ]);
   });
 
-  // Agreement with the route's validator: marked fields exist exactly when it refuses.
   it("marks something exactly when validateGuest refuses", () => {
     for (const fullName of ["", "Ada", "Ada Lovelace", "  A  B  "]) {
       for (const email of ["", "x", "ada@example.com", "ADA@Example.COM "]) {

@@ -14,7 +14,7 @@ describe("default booths", () => {
     expect(booths.isBoothId("nope")).toBe(false);
     expect(booths.isBoothId(undefined)).toBe(false);
     expect(booths.boothName("booth-2")).toBe("Booth 2");
-    expect(booths.boothName("ghost")).toBe("ghost"); // unknown id echoes back
+    expect(booths.boothName("ghost")).toBe("ghost");
     expect(booths.boothName(undefined)).toBe("Booth");
   });
 });
@@ -28,18 +28,18 @@ describe("SCHEDULER_BOOTHS override", () => {
     expect(list.map((r) => r.id)).toEqual(["x", "y", "z"]);
     expect(list[0]).toMatchObject({ id: "x", name: "X Room", capacity: 3 });
     expect(list[1]).toMatchObject({ id: "y", name: "Y" });
-    expect(list[2]).toMatchObject({ id: "z", name: "z" }); // name defaults to id
-    expect(b.isBoothId("booth-1")).toBe(false); // defaults no longer apply
+    expect(list[2]).toMatchObject({ id: "z", name: "z" });
+    expect(b.isBoothId("booth-1")).toBe(false);
   });
 
   it("skips empty entries; throws when none are parseable", async () => {
     vi.resetModules();
-    vi.stubEnv("SCHEDULER_BOOTHS", "a:A, ,b:B"); // middle entry has no id
+    vi.stubEnv("SCHEDULER_BOOTHS", "a:A, ,b:B");
     const b = await import("@/lib/booths");
     expect(b.getBooths().map((r) => r.id)).toEqual(["a", "b"]);
 
     vi.resetModules();
-    vi.stubEnv("SCHEDULER_BOOTHS", " , : "); // nothing parseable
+    vi.stubEnv("SCHEDULER_BOOTHS", " , : ");
     const empty = await import("@/lib/booths");
     expect(() => empty.getBooths()).toThrow();
   });

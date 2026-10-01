@@ -29,19 +29,19 @@ function emailLogoUrl(): string {
   return `${baseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
-// 329x308 artwork, so 32px tall is 34px wide; CSS-less clients need the attribute.
+// 329x308 artwork scaled to 32px tall; CSS-less clients need the attributes.
 const MARK_HEIGHT = 32;
 const MARK_WIDTH = 34;
 
 const FONT_STACK =
   "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
 
-// The fixed lockup, not BUSINESS_NAME; flat spans, since Gmail cut the table in two.
+// Fixed wordmark, not BUSINESS_NAME; flat spans, as Gmail splits a table.
 function logoLockup(org: string): string {
   return `<img src="${escapeHtml(emailLogoUrl())}" alt="${escapeHtml(org)}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
 
-// Built on first send, not at import, so a keyless dev run never constructs one.
+// Built on first send, so a keyless dev run never constructs one.
 let _resend: Resend | null = null;
 function client(): Resend | null {
   if (_resend) return _resend;
@@ -66,7 +66,7 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// One pass, so the URL branch claims a URL with "@" before another half-eats it.
+// One pass, so a URL containing "@" is not half-eaten as an email.
 const LINKABLE =
   /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(\+\d[\d\s().-]{7,}\d)/g;
 
@@ -95,7 +95,7 @@ function textToHtml(text: string): string {
     .join("");
 }
 
-// Zero-width only: U+2007 is a real space, and Gmail drew thirty as a visible hole.
+// Zero-width only: Gmail draws a run of U+2007 spaces as a visible hole.
 const PREHEADER_PAD = "&#847;&#65279;".repeat(60);
 
 // Hidden every way a client might respect: only snippet readers should see it.
@@ -112,15 +112,14 @@ function shell(opts: {
   preheader: string;
 }): string {
   const { accent, heading, bodyHtml, org, url, preheader } = opts;
-  // Footer website link; visible text drops the scheme and any trailing slash.
   const footerLink = ` · <a href="${escapeHtml(url)}" style="color:${BRAND};text-decoration:none">${escapeHtml(
     url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
   )}</a>`;
-  // No border: the accent rule closes the header, and two read as one furred edge.
+  // No border: the accent rule below already closes the header.
   const header = `<div style="padding:22px 28px">
         ${logoLockup(org)}
       </div>`;
-  // Type zeroed too: an empty div keeps a line box that would fatten a 2px rule.
+  // Type zeroed too: an empty div's line box would fatten the 2px rule.
   const accentRule = `<div style="height:2px;line-height:2px;font-size:0;background:${accent}">&nbsp;</div>`;
   return `
   ${preheaderHtml(preheader)}
@@ -147,7 +146,7 @@ function cancelButton(r: Reservation): string {
 
   const token = createCancelToken(r.id, expiresAt);
   const link = `${baseUrl().replace(/\/$/, "")}/cancel?token=${encodeURIComponent(token)}`;
-  // Sits below the sign-off, ruled off as utility chrome rather than letter copy.
+  // Ruled off below the sign-off, as utility chrome rather than letter copy.
   return `
     <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
       <a href="${escapeHtml(link)}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Cancel this reservation</a>
@@ -155,10 +154,9 @@ function cancelButton(r: Reservation): string {
     </div>`;
 }
 
-/** "skipped" is nothing attempted; only "failed" means the address was refused. */
+/** "skipped" is nothing attempted; only "failed" means a refused send. */
 export type EmailOutcome = "sent" | "skipped" | "failed";
 
-/** Mail whoever booked; customBody overrides the template. */
 export async function sendReservationEmail(
   reservation: Reservation,
   status: EmailStatus,
@@ -191,13 +189,12 @@ export async function sendReservationEmail(
               ? COLORS.statusPending
               : COLORS.statusCancelled,
         heading: emailHeading(status),
-        // No cancel link on a cancellation: there's nothing left to cancel.
         bodyHtml:
           textToHtml(body) +
           (status === "cancelled" ? "" : cancelButton(reservation)),
         org: contact.org,
         url: contact.url,
-        // The details, not the edited body: a custom body could open with anything.
+        // Not the edited body: a custom one could open with anything.
         preheader: emailPreheader(reservation, status, contact, boothName),
       }),
     });

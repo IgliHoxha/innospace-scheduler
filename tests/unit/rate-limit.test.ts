@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The limiter keeps a module Map, so re-import per test; fake timers drive expiry.
+// The limiter keeps a module Map, so each test re-imports it.
 type RateLimit = typeof import("@/lib/rate-limit");
 let rl: RateLimit;
 
@@ -18,7 +18,6 @@ afterEach(() => {
 
 const IP = "1.2.3.4";
 
-/** Fail `n` times for (ip, login), returning the last status. */
 function failN(ip: string, login: string, n: number) {
   let s = rl.checkLoginBlocked(ip, login);
   for (let i = 0; i < n; i++) s = rl.registerLoginFailure(ip, login);
@@ -69,8 +68,7 @@ describe("per-account bucket", () => {
   it("isolates one account from another on the same IP", () => {
     vi.stubEnv("LOGIN_MAX_ATTEMPTS", "3");
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1000");
-    failN(IP, "attacked@x.com", 3); // this account is locked
-    // A different member on the same IP is unaffected.
+    failN(IP, "attacked@x.com", 3);
     expect(rl.checkLoginBlocked(IP, "other@x.com").blocked).toBe(false);
   });
 });
@@ -80,7 +78,6 @@ describe("per-IP bucket", () => {
     vi.stubEnv("LOGIN_MAX_ATTEMPTS", "1000"); // accounts won't lock
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "5");
     vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
-    // 5 failures spread across distinct accounts still trip the IP bucket.
     let s = rl.checkLoginBlocked(IP, "seed@x.com");
     for (let i = 0; i < 5; i++) s = rl.registerLoginFailure(IP, `u${i}@x.com`);
     expect(s.blocked).toBe(true);
@@ -104,7 +101,7 @@ describe("per-IP bucket", () => {
   it("isolates one IP from another", () => {
     vi.stubEnv("LOGIN_MAX_ATTEMPTS", "100000");
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "3");
-    failN("9.9.9.9", "a@x.com", 3); // 9.9.9.9 is locked
+    failN("9.9.9.9", "a@x.com", 3);
     expect(rl.checkLoginBlocked("8.8.8.8", "a@x.com").blocked).toBe(false);
   });
 });
@@ -128,7 +125,7 @@ describe("account key normalisation", () => {
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1000");
     rl.registerLoginFailure(IP, "Member@X.com");
     const s = rl.registerLoginFailure(IP, "  member@x.com  ");
-    expect(s.blocked).toBe(true); // same account -> 2 fails -> locked
+    expect(s.blocked).toBe(true);
   });
 });
 
@@ -218,7 +215,6 @@ describe("clientKey with TRUSTED_PROXY_SECRET set", () => {
   it("so rotating a forged header cannot escape the throttle", () => {
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "3");
     vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
-    // A different forged cf-connecting-ip each time, all from the one real peer.
     let last = rl.checkBookingBlocked("x");
     for (let i = 0; i < 3; i++) {
       last = rl.registerBooking(rl.clientKey(headers(null, `5.5.5.${i}`)));
@@ -306,7 +302,6 @@ describe("bucket housekeeping and repeat hits", () => {
     const rl = await import("@/lib/rate-limit");
     expect(rl.registerLoginFailure("2.2.2.2", "a").retryAfterSeconds).toBe(60);
     vi.advanceTimersByTime(20_000);
-    // 40s left, and the lockout has not been extended by the extra attempt.
     expect(rl.registerLoginFailure("2.2.2.2", "a").retryAfterSeconds).toBe(40);
   });
 
@@ -329,7 +324,7 @@ describe("bucket housekeeping and repeat hits", () => {
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "100"); // and well under the IP one
     rl.registerLoginFailure("4.4.4.4", "idle-user");
     vi.advanceTimersByTime(61 * 60 * 1000);
-    // Pruned, so the budget starts over rather than carrying an hour-old failure.
+    // Pruned, so the budget restarts rather than carrying an hour-old failure.
     rl.registerLoginFailure("5.5.5.5", "someone-else");
     expect(rl.checkLoginBlocked("4.4.4.4", "idle-user").blocked).toBe(false);
     for (let i = 0; i < 4; i++) rl.registerLoginFailure("4.4.4.4", "idle-user");
@@ -353,7 +348,7 @@ describe("the bucket cap", () => {
   it("forgets the least recently seen bucket rather than growing without bound", () => {
     rl.registerBooking("early"); // one failure short of blocking
     flood();
-    // Evicted as oldest, so its budget restarts: memory beats a half-used counter.
+    // Evicted, so its budget restarts: memory beats a half-used counter.
     expect(rl.registerBooking("early").blocked).toBe(false);
   });
 
@@ -381,12 +376,11 @@ describe("two buckets blocking at once", () => {
   it("reports the longer of the two waits", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.stubEnv("LOGIN_MAX_ATTEMPTS", "1");
-    vi.stubEnv("LOGIN_BLOCK_SECONDS", "30"); // account: shorter
+    vi.stubEnv("LOGIN_BLOCK_SECONDS", "30");
     vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
-    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "600"); // IP: longer
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "600");
     vi.stubEnv("LOGIN_MAX_LOCKOUTS", "10");
     const rl = await import("@/lib/rate-limit");
-    // Both trip on this one failure, so the strongest must win.
     expect(rl.registerLoginFailure("7.7.7.7", "a").retryAfterSeconds).toBe(600);
     vi.useRealTimers();
   });

@@ -1,11 +1,10 @@
-// Cookie auth: an HMAC token for the env-credential admin, the only session.
 import { createHmac, timingSafeEqual } from "crypto";
 import { requireEnv } from "./env-app";
 
 export const SESSION_COOKIE = "innospace_scheduler_session";
 
-// The token carries its own expiry, so editing the cookie's max-age does nothing.
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+// The token carries its own expiry, so a longer cookie max-age gains nothing.
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export type Role = "admin";
 
@@ -50,7 +49,6 @@ function verifiedBody(token: string | undefined | null): string | null {
   return body;
 }
 
-/** Mint `<base64url(payload)>.<hmac>`, signed over the payload. */
 export function createSessionToken(
   session: Session,
   ttlSeconds = SESSION_TTL_SECONDS,
@@ -93,7 +91,7 @@ interface CancelPayload {
   exp: number;
 }
 
-/** A cancel token dying with the slot, which cannot be cancelled once passed. */
+/** Expires with the slot: a passed booking cannot be cancelled. */
 export function createCancelToken(
   reservationId: string,
   expiresAtMs: number,
@@ -107,7 +105,6 @@ export function createCancelToken(
   return `${body}.${sign(body)}`;
 }
 
-/** Verify a cancel token, returning the reservation id, or null. */
 export function verifyCancelToken(
   token: string | undefined | null,
 ): string | null {
@@ -133,7 +130,6 @@ export function safeEqual(input: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-// Verify admin credentials against the env-configured username/password.
 export function checkAdminCredentials(
   username: string,
   password: string,

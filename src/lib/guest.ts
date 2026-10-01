@@ -1,4 +1,4 @@
-// Booking identity, shared verbatim by the form and the route, so neither drifts.
+// Shared verbatim by the form and the route, so neither drifts.
 import { MAX_EMAIL, MAX_NAME } from "./types";
 
 export interface GuestInput {
@@ -7,7 +7,6 @@ export interface GuestInput {
 }
 
 export interface Guest {
-  /** First and last name, as stored in `reservations.fullName`. */
   fullName: string;
   email: string;
 }
@@ -27,7 +26,7 @@ const MAX_DOMAIN = 255;
 // A domain label: alphanumeric, hyphens allowed inside but never at either end.
 const LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-/** Reject only what is structurally impossible, never what merely looks unusual. */
+/** Rejects only the structurally impossible, never the merely unusual. */
 export function emailProblem(value: string): string | null {
   const email = value.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return "Please enter a valid email address.";
@@ -38,7 +37,6 @@ export function emailProblem(value: string): string | null {
 
   if (local.length > MAX_LOCAL) return "That email address is too long.";
   if (domain.length > MAX_DOMAIN) return "That email address is too long.";
-  // A dot may separate parts but can never open, close, or double up.
   if (email.includes("..") || local.startsWith(".") || local.endsWith("."))
     return "Please enter a valid email address.";
 
@@ -56,7 +54,7 @@ export function isValidEmail(value: string): boolean {
   return emailProblem(value) === null;
 }
 
-// googlemail.com is the same inbox as gmail.com, reached by an older name for it.
+// googlemail.com is the same inbox as gmail.com.
 const DOMAIN_ALIASES = new Map([["googlemail.com", "gmail.com"]]);
 
 // Gmail alone ignores dots; everyone else treats them as part of the address.
@@ -98,11 +96,9 @@ export function canonicalEmail(value: string): string {
   return local ? `${local}@${domain}` : email;
 }
 
-// Collapse runs of whitespace so "Ada   Lovelace" is stored as one clean name.
 const clean = (v: unknown): string =>
   typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
 
-/** Validate and normalise a booker's details. */
 export function validateGuest(input: GuestInput): GuestResult {
   const fullName = clean(input.fullName);
   const email = clean(input.email).toLowerCase();
@@ -147,7 +143,7 @@ export function validateGuest(input: GuestInput): GuestResult {
   return { ok: true, guest: { fullName, email } };
 }
 
-/** Every field that fails, with its reason, so a form showing no message can mark them all. */
+/** Every failing field, not just the first, so the form can mark them all. */
 export function guestProblems(
   input: GuestInput,
 ): Partial<Record<GuestField, string>> {
@@ -157,7 +153,7 @@ export function guestProblems(
     [first.field]: first.error,
   };
   if (first.field === "fullName") {
-    // The name stopped the check, so the email is judged beside a name that passes.
+    // The name stopped the check, so judge the email beside one that passes.
     const rest = validateGuest({ fullName: "First Last", email: input.email });
     if (!rest.ok) problems[rest.field] = rest.error;
   }

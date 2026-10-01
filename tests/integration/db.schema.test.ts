@@ -52,7 +52,7 @@ describe("schema init", () => {
     );
   });
 
-  // Accounts are gone: booking is login-less, so there is nobody to store.
+  // Booking is login-less, so there is nobody to store.
   it("creates no users table", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
@@ -90,7 +90,6 @@ describe("schema init", () => {
     resetApp();
     const file = process.env.DATA_FILE as string;
 
-    // A file created before the app ever touched it: no tables at all.
     new Database(file).close();
     expect(tableNames(file)).not.toContain("reservations");
 

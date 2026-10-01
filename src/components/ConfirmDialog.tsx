@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
-/** Shared confirm modal; Escape closes it, focus opens on the safe action. */
+/** Focus opens on the safe action. */
 export function ConfirmDialog({
   title,
   onClose,

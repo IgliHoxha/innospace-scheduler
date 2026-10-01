@@ -5,7 +5,6 @@ import {
   verifyTurnstile,
 } from "@/lib/turnstile";
 
-// Never let a test reach Cloudflare: every call goes through this stub.
 const fetchMock = vi.fn();
 
 beforeEach(() => {

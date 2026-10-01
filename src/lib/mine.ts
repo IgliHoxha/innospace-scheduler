@@ -1,10 +1,10 @@
-// A login-less board's only way to say "You": what this browser remembers booking.
+// The board has no login, so "You" is what this browser remembers booking.
 import { minutesOfDay } from "./datetime";
 import { canonicalEmail } from "./guest";
 
 const MINE_KEY = "innospace.mine";
 
-// A convenience, not a record: the server is the truth, so the list stays short.
+// A convenience, not a record: the server is the truth, so keep it short.
 const MINE_MAX = 50;
 
 /** One remembered booking; one-letter fields go straight into localStorage. */
@@ -24,7 +24,6 @@ export interface MineEntry {
 export const slotKey = (boothId: string, startsAt: string) =>
   `${boothId}|${startsAt}`;
 
-/** Every booking recalled, whatever shape an older version left behind. */
 export function readMine(): MineEntry[] {
   try {
     const raw = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as unknown;
@@ -42,7 +41,6 @@ export function readMine(): MineEntry[] {
   }
 }
 
-/** Record a booking, newest first and deduped by slot; returns the new list. */
 export function rememberMine(entry: MineEntry): MineEntry[] {
   const next = [entry, ...readMine().filter((m) => m.k !== entry.k)].slice(
     0,
@@ -62,7 +60,7 @@ export interface HeldRange {
   end: number;
 }
 
-/** This booker's bookings the board still shows, so the run rule can warn early. */
+/** This booker's bookings still on the board, so the run rule warns early. */
 export function heldRangesFor(opts: {
   entries: readonly MineEntry[];
   /** Already canonicalised; empty until the form knows who is booking. */
@@ -83,7 +81,7 @@ export function heldRangesFor(opts: {
         (m) =>
           m.e && m.s.startsWith(`${date}T`) && canonicalEmail(m.m) === booker,
       )
-      // Only what this board still shows: storage outlives the booking it names.
+      // Storage outlives the booking it names, so trust only the board.
       .filter((m) => onBoard.has(m.k))
       .map((m) => ({ start: minutesOfDay(m.s), end: minutesOfDay(m.e) }))
   );

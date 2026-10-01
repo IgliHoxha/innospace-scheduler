@@ -21,7 +21,7 @@ function toDate(hhmm: string) {
 
 const toHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 
-/** Typed HH:MM fields; it only collects times, the form and server enforce rules. */
+/** Only collects times; the form and the server enforce the rules. */
 export default function TimeRangePicker({
   value,
   onChange,

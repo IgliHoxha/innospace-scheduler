@@ -2,13 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// No layout engine here, so this pins the declarations the behaviour rests on, not the rendering.
+// No layout engine here, so this pins the declarations, not the rendering.
 const css = readFileSync(
   join(process.cwd(), "src", "app", "globals.css"),
   "utf8",
 );
 
-/** The declarations of the one rule whose selector list is exactly this. */
 function rule(selector: string): string {
   const at = css.indexOf(`\n${selector} {`);
   expect(at, `no rule for ${selector}`).toBeGreaterThan(-1);
@@ -29,7 +28,7 @@ describe("timeline block labels: whole or absent, never cut", () => {
     expect(strut).toMatch(/width:\s*0;/);
   });
 
-  // Hidden first as the fallback, then clip, which cannot be scrolled into view.
+  // Hidden as the fallback, then clip, which cannot be scrolled into view.
   it("clips the second line, and by clip where the engine has it", () => {
     const block = rule(".daycal-block");
     expect(block).toMatch(/overflow:\s*hidden;[\s\S]*overflow:\s*clip;/);
@@ -42,13 +41,13 @@ describe("timeline block labels: whole or absent, never cut", () => {
     expect(label).not.toMatch(/text-overflow/);
   });
 
-  // A pixel threshold is right for one font size only, which is how the stub came back.
+  // A pixel threshold is right for one font size only.
   it("decides by fit, with no width threshold on the block", () => {
     expect(css).not.toMatch(/@container/);
     expect(rule(".daycal-block")).not.toMatch(/container-type/);
   });
 
-  // A fixed height cut a label whose line outgrew it; a floor lets the bar follow its text.
+  // A fixed height cuts a label that outgrows it; a floor follows the text.
   it("gives the bar a floor rather than a fixed height", () => {
     const bar = rule(".daycal-bar");
     expect(bar).toMatch(/min-height:\s*46px;/);
@@ -71,7 +70,7 @@ describe("timeline block labels: whole or absent, never cut", () => {
       "utf8",
     );
     expect(tsx).toMatch(
-      /ref=\{barRef\}\s*>\s*\{\/\*.*\*\/\}\s*<span className="daycal-block-label daycal-sizer" aria-hidden="true">/,
+      /ref=\{barRef\}\s*>\s*(?:\{\/\*.*\*\/\}\s*)?<span className="daycal-block-label daycal-sizer" aria-hidden="true">/,
     );
   });
 
@@ -99,25 +98,29 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
     expect(strip).not.toMatch(/(?<!min-)height:/);
   });
 
-  // Without it an in-flow sibling pushes every mark's resting place down a line.
+  // Without it an in-flow sibling pushes every mark down a line.
   it("pins each hour mark to the top of its strip", () => {
     const tick = rule(".daycal-tick");
     expect(tick).toMatch(/position:\s*absolute;/);
     expect(tick).toMatch(/top:\s*0;/);
   });
 
-  it("keeps one unseen mark in flow, as wide as its text", () => {
+  // Digits differ in width in some fonts, so one label cannot stand for all.
+  it("keeps every hour's label unseen in one cell, as wide as the widest", () => {
     const sizer = rule(".daycal-tick.daycal-sizer");
     expect(sizer).toMatch(/position:\s*static;/);
-    expect(sizer).toMatch(/display:\s*block;/);
+    expect(sizer).toMatch(/display:\s*grid;/);
     expect(sizer).toMatch(/width:\s*max-content;/);
     expect(sizer).toMatch(/visibility:\s*hidden;/);
     expect(sizer).not.toMatch(/font-size|line-height/);
+    expect(rule(".daycal-tick.daycal-sizer > span")).toMatch(
+      /grid-area:\s*1 \/ 1;/,
+    );
   });
 
-  it("measures that mark and thins the labels by its real width", () => {
+  it("measures that cell and thins the labels by its real width", () => {
     expect(tsx).toMatch(
-      /ref=\{tickRef\}\s*className="daycal-tick daycal-sizer"\s*aria-hidden="true"\s*>\s*00:00\s*<\/span>/,
+      /ref=\{tickRef\}\s*className="daycal-tick daycal-sizer"\s*aria-hidden="true"\s*>\s*\{hourMarks\.map\(\(t\) => \(\s*<span key=\{t\}>\{minutesToTime\(t\)\}<\/span>\s*\)\)\}\s*<\/span>/,
     );
     expect(tsx).toMatch(/setTickPx\(tick\.offsetWidth\)/);
     expect(tsx).toMatch(
@@ -132,11 +135,24 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
     expect(sizer).toMatch(/width:\s*0;/);
     expect(sizer).toMatch(/visibility:\s*hidden;/);
     expect(tsx).toMatch(
-      /<span className="daycal-pick-tag daycal-sizer" aria-hidden="true">/,
+      /<div className="daycal-pick-tag daycal-sizer" aria-hidden="true">/,
     );
   });
 
-  // Padding on the plot was right for one text size; a line of the tag itself is right for all.
+  // A stylesheet that enlarges div and not span must reach the tag's sizers too.
+  it("makes the tag's sizers the same element as the tag", () => {
+    expect(tsx).toMatch(/<div ref=\{tagRef\} className=\{tag\.className\}/);
+    expect(tsx).not.toMatch(/<span\s+className="daycal-pick-tag/);
+  });
+
+  // Floating adds padding, which a content-box observer never reports.
+  it("watches the tag's border box for its width", () => {
+    expect(tsx).toMatch(
+      /tagRo\.current\.observe\(el, \{ box: "border-box" \}\)/,
+    );
+  });
+
+  // Plot padding fits one text size; a line of the tag itself fits them all.
   it("makes the strip above the bar out of the floating tag's own line", () => {
     const strip = rule(".daycal-pick-tag.above.daycal-sizer");
     expect(strip).toMatch(/min-height:\s*20px;/);
@@ -145,7 +161,7 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
     expect(css).not.toMatch(/has-toptag/);
     expect(tsx).not.toMatch(/has-toptag/);
     expect(tsx).toMatch(
-      /\{tag\?\.above && \(\s*<span\s*className="daycal-pick-tag above daycal-sizer"\s*aria-hidden="true"\s*>/,
+      /\{tag\?\.above && \(\s*<div\s*className="daycal-pick-tag above daycal-sizer"\s*aria-hidden="true"\s*>/,
     );
   });
 

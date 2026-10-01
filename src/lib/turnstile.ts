@@ -11,7 +11,7 @@ export function turnstileEnabled(): boolean {
   );
 }
 
-/** The widget key, only when the pair is complete, so no unenforced check shows. */
+/** Only when the pair is complete, so no unenforced widget shows. */
 export function turnstileSiteKey(): string | undefined {
   return turnstileEnabled() ? optionalEnv("TURNSTILE_SITE_KEY") : undefined;
 }
@@ -32,7 +32,7 @@ export async function verifyTurnstile(
   }
 
   const form = new URLSearchParams({ secret, response: token });
-  // Binds the token to the client that solved it, so a stolen one is less useful.
+  // Binds the token to the client that solved it, blunting a stolen one.
   if (ip && ip !== "unknown") form.set("remoteip", ip);
 
   try {

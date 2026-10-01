@@ -8,7 +8,7 @@ export const RESERVATION_STATUSES = [
 
 export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 
-// Statuses that hold a slot; `satisfies` proves it's a subset of the canonical list.
+// Statuses that hold a slot, so a pending one blocks it too.
 export const ACTIVE_STATUSES = [
   "confirmed",
   "pending",
@@ -21,12 +21,9 @@ export const MAX_EMAIL = 254; // RFC 5321
 export const MAX_PASSWORD = 200;
 export const MAX_EMAIL_BODY = 5000;
 
-/** The fields a reservation submits: the slot, plus who is booking it. */
 export interface ReservationInput {
-  /** The booker's first and last name joined (see guest.ts). */
   fullName?: string;
   email?: string;
-  /** A booth id from booths.ts, e.g. "booth-1". */
   boothId?: string;
   /** Local start datetime, "YYYY-MM-DDTHH:MM" (e.g. "2026-07-16T09:30"). */
   startsAt?: string;
@@ -42,7 +39,6 @@ export interface Reservation extends ReservationInput {
   status: ReservationStatus;
 }
 
-// Footer contact fields, all required, so a footer always renders complete.
 export type ContactInfo = {
   name: string; // who signs off the confirmation
   org: string;

@@ -16,7 +16,7 @@ export function MailIcon() {
   );
 }
 
-/** Shown on your own block on hover: the label has no room for the word "Cancel". */
+/** On your own block on hover: there is no room for the word "Cancel". */
 export function TrashIcon() {
   return (
     <svg
@@ -31,7 +31,7 @@ export function TrashIcon() {
   );
 }
 
-/** Approve, on the dashboard rows. Drawn: platforms render "✓" their own way. */
+/** Drawn: platforms render a check mark character their own way. */
 export function CheckIcon() {
   return (
     <svg
@@ -46,7 +46,6 @@ export function CheckIcon() {
   );
 }
 
-/** Reject or cancel, likewise drawn rather than a "✕". */
 export function CrossIcon() {
   return (
     <svg

@@ -73,16 +73,16 @@ describe("buildDaySegments", () => {
 
 describe("snapToStep", () => {
   it("rounds to the nearest step", () => {
-    expect(snapToStep(612, 30)).toBe(600); // 10:12 -> 10:00
-    expect(snapToStep(628, 30)).toBe(630); // 10:28 -> 10:30
+    expect(snapToStep(612, 30)).toBe(600);
+    expect(snapToStep(628, 30)).toBe(630);
     expect(snapToStep(615, 30)).toBe(630); // exact midpoint rounds up
   });
 });
 
 describe("suggestedEndMin", () => {
   it("adds the preferred length, clamped to the limit", () => {
-    expect(suggestedEndMin(600, 1140, 30, 60)).toBe(660); // +60 fits
-    expect(suggestedEndMin(600, 630, 30, 60)).toBe(630); // clamped to limit
+    expect(suggestedEndMin(600, 1140, 30, 60)).toBe(660);
+    expect(suggestedEndMin(600, 630, 30, 60)).toBe(630);
   });
 
   it("never returns shorter than the minimum", () => {
@@ -103,11 +103,10 @@ describe("endForStart", () => {
   ];
 
   it("puts the end an hour after the start", () => {
-    expect(endForStart(600, gaps, 15, 60)).toBe(660); // 10:00 -> 11:00
+    expect(endForStart(600, gaps, 15, 60)).toBe(660);
   });
 
   it("clamps to the end of the stretch the start landed in", () => {
-    // 14:30 in the 14:00-15:00 gap: a full hour would overrun, so stop at 15:00.
     expect(endForStart(870, gaps, 15, 60)).toBe(900);
   });
 
@@ -116,7 +115,7 @@ describe("endForStart", () => {
   });
 
   it("returns null for a start inside a reservation", () => {
-    expect(endForStart(780, gaps, 15, 60)).toBeNull(); // 13:00 is taken
+    expect(endForStart(780, gaps, 15, 60)).toBeNull();
   });
 
   it("returns null for a start on a stretch's exclusive end", () => {
@@ -125,7 +124,7 @@ describe("endForStart", () => {
   });
 
   it("returns null when the remaining stretch is shorter than the minimum", () => {
-    expect(endForStart(895, gaps, 15, 60)).toBeNull(); // only 5 min left
+    expect(endForStart(895, gaps, 15, 60)).toBeNull();
   });
 });
 
@@ -146,7 +145,6 @@ describe("seedGap", () => {
   });
 
   it("skips to the next stretch when the wanted time is taken", () => {
-    // 09:00-11:00 booked: free until 09:00, then from 11:00.
     const gaps = [
       { from: 0, to: 540 },
       { from: 660, to: 1435 },
@@ -163,7 +161,6 @@ describe("seedGap", () => {
   });
 
   it("passes over a stretch with less than the minimum left after the wanted time", () => {
-    // 09:00 to 09:10 is free but too short, so the seed moves on to 11:00.
     const gaps = [
       { from: 0, to: 550 },
       { from: 660, to: 1435 },
@@ -176,7 +173,6 @@ describe("seedGap", () => {
     expect(seedGap(gaps, MORNING, 15)).toEqual({ from: MORNING, to: 555 });
   });
 
-  // Booked solid from 09:00: only the early morning is left, so open there.
   it("falls back to the day's first stretch when nothing later has room", () => {
     const gaps = [{ from: 0, to: 540 }];
     expect(seedGap(gaps, MORNING, 15)).toEqual({ from: 0, to: 540 });
@@ -200,7 +196,6 @@ describe("dragRange", () => {
   const stretch = { from: 540, to: 1020 };
 
   it("snaps both ends to the step, not to the hour", () => {
-    // 14:02 -> 14:00, 15:38 -> 15:40 on a 5 minute grid.
     expect(dragRange(842, 938, stretch, 5, 15)).toEqual({ from: 840, to: 940 });
   });
 
@@ -229,7 +224,6 @@ describe("dragRange", () => {
   });
 
   it("backs off the far end rather than overrun it to reach the minimum", () => {
-    // 5 minutes short of closing: the range has to extend backwards instead.
     expect(dragRange(1015, 1020, stretch, 5, 15)).toEqual({
       from: 1005,
       to: 1020,
@@ -249,25 +243,22 @@ describe("dragRange", () => {
     expect(dragRange(600, 660, stretch, 5, 15)).toEqual({ from: 600, to: 660 });
   });
 
-  // Pressing at 09:58 once rounded to 10:00, born on the hour line.
   it("does not let a press just shy of the hour snap forward onto it", () => {
     expect(dragRange(598, 602, stretch, 5, 15)).toEqual({ from: 595, to: 610 });
   });
 
   it("snaps outward, so the range covers everything dragged over", () => {
-    // 10:01 -> 11:29 must not shrink to 10:00 -> 11:30's inside.
     expect(dragRange(601, 689, stretch, 5, 15)).toEqual({ from: 600, to: 690 });
   });
 
   it("grows leftward for a leftward drag, still without rounding inward", () => {
-    // 10:02 ceils to 10:05, the minimum made up going back, as the pointer moved.
+    // 10:02 ceils to 10:05, and the minimum is made up going back.
     expect(dragRange(602, 598, stretch, 5, 15)).toEqual({ from: 590, to: 605 });
   });
 });
 
 describe("a reservation starting before the window opens", () => {
   it("is clamped to opening time with no free sliver in front of it", () => {
-    // 08:00-10:00 against a 09:00 open: the segment starts at 09:00.
     const segs = buildDaySegments(540, 1380, [{ start: 480, end: 600 }]);
     expect(segs[0]).toMatchObject({ fromMin: 540, toMin: 600 });
     expect(segs[0].reserved).not.toBeNull();
@@ -280,7 +271,7 @@ describe("a reservation starting before the window opens", () => {
 });
 
 describe("pickTagPlacement", () => {
-  // A 1000px bar over a 09:00-23:00 day, and a tag the size the chip renders at.
+  // A 1000px bar over a 09:00-23:00 day, and a tag at the chip's rendered size.
   const BAR = 1000;
   const TAG = 90;
   const FITS = 96;
@@ -311,7 +302,6 @@ describe("pickTagPlacement", () => {
     expect(place(0, 9.6).above).toBe(false);
   });
 
-  // The bug: a narrow pick near the end pinned its tag to the bar's edge.
   it("centres a floating tag on its pick rather than on the bar's end", () => {
     const p = place(85.71, 92.86);
     expect(p.leftPx).toBeCloseTo(847.85, 1);
@@ -334,13 +324,24 @@ describe("pickTagPlacement", () => {
     });
   });
 
-  it("does not try to clamp a tag wider than the bar", () => {
-    expect(place(40, 47, { tagPx: BAR + 1 }).leftPx).toBeNull();
+  // Centred, half of it left the card at either end of the day.
+  it("starts a tag wider than the bar at the bar's left edge", () => {
+    for (const [from, to] of [
+      [0, 4],
+      [40, 47],
+      [96, 100],
+    ]) {
+      expect(place(from, to, { tagPx: BAR + 1 })).toMatchObject({
+        above: true,
+        leftPx: 0,
+      });
+    }
+    expect(place(40, 47, { tagPx: BAR }).leftPx).toBe(0);
+    expect(place(96, 100, { tagPx: BAR - 1 }).leftPx).toBe(1);
   });
 });
 
 describe("tickMinutes", () => {
-  // The 24-hour day the booking screen draws, 00:00 to 24:00.
   const START = 0;
   const END = 1440;
   const LABEL = 48;
@@ -362,7 +363,7 @@ describe("tickMinutes", () => {
     expect(hours(at(301))).toEqual([0, 4, 8, 12, 16, 20, 24]);
   });
 
-  // 5 hours would fit here, but 5 does not divide 24 and would leave the evening bare.
+  // 5 hours would fit, but 5 does not divide 24 and leaves the evening bare.
   it("rounds the stride up to one that divides the day, so marks stay even", () => {
     expect(hours(at(286))).toEqual([0, 6, 12, 18, 24]);
     expect(hours(at(246))).toEqual([0, 6, 12, 18, 24]);
@@ -422,7 +423,6 @@ describe("tickMinutes", () => {
       expect(marks[marks.length - 1]).toBe(END);
       const gaps = marks.slice(1).map((m, i) => m - marks[i]);
       expect(new Set(gaps).size).toBe(1);
-      // Whatever survives has to have room for its own label.
       const gapPx = (gaps[0] / (END - START)) * barPx;
       if (marks.length > 2) expect(gapPx).toBeGreaterThanOrEqual(LABEL);
     }
@@ -444,7 +444,7 @@ describe("tickMinutes", () => {
     expect(hours(tickMinutes(570, 720, 1000, 44))).toEqual([10, 11, 12]);
   });
 
-  // No stride divides a part-hour span, so the last mark is kept by dropping its neighbour.
+  // No stride divides a part-hour span evenly.
   it("keeps the last mark of a part-hour span, dropping the one that would crowd it", () => {
     expect(hours(tickMinutes(570, 1380, 220, 44))).toEqual([
       10, 13, 16, 19, 23,
@@ -481,7 +481,6 @@ describe("barPercent", () => {
     expect(barPercent(600, 540, 660)).toBe(50);
   });
 
-  // A zero-width day would divide by zero; it clamps instead of returning NaN.
   it("does not divide by a zero-width day", () => {
     expect(barPercent(5, 600, 600)).toBe(0);
     expect(barPercent(605, 600, 600)).toBe(100);
@@ -553,7 +552,7 @@ describe("hourCells", () => {
   it("closes every box that has already started", () => {
     const all = cells([], 13 * 60 + 10);
     expect(all[12].free).toBe(false);
-    expect(all[13].free).toBe(false); // 13:00 began ten minutes ago
+    expect(all[13].free).toBe(false);
     expect(all[14].free).toBe(true);
   });
 
@@ -579,7 +578,6 @@ describe("hourCells", () => {
     expect(all[11].free).toBe(true);
   });
 
-  // 23:00 - 23:30 is all the last box can offer here, short of the 60-minute minimum.
   it("closes the last box when what is left of it is under the minimum", () => {
     const all = cells([], 0, 1410, 60);
     expect(all[23]).toMatchObject({ end: 1410, free: false });
@@ -733,7 +731,7 @@ describe("wantedStartMin", () => {
 });
 
 describe("roomFor", () => {
-  // The booking screen's own figures: a 27px hour mark and a 71px tag at their designed sizes.
+  // The screen's own figures: a 27px hour mark and a 71px tag as designed.
   const tick = (px: number) => roomFor(px, 48, 1.5, 7);
   const tag = (px: number) => roomFor(px, 96, 1, 24);
 
@@ -775,7 +773,6 @@ describe("fittingTicks", () => {
   const fit = (barPx: number, labelPx: number) =>
     fittingTicks(START, END, barPx, labelPx, FLOOR, GAP);
 
-  /** Where each label lies on the bar: the ends anchored to its edges, the rest centred. */
   const spans = (marks: number[], barPx: number, labelPx: number) =>
     marks.map((m) => {
       if (m <= START) return [0, labelPx];
@@ -805,7 +802,6 @@ describe("fittingTicks", () => {
     expect(hours(400)).toEqual([0, 24]);
   });
 
-  // The whole point: whatever the text measures, no label is drawn over its neighbour.
   it("never lets two labels touch, at any bar width and any label width", () => {
     for (let labelPx = 8; labelPx <= 420; labelPx += 3) {
       for (let barPx = 40; barPx <= 2600; barPx += 11) {
@@ -834,6 +830,64 @@ describe("fittingTicks", () => {
   it("labels nothing when one label is wider than the bar", () => {
     expect(fit(99, 100)).toEqual([]);
     expect(fit(300, Number.POSITIVE_INFINITY)).toEqual([]);
+  });
+
+  // Not a whole-hour day: the last mark is centred, not anchored to the end.
+  describe("a window that does not start or end on the hour", () => {
+    /** Each label as drawn for any window: ends anchored, the rest centred. */
+    const drawn = (
+      marks: number[],
+      start: number,
+      end: number,
+      barPx: number,
+      labelPx: number,
+    ) =>
+      marks.map((m) => {
+        if (m <= start) return [0, labelPx];
+        if (m >= end) return [barPx - labelPx, barPx];
+        const at = ((m - start) / (end - start)) * barPx;
+        return [at - labelPx / 2, at + labelPx / 2];
+      });
+
+    it("drops a last mark that would overlap its neighbour", () => {
+      expect(fittingTicks(0, 90, 200, 90, FLOOR, GAP)).toEqual([0]);
+    });
+
+    it("drops a last mark that would hang past the bar", () => {
+      const marks = fittingTicks(0, 1410, 600, 100, FLOOR, GAP);
+      expect(marks[marks.length - 1]).toBeLessThan(1380);
+      for (const [, to] of drawn(marks, 0, 1410, 600, 100)) {
+        expect(to).toBeLessThanOrEqual(600);
+      }
+    });
+
+    it("never draws a label over another or outside the bar, for any window", () => {
+      for (let start = 0; start <= 600; start += 45) {
+        for (let end = start + 60; end <= 1440; end += 75) {
+          for (const barPx of [120, 246, 400, 777, 1126]) {
+            for (const labelPx of [20, 27, 64, 100, 173]) {
+              const marks = fittingTicks(
+                start,
+                end,
+                barPx,
+                labelPx,
+                FLOOR,
+                GAP,
+              );
+              const at = drawn(marks, start, end, barPx, labelPx);
+              at.forEach(([from, to], i) => {
+                expect(from).toBeGreaterThanOrEqual(-1e-6);
+                expect(to).toBeLessThanOrEqual(barPx + 1e-6);
+                if (i)
+                  expect(from - at[i - 1][1]).toBeGreaterThanOrEqual(
+                    GAP - 1e-6,
+                  );
+              });
+            }
+          }
+        }
+      }
+    });
   });
 
   it("returns every mark before the bar is measured, whatever the label", () => {

@@ -10,7 +10,6 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue("sent"),
 }));
 
-// Internal chrome: the suite asserts the call, never the network.
 vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));
@@ -281,7 +280,6 @@ describe("POST /api/reservations - slot validation", () => {
   });
 });
 
-// There are no opening hours: every hour of the day takes a booking.
 describe("POST /api/reservations - any hour of the day", () => {
   const TOMORROW = "2026-07-17";
 
@@ -363,7 +361,7 @@ describe("POST /api/reservations - any hour of the day", () => {
   });
 });
 
-// With no closing time a sitting can run past midnight, so the run rule must follow it.
+// No closing time: a sitting can pass midnight, so the run rule must follow.
 describe("POST /api/reservations - a run across midnight", () => {
   const TOMORROW = "2026-07-17";
   // Each just under the 2-hour limit alone; together 3h50 with a 5-minute seam.
@@ -483,7 +481,7 @@ describe("POST /api/reservations - success", () => {
     expect((await json(res)).reservation?.email).toBe("ada@example.com");
   });
   it("201 pending for a long reservation that needs approval", async () => {
-    const res = await post({ ...ok, end: "17:00", note: "Workshop" }); // 3h
+    const res = await post({ ...ok, end: "17:00", note: "Workshop" });
     expect(res.status).toBe(201);
     expect((await json(res)).reservation?.status).toBe("pending");
     expect(vi.mocked(email.sendReservationEmail).mock.calls[0][1]).toBe(
@@ -503,7 +501,6 @@ describe("POST /api/reservations - success", () => {
   it("frees the slot again after a failed send", async () => {
     vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("failed");
     expect((await post(ok)).status).toBe(502);
-    // The very same slot must still be bookable by the next person.
     expect((await post(ok)).status).toBe(201);
   });
 
@@ -543,7 +540,7 @@ describe("POST /api/reservations - success", () => {
     );
   });
   it("409 when that email already holds an overlapping booth", async () => {
-    await post(ok); // booth-1, 14:00-15:00
+    await post(ok);
     const res = await post({ ...ok, boothId: "booth-2", start: "14:30" });
     expect(res.status).toBe(409);
     expect((await json(res)).error).toContain("already have a reservation");
@@ -589,7 +586,7 @@ describe("POST /api/reservations - per-IP throttle", () => {
   });
 });
 
-// The throttle keys on the IP alone, so a forgeable one meant no throttle.
+// The throttle keys on the IP alone, so a forgeable one means no throttle.
 describe("POST /api/reservations - a forged address header cannot escape the throttle", () => {
   const SECRET = "proof-secret";
   const hhmm = (min: number) =>
@@ -631,7 +628,6 @@ describe("POST /api/reservations - a forged address header cannot escape the thr
     for (let i = 0; i < 20; i++) {
       expect((await bookAs(i, "203.0.113.1", SECRET)).status).toBe(201);
     }
-    // A different visitor, proven by the header, starts fresh instead of inheriting.
     expect((await bookAs(20, "203.0.113.2", SECRET)).status).toBe(201);
   });
 });
@@ -703,7 +699,6 @@ describe("DELETE /api/reservations", () => {
 });
 
 describe("POST /api/reservations - Turnstile", () => {
-  // Never reaches Cloudflare: siteverify is stubbed per test.
   const fetchMock = vi.fn();
   const enable = () => {
     vi.stubEnv("TURNSTILE_SITE_KEY", "site-key");
@@ -803,7 +798,7 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
     expect((await json(res)).reservation?.status).toBe("confirmed");
   });
 
-  // The browser no longer judges this, so the route is the only guard.
+  // The browser does not judge this, so the route is the only guard.
   it("does not chain onto a booking that was cancelled", async () => {
     const first = await at("14:00", "15:00");
     expect(first.status).toBe(201);
@@ -816,7 +811,6 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
     expect((await json(res)).reservation?.status).toBe("confirmed");
   });
 
-  // A pending request holds its slot, so it extends a run too.
   it("chains onto a pending neighbour, which holds its slot too", async () => {
     db.createReservation(
       {
@@ -882,7 +876,6 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
 
   it("does not chain bookings with a real gap between them", async () => {
     expect((await at("14:00", "15:00")).status).toBe(201);
-    // 16:00 leaves a bookable hour clear, so this stands on its own.
     const res = await at("16:00", "17:00", { boothId: "booth-2" });
     expect(res.status).toBe(201);
     expect((await json(res)).reservation?.status).toBe("confirmed");

@@ -245,7 +245,7 @@ describe("GET /api/availability earliest (today only)", () => {
     expect(body.earliest).toBe("10:30");
   });
 
-  // Regression: seeding from earliest once produced an off-grid, refused start.
+  // An off-grid earliest would seed the form with a start that is refused.
   it("rounds earliest up onto the step grid", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(`${DAY}T15:22:00`));
@@ -291,7 +291,6 @@ describe("GET /api/availability earliest (today only)", () => {
   });
 });
 
-// The block above pins a fixed DAY, so only the "other day" path ran.
 describe("GET /api/availability earliest (the request is for today)", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
   afterEach(() => vi.useRealTimers());

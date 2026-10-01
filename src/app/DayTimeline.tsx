@@ -24,26 +24,25 @@ interface Reserved {
   label: string;
   /** Booked from this browser; the board never learns who anyone else is. */
   mine: boolean;
-  /** Present only for a booking this browser made: the proof needed to cancel it. */
+  /** The proof needed to cancel; only on a booking this browser made. */
   cancelToken?: string;
 }
 
 // A pick narrower than this (px) cannot hold its tag, so it floats.
 const TAG_FITS_PX = 96;
 
-// Clear space (px) a tag keeps inside its pick, so enlarged text floats it sooner.
+// Space (px) a tag keeps inside its pick, so enlarged text floats it sooner.
 const TAG_MARGIN_PX = 24;
 
 // Travel (px) before a press is a drag; below it, it stays a click.
 const DRAG_SLOP_PX = 4;
 
-// Room (px) a tick needs clear of its neighbour, edge labels included, so a narrow bar shows fewer.
+// Room (px) a tick needs clear of its neighbour, so a narrow bar shows fewer.
 const TICK_LABEL_PX = 48;
 
-// Clear space (px) between two marks, on top of the widths enlarged text measures at.
+// Clear space (px) between two marks, on top of their measured widths.
 const TICK_GAP_PX = 7;
 
-/** Availability graph for one booth and day; `onPick` also picks the range. */
 export default function DayTimeline({
   earliest,
   reserved,
@@ -59,20 +58,19 @@ export default function DayTimeline({
   earliest: string;
   reserved: Reserved[];
   selection: { start: string; end: string } | null;
-  /** Called with "HH:MM" bounds as the pick changes. Omit for a read-only graph. */
+  /** Gets "HH:MM" bounds as the pick changes; omit for a read-only graph. */
   onPick?: (start: string, end: string) => void;
-  /** TIME_STEP_MINUTES: the grid a drag snaps to. A click takes the whole hour. */
+  /** The minute grid a drag snaps to; a click takes the whole hour. */
   step: number;
-  /** MIN_RESERVATION_MINUTES, so a drag can't return a range the form rejects. */
+  /** Shortest booking, so a drag can't return a range the form rejects. */
   minMinutes: number;
-  /** Where an enquiry about a taken slot goes. Omit and taken blocks stay inert. */
+  /** Enquiries about a taken slot go here; omitted, taken blocks stay inert. */
   contact?: { phone: string; email: string };
-  /** Called after this browser cancels its own booking, so the board reloads. */
   onCancelled?: () => void;
   boothName?: string;
   dateLabel?: string;
 }) {
-  // The bar draws all 24 hours; a pick stops a step short, as "24:00" is not a time.
+  // A pick stops a step short of the bar's 24 hours: "24:00" is not a time.
   const dayStartMin = 0;
   const dayEndMin = 24 * 60;
   const lastEndMin = dayEndMinute(step);
@@ -98,7 +96,6 @@ export default function DayTimeline({
   for (let h = Math.ceil(dayStartMin / 60) * 60; h <= dayEndMin; h += 60) {
     hourMarks.push(h);
   }
-  // Edge ticks anchor to the bar's ends; inner ones centre on their mark.
   const tickStyle = (t: number) => {
     if (t <= dayStartMin) return { left: 0 };
     if (t >= dayEndMin) return { right: 0 };
@@ -116,7 +113,7 @@ export default function DayTimeline({
   // Measure the bar so a narrow pick can move its time tag outside the block.
   const barRef = useRef<HTMLDivElement>(null);
   const [barPx, setBarPx] = useState(0);
-  // One hour mark as it really renders, so enlarged text thins the marks instead of piling them up.
+  // One hour mark as it renders, so enlarged text thins the marks.
   const tickRef = useRef<HTMLSpanElement>(null);
   const [tickPx, setTickPx] = useState(0);
   useEffect(() => {
@@ -146,10 +143,10 @@ export default function DayTimeline({
 
   // The tag's width, so a floating tag centres on its pick inside the bar.
   const [tagPx, setTagPx] = useState(0);
-  // Its text alone, which is the same inside a pick or floating, so the choice cannot flip-flop.
+  // Its text alone: the same inside or floating, so the choice cannot flip.
   const [tagTextPx, setTagTextPx] = useState(0);
   const tagRo = useRef<ResizeObserver | null>(null);
-  // A callback ref: the tag mounts with the pick and its width tracks its class.
+  // Callback ref: the tag mounts with the pick and its width tracks its class.
   const tagRef = useCallback((el: HTMLDivElement | null) => {
     tagRo.current?.disconnect();
     if (!el) return;
@@ -161,7 +158,8 @@ export default function DayTimeline({
     };
     update();
     tagRo.current = new ResizeObserver(update);
-    tagRo.current.observe(el);
+    // The border box: floating adds padding, which the content box never sees.
+    tagRo.current.observe(el, { box: "border-box" });
   }, []);
 
   // One box per hour, pickable only if wholly free and not past.
@@ -312,7 +310,6 @@ export default function DayTimeline({
     }
   }
 
-  // Escape closes whichever dialog is open; the overlay handles clicks outside.
   useEffect(() => {
     if (!askOn && !cancelOn) return;
     const onKey = (e: KeyboardEvent) => {
@@ -378,7 +375,6 @@ export default function DayTimeline({
     });
     tag = {
       above: place.above,
-      // Roomy pick: the tag sits inside. Too tight: it floats clear above.
       className: `daycal-pick-tag ${place.above ? "above" : "over"}`,
       style:
         place.leftPx == null
@@ -399,27 +395,27 @@ export default function DayTimeline({
       </div>
 
       <div className="daycal-plot">
-        {/* The strip a floating tag sits in: one unseen line of the tag itself, so it grows with it. */}
+        {/* An unseen line of the tag, so the strip above grows with it. */}
         {tag?.above && (
-          <span
+          <div
             className="daycal-pick-tag above daycal-sizer"
             aria-hidden="true"
           >
             {"\u200b"}
-          </span>
+          </div>
         )}
         <div
           className={`daycal-bar ${dragging ? "dragging" : ""}`}
           ref={barRef}
         >
-          {/* A zero-width space in the label's own class, so the bar grows with enlarged text. */}
+          {/* In the label's own class, so the bar grows with enlarged text. */}
           <span className="daycal-block-label daycal-sizer" aria-hidden="true">
             {"\u200b"}
           </span>
-          {/* And one in the tag's class: a tag sitting inside its pick must fit the bar too. */}
-          <span className="daycal-pick-tag daycal-sizer" aria-hidden="true">
+          {/* A tag sitting inside its pick must fit the bar too. */}
+          <div className="daycal-pick-tag daycal-sizer" aria-hidden="true">
             {"\u200b"}
-          </span>
+          </div>
           {hourMarks
             .filter((t) => t > dayStartMin && t < dayEndMin)
             .map((t) => (
@@ -441,7 +437,6 @@ export default function DayTimeline({
           {segments.map((s, i) => {
             if (!s.reserved) return null;
             const src = s.reserved.src;
-            // Only a booking this browser holds a token for can offer to cancel.
             const canCancel = !!src.cancelToken;
             const range = { from: s.fromMin, to: s.toMin };
             // Segments are consecutive, so a booked next one means these touch.
@@ -482,7 +477,7 @@ export default function DayTimeline({
 
           {hasPick && (
             <div
-              // At the bar's end the border must follow the curve, or it is sliced.
+              // At the bar's end the border follows the curve, or it is sliced.
               className={`daycal-pick ${pct(selFrom!) === 0 ? "at-start" : ""} ${
                 pctEnd(selTo!) === 100 ? "at-end" : ""
               }`}
@@ -493,7 +488,7 @@ export default function DayTimeline({
             />
           )}
 
-          {/* Above everything to take the pointer; taken hours opt out so their tooltips still work. */}
+          {/* On top to take the pointer; taken hours opt out for tooltips. */}
           {onPick &&
             cells.map((c, i) => (
               <button
@@ -505,7 +500,7 @@ export default function DayTimeline({
                   width: `${pct(c.to) - pct(c.from)}%`,
                 }}
                 disabled={!c.free}
-                // No title: it would contradict the pick tag once a drag resizes.
+                // No title: it would contradict the pick tag as a drag resizes.
                 aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.end)}`}
                 onPointerDown={(e) => {
                   if (!c.free) return;
@@ -530,13 +525,15 @@ export default function DayTimeline({
       </div>
 
       <div className="daycal-ticks">
-        {/* One unseen mark in flow: it gives the strip its height and the thinning a real width. */}
+        {/* Unseen, in flow: the strip's height and the width to thin by. */}
         <span
           ref={tickRef}
           className="daycal-tick daycal-sizer"
           aria-hidden="true"
         >
-          00:00
+          {hourMarks.map((t) => (
+            <span key={t}>{minutesToTime(t)}</span>
+          ))}
         </span>
         {tickLabels.map((t) => (
           <span key={t} className="daycal-tick" style={tickStyle(t)}>

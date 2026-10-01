@@ -10,7 +10,7 @@ import {
 const KEY = "innospace.mine";
 const DAY = "2026-07-16";
 
-/** Minimal in-memory Storage: the suite runs on node, which has no localStorage. */
+/** In-memory Storage: the suite runs on node, which has no localStorage. */
 function installStorage(opts: { throwOnWrite?: boolean } = {}) {
   const map = new Map<string, string>();
   const store = {
@@ -64,7 +64,7 @@ describe("readMine", () => {
     expect(readMine()).toEqual([entry()]);
   });
 
-  // Bare key strings predate the run rule needing times, and must still label "You".
+  // Bare keys predate the run rule needing times, and must still label "You".
   it("upgrades a legacy bare-string entry instead of dropping it", () => {
     store.set(KEY, JSON.stringify([`booth-1|${DAY}T09:00`]));
     expect(readMine()).toEqual([
@@ -117,14 +117,14 @@ describe("rememberMine", () => {
     for (let i = 0; i < 60; i++) rememberMine(entry({ k: `slot-${i}` }));
     const kept = readMine();
     expect(kept).toHaveLength(50);
-    expect(kept[0].k).toBe("slot-59"); // newest survives
-    expect(kept.some((m) => m.k === "slot-0")).toBe(false); // oldest evicted
+    expect(kept[0].k).toBe("slot-59");
+    expect(kept.some((m) => m.k === "slot-0")).toBe(false);
   });
 
   it("still returns the list when storage refuses the write", () => {
     installStorage({ throwOnWrite: true });
     const next = rememberMine(entry());
-    // The board can still say "You" this session; it just won't survive a reload.
+    // The board can still say "You" this session; it won't survive a reload.
     expect(next).toEqual([entry()]);
     expect(readMine()).toEqual([]);
   });
@@ -172,14 +172,12 @@ describe("heldRangesFor", () => {
     expect(heldRangesFor(base)).toHaveLength(1);
   });
 
-  // No board on screen can contradict another booth's entry.
   it("drops an entry for another booth, which nothing here can confirm", () => {
     expect(
       heldRangesFor({ ...base, boothId: "booth-2", boardStarts: ["14:00"] }),
     ).toEqual([]);
   });
 
-  // The shape that blocked a one-hour booking: a phantom neighbour.
   it("does not count a cancelled neighbour still sitting in storage", () => {
     const entries = [
       entry({

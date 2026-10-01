@@ -44,9 +44,9 @@ export async function PATCH(
     );
   }
 
-  // Only a pending row becomes an approval; synchronous reads cannot interleave.
+  // Only a pending row becomes an approval; sync reads cannot interleave.
   const before = getReservation(id);
-  // One atomic UPDATE ... RETURNING: a separate existence read adds a race window.
+  // One atomic UPDATE ... RETURNING: a separate existence read would race.
   const reservation = updateReservationStatus(id, status);
   if (!reservation) {
     return NextResponse.json(
@@ -55,7 +55,7 @@ export async function PATCH(
     );
   }
 
-  // Notify the member on confirm/cancel. Never block the response on email.
+  // A failed email must not fail the status change.
   if (status === "confirmed" || status === "cancelled") {
     try {
       await sendReservationEmail(
@@ -68,7 +68,7 @@ export async function PATCH(
     }
   }
 
-  // The booking was announced when it was made, so only a verdict on it is news.
+  // The booking was announced when made, so only a verdict on it is news.
   if (status === "cancelled") {
     await postReservationToSlack(reservation, "cancelled", boothName, "admin");
   } else if (status === "confirmed" && before?.status === "pending") {

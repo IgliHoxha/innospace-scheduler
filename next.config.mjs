@@ -3,19 +3,15 @@ const nextConfig = {
   reactStrictMode: true,
   // Self-contained server bundle for a small Docker image.
   output: "standalone",
-  // Keep better-sqlite3 external so its native .node binary loads from
-  // node_modules rather than being bundled.
+  // Kept external so the native .node binary loads from node_modules.
   serverExternalPackages: ["better-sqlite3"],
 
-  // Cache-Control for the Cloudflare edge, so crawler traffic stops waking the
-  // Fly machine. `s-maxage` is what the CDN honours; `max-age=0` keeps browsers
-  // revalidating, so a booking screen is never served from a visitor's own disk.
+  // Edge caching stops crawlers waking the Fly machine; browsers revalidate.
   async headers() {
     const noStore = [{ key: "Cache-Control", value: "no-store" }];
     return [
       {
-        // The booking shell varies only with the reservable-date list, which
-        // rolls once a day, so minutes of edge TTL are safe.
+        // The shell varies only with the date list, which rolls once a day.
         source: "/",
         headers: [
           {
@@ -26,7 +22,7 @@ const nextConfig = {
         ],
       },
       {
-        // Cacheable only because a booking or cancellation refetches with a `t` param to force a miss.
+        // Cacheable only because a booking or cancel busts it with a `t` param.
         source: "/api/availability",
         headers: [
           {
@@ -35,8 +31,7 @@ const nextConfig = {
           },
         ],
       },
-      // Never cacheable, stated explicitly so a broad "cache everything" rule at
-      // Cloudflare can't ever serve one admin's dashboard to somebody else.
+      // Explicit, so a broad Cloudflare cache rule can't leak an admin page.
       { source: "/dashboard/:path*", headers: noStore },
       { source: "/login", headers: noStore },
       { source: "/cancel/:path*", headers: noStore },

@@ -99,7 +99,7 @@ export default function DashboardClient({
           setPage(tp);
           return;
         }
-        // A countless response must not blank the boxes, so the last set stands.
+        // A countless response must not blank the boxes: the last set stands.
         setData((prev) => ({ ...json, counts: json.counts ?? prev.counts }));
       } finally {
         if (id === reqId.current) setLoading(false);
@@ -500,10 +500,10 @@ export default function DashboardClient({
   );
 }
 
-// Compact list of page numbers with ellipses, e.g. 1 … 4 5 [6] 7 8 … 20.
+// Compact list of page numbers with ellipses, e.g. 1 ... 4 5 [6] 7 8 ... 20.
 function pageList(page: number, totalPages: number): (number | "…")[] {
   const out: (number | "…")[] = [];
-  // Pages either side of the current one; never `window`, which shadows the global.
+  // Pages each side of the current one; `window` would shadow the global.
   const siblings = 1;
   for (let p = 1; p <= totalPages; p++) {
     if (
@@ -620,7 +620,6 @@ function WhenCell({ iso }: { iso: string }) {
   );
 }
 
-/** Per-row editable cancellation email (only relevant while confirmed). */
 function EmailPreview({
   reservation,
   draft,

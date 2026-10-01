@@ -1,4 +1,4 @@
-// Does the domain accept mail? Server-only (node:dns); guest.ts holds the rules.
+// Server-only (node:dns); guest.ts holds the client-safe syntax rules.
 import { promises as dns } from "node:dns";
 
 const NO_MAIL = "That email domain doesn't accept mail. Please check it.";
@@ -38,7 +38,7 @@ async function domainAcceptsMail(domain: string): Promise<boolean | null> {
     if (mx.length > 0) return mx.some((r) => r.exchange && r.exchange !== ".");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOTFOUND") return false; // the domain does not exist
+    if (code === "ENOTFOUND") return false;
     if (code !== "ENODATA") return null; // timeout, SERVFAIL: unknown
   }
 
@@ -52,7 +52,7 @@ async function domainAcceptsMail(domain: string): Promise<boolean | null> {
   }
 }
 
-/** Deliverability gate for a syntactically valid address (see guest.ts first). */
+/** Expects an address guest.ts already found well-formed. */
 export async function checkEmailDeliverable(
   email: string,
 ): Promise<EmailCheck> {
@@ -66,7 +66,7 @@ export async function checkEmailDeliverable(
   }
 
   const accepts = await domainAcceptsMail(domain);
-  if (accepts === null) return { ok: true }; // DNS unreachable: never block on it
+  if (accepts === null) return { ok: true }; // DNS down: never block on it
   cache.set(domain, { accepts, at: Date.now() });
   return accepts ? { ok: true } : { ok: false, error: NO_MAIL };
 }

@@ -1,4 +1,3 @@
-// Shared test plumbing: throwaway DBs, module reset, request builders.
 import { vi } from "vitest";
 import os from "os";
 import path from "path";
@@ -9,14 +8,12 @@ import { SESSION_COOKIE, createSessionToken, type Session } from "@/lib/auth";
 
 const tmpFiles: string[] = [];
 
-/** A unique temp path for a throwaway SQLite DB. */
 export function freshDataFile(): string {
   const f = path.join(os.tmpdir(), `innospace-test-${randomUUID()}.db`);
   tmpFiles.push(f);
   return f;
 }
 
-/** Remove every temp DB file created so far (plus its WAL/SHM sidecars). */
 export function cleanupTmp(): void {
   for (const f of tmpFiles.splice(0)) {
     for (const ext of ["", "-wal", "-shm"]) {
@@ -29,7 +26,6 @@ export function cleanupTmp(): void {
   }
 }
 
-/** Reset the module registry and point the DB at a new file. */
 export function resetApp(): void {
   vi.resetModules();
   process.env.DATA_FILE = freshDataFile();
@@ -37,7 +33,6 @@ export function resetApp(): void {
 
 type DbModule = typeof import("@/lib/db");
 
-/** resetApp() plus a fresh import of the db module bound to the new file. */
 export async function loadDb(): Promise<DbModule> {
   resetApp();
   return import("@/lib/db");
@@ -51,7 +46,6 @@ export function token(session: Session): string {
   return createSessionToken(session);
 }
 
-/** A NextRequest with optional JSON body and cookie; `rawBody` sends it raw. */
 export function makeRequest(
   url: string,
   opts: {

@@ -56,16 +56,16 @@ describe("approval + note thresholds", () => {
     // default AUTO_APPROVE_MAX_HOURS = 2
     expect(schedule.needsApproval("2026-07-16T09:00", "2026-07-16T11:00")).toBe(
       false,
-    ); // exactly 2h
+    );
     expect(schedule.needsApproval("2026-07-16T09:00", "2026-07-16T11:30")).toBe(
       true,
-    ); // 2.5h
+    );
     expect(schedule.noteRequired("2026-07-16T09:00", "2026-07-16T11:00")).toBe(
       true,
-    ); // exactly 2h
+    );
     expect(schedule.noteRequired("2026-07-16T09:00", "2026-07-16T10:59")).toBe(
       false,
-    ); // under 2h
+    );
   });
 
   it("respects an AUTO_APPROVE_MAX_HOURS override", () => {
@@ -107,20 +107,20 @@ describe("ceilToStep", () => {
 
 describe("isValidTimeOfDay", () => {
   it("enforces the step grid at any hour of the day (step 5)", () => {
-    expect(schedule.isValidTimeOfDay(0)).toBe(true); // 00:00, the day's first minute
-    expect(schedule.isValidTimeOfDay(3 * 60 + 5)).toBe(true); // 03:05, the small hours
+    expect(schedule.isValidTimeOfDay(0)).toBe(true);
+    expect(schedule.isValidTimeOfDay(3 * 60 + 5)).toBe(true);
     expect(schedule.isValidTimeOfDay(9 * 60)).toBe(true);
     expect(schedule.isValidTimeOfDay(23 * 60 + 55)).toBe(true); // the last step
-    expect(schedule.isValidTimeOfDay(9 * 60 + 7)).toBe(false); // 09:07 off grid
+    expect(schedule.isValidTimeOfDay(9 * 60 + 7)).toBe(false);
     expect(schedule.isValidTimeOfDay(24 * 60)).toBe(false); // 24:00 is not a time
     expect(schedule.isValidTimeOfDay(-5)).toBe(false);
-    expect(schedule.isValidTimeOfDay(9.5 as unknown as number)).toBe(false); // non-integer
+    expect(schedule.isValidTimeOfDay(9.5 as unknown as number)).toBe(false);
   });
 
   it("honours a TIME_STEP_MINUTES override, which also moves the last step", () => {
     vi.stubEnv("TIME_STEP_MINUTES", "15");
     expect(schedule.isValidTimeOfDay(8 * 60)).toBe(true);
-    expect(schedule.isValidTimeOfDay(8 * 60 + 5)).toBe(false); // off the 15-min grid
+    expect(schedule.isValidTimeOfDay(8 * 60 + 5)).toBe(false);
     expect(schedule.isValidTimeOfDay(8 * 60 + 15)).toBe(true);
     expect(schedule.isValidTimeOfDay(23 * 60 + 45)).toBe(true);
     expect(schedule.isValidTimeOfDay(24 * 60)).toBe(false);
@@ -142,9 +142,9 @@ describe("isValidTimeOfDay", () => {
 
   it("throws when TIME_STEP_MINUTES does not divide 60", () => {
     expect(schedule.stepMinutes()).toBe(5); // baseline
-    vi.stubEnv("TIME_STEP_MINUTES", "7"); // does not divide 60
+    vi.stubEnv("TIME_STEP_MINUTES", "7");
     expect(() => schedule.stepMinutes()).toThrow();
-    vi.stubEnv("TIME_STEP_MINUTES", "90"); // over 60
+    vi.stubEnv("TIME_STEP_MINUTES", "90");
     expect(() => schedule.stepMinutes()).toThrow();
   });
 });
@@ -154,8 +154,8 @@ describe("reservation window", () => {
     const today = todayYMD();
     expect(schedule.isReservableDate(today)).toBe(true);
     expect(schedule.isReservableDate("not-a-date")).toBe(false);
-    expect(schedule.isReservableDate("1999-01-01")).toBe(false); // in the past
+    expect(schedule.isReservableDate("1999-01-01")).toBe(false);
     expect(schedule.isReservableDate(undefined)).toBe(false);
-    expect(schedule.reservableDates()[0]).toBe(today); // window starts today
+    expect(schedule.reservableDates()[0]).toBe(today);
   });
 });

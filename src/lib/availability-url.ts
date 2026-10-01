@@ -1,14 +1,13 @@
 // The board's query string, kept out of the component so it can be tested.
 
-// The edge's s-maxage plus stale-while-revalidate: how long it can serve an older board.
+// The edge's s-maxage plus stale-while-revalidate, in total.
 export const EDGE_STALE_MS = 60_000;
 
-/** Whether the edge could still hold a board older than this browser's last write. */
+/** True while the edge could hold a board older than our last write. */
 export function edgeMayBeStale(now: number, wroteAt: number): boolean {
   return now - wroteAt < EDGE_STALE_MS;
 }
 
-/** A board's per-booth counts, but only when it answers for the day on screen. */
 export function countsForDate(
   board: { date?: string; counts?: Record<string, number> } | null,
   date: string,
@@ -16,7 +15,6 @@ export function countsForDate(
   return board?.date === date ? board.counts : undefined;
 }
 
-/** Query for /api/availability; `freshAt` keeps the board off the CDN. */
 export function availabilityQuery(
   boothId: string,
   date: string,

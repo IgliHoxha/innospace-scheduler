@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
 import { DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_USER } from "../helpers/fixtures";
 
-// resetApp() re-imports the route with a fresh limiter, so tests start clean.
 type Route = typeof import("@/app/api/login/route");
 let route: Route;
 
@@ -37,7 +36,7 @@ describe("POST /api/login brute-force throttling", () => {
   it("locks the account with 429 + Retry-After after the threshold", async () => {
     expect((await wrong()).status).toBe(401);
     expect((await wrong()).status).toBe(401);
-    const res = await wrong(); // 3rd failure trips the account lockout
+    const res = await wrong();
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("60");
     expect((await res.json()).error).toMatch(/too many failed attempts/i);
@@ -46,16 +45,15 @@ describe("POST /api/login brute-force throttling", () => {
   it("blocks even correct credentials while locked out", async () => {
     await wrong();
     await wrong();
-    await wrong(); // locked
+    await wrong();
     expect((await right()).status).toBe(429);
   });
 
   it("does not lock a different account on the same IP", async () => {
     await wrong("admin");
     await wrong("admin");
-    await wrong("admin"); // 'admin' account locked
+    await wrong("admin");
 
-    // A different login on the same IP is still accepted for its own attempts.
     const other = await post(
       { login: "someone@else.com", password: "whatever" },
       "1.1.1.1",
@@ -65,10 +63,10 @@ describe("POST /api/login brute-force throttling", () => {
 
   it("resets the account counter after a successful login", async () => {
     await wrong();
-    await wrong(); // 2 failures, not yet locked
-    expect((await right()).status).toBe(200); // success clears history
+    await wrong();
+    expect((await right()).status).toBe(200);
     expect((await wrong()).status).toBe(401);
-    expect((await wrong()).status).toBe(401); // budget restored
+    expect((await wrong()).status).toBe(401);
   });
 
   it("still 400s a missing field without counting it as an attempt", async () => {
@@ -112,7 +110,7 @@ describe("POST /api/login - the IP ban, the only permanent block", () => {
     await wrong();
     expect((await wrong()).status).toBe(403);
 
-    vi.advanceTimersByTime(365 * 24 * 3600_000); // a year on
+    vi.advanceTimersByTime(365 * 24 * 3600_000);
     expect((await wrong()).status).toBe(403);
     expect((await right()).status).toBe(403);
   });
@@ -164,7 +162,7 @@ describe("POST /api/login - oversized input counts like any other failure", () =
     post({ login: "a".repeat(300), password: "b".repeat(300) });
 
   it("401s an over-long login without letting it reach the hasher", async () => {
-    expect((await huge()).status).toBe(429); // 1 attempt allowed, so this trips the lockout
+    expect((await huge()).status).toBe(429); // a budget of 1, so this trips it
   });
 
   it("bans the IP through the oversized path too, not just wrong passwords", async () => {
@@ -174,10 +172,10 @@ describe("POST /api/login - oversized input counts like any other failure", () =
   });
 });
 
-// Regression: the Fly origin skips Cloudflare, so cf-connecting-ip is forgeable.
+// The Fly origin skips Cloudflare, so cf-connecting-ip is forgeable.
 describe("POST /api/login - a forged address header cannot escape the IP throttle", () => {
   const SECRET = "proof-secret";
-  const PEER = "198.51.100.9"; // the real TCP peer, the same for every forged attempt
+  const PEER = "198.51.100.9"; // the real TCP peer behind every forged attempt
 
   beforeEach(async () => {
     resetApp();

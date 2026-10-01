@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-/** Confirm step for the emailed cancel link: shows what's being cancelled first. */
 export default function CancelClient({
   token,
   booth,

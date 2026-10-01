@@ -11,16 +11,14 @@ export type SlackOutcome = "sent" | "skipped" | "failed";
 // A hung POST would hold the booking's own response open behind it.
 const TIMEOUT_MS = 5000;
 
-// The icon says which state the booth is in before a word is read.
 const ICON_BOOKED = ":calendar:";
 const ICON_WAITING = ":hourglass_flowing_sand:";
 // Not :x:, which is drawn edge to edge and looms beside the other two.
 const ICON_CANCELLED = ":small_red_triangle_down:";
 
-/** Who ended it: a guest dropping a slot and an admin pulling one differ. */
 export type CancelledBy = "guest" | "admin";
 
-/** What happened: an approval lands on "confirmed" too, so status cannot say. */
+/** An approval lands on "confirmed" too, so status alone cannot say. */
 export type SlackEvent = EmailStatus | "approved";
 
 // One place for icon and wording, so they cannot describe different events.
@@ -76,7 +74,6 @@ export function slackReservationText(
   return `${headline(event).lead}: ${boothLabel(r, boothName)} · ${dateText(r)} · ${timeText(r)} (${who})`;
 }
 
-/** The channel body, plus `text` for the notification. */
 export function slackReservationMessage(
   r: Reservation,
   event: SlackEvent,
@@ -103,7 +100,7 @@ export function slackReservationMessage(
   };
 }
 
-/** Announce a booking. Never throws: a notice must not cost anyone their slot. */
+/** Never throws: a notice must not cost anyone their slot. */
 export async function postReservationToSlack(
   r: Reservation,
   event: SlackEvent,

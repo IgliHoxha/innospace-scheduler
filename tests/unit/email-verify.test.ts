@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// node:dns is stubbed so no lookup ever leaves the process.
 const resolveMx = vi.fn();
 const resolve = vi.fn();
 vi.mock("node:dns", () => ({ promises: { resolveMx, resolve } }));
@@ -8,7 +7,7 @@ vi.mock("node:dns", () => ({ promises: { resolveMx, resolve } }));
 type Verify = typeof import("@/lib/email-verify");
 let verify: Verify;
 
-/** A DNS error carries its reason in `code`, which is what the branching reads. */
+/** A DNS error carries its reason in `code`, which the branching reads. */
 const dnsError = (code: string) =>
   Object.assign(new Error(code), { code }) as NodeJS.ErrnoException;
 
@@ -45,7 +44,7 @@ describe("checkEmailDeliverable", () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  // No MX is legal: RFC 5321 falls back to the A record, so this must not reject.
+  // No MX is legal: RFC 5321 falls back to the A record.
   it("accepts a domain with no MX but an A record", async () => {
     resolveMx.mockRejectedValue(dnsError("ENODATA"));
     resolve.mockResolvedValue(["203.0.113.10"]);
@@ -62,7 +61,7 @@ describe("checkEmailDeliverable", () => {
     );
   });
 
-  // A resolver outage must not stop bookings; Resend still catches a bad address.
+  // A DNS outage must not stop bookings; Resend still catches a bad address.
   it("fails open when DNS itself cannot answer", async () => {
     resolveMx.mockRejectedValue(dnsError("ETIMEOUT"));
     await expect(
@@ -123,7 +122,6 @@ describe("disposable domains", () => {
     const res = await verify.checkEmailDeliverable("ada@mailinator.com");
     expect(res.ok).toBe(false);
     expect(res.ok === false && res.error).toMatch(/permanent email/i);
-    // Rejected on the list alone, so no resolver was consulted.
     expect(resolveMx).not.toHaveBeenCalled();
   });
 

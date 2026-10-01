@@ -60,14 +60,14 @@ describe("meetsMinDuration", () => {
 });
 
 describe("note / approval thresholds", () => {
-  // autoApproveMaxHours = 2 → 120 minutes. Note at >=120, approval at >120.
+  // The 2 is autoApproveMaxHours, so the limit is 120 minutes.
   it("note is required at or over the threshold", () => {
     expect(noteRequiredFor(119, 2)).toBe(false);
     expect(noteRequiredFor(120, 2)).toBe(true);
     expect(noteRequiredFor(121, 2)).toBe(true);
   });
   it("approval is required only over the threshold", () => {
-    expect(approvalRequiredFor(120, 2)).toBe(false); // exactly the limit auto-confirms
+    expect(approvalRequiredFor(120, 2)).toBe(false);
     expect(approvalRequiredFor(121, 2)).toBe(true);
   });
 });
@@ -81,8 +81,8 @@ describe("findOverlap", () => {
     expect(findOverlap(630, 690, reserved)?.label).toBe("10:00 - 11:00");
   });
   it("treats touching edges as non-overlapping (half-open)", () => {
-    expect(findOverlap(660, 720, reserved)).toBeNull(); // starts exactly when 10-11 ends
-    expect(findOverlap(540, 600, reserved)).toBeNull(); // ends exactly when 10-11 starts
+    expect(findOverlap(660, 720, reserved)).toBeNull();
+    expect(findOverlap(540, 600, reserved)).toBeNull();
   });
   it("returns null when the slot is free", () => {
     expect(findOverlap(660, 780, reserved)).toBeNull();
@@ -98,7 +98,6 @@ describe("runTotalMinutes", () => {
   });
 
   it("ignores bookings that do not touch it", () => {
-    // 10:00-11:00 alongside a 14:00-15:00 held elsewhere in the day.
     expect(runTotalMinutes(600, 660, held([840, 900]))).toBe(60);
   });
 
@@ -111,7 +110,6 @@ describe("runTotalMinutes", () => {
   });
 
   it("counts a run reached through another booking", () => {
-    // 09:00-10:00 + 10:00-11:00 held, booking 11:00-12:00: all three chain.
     expect(runTotalMinutes(660, 720, held([540, 600], [600, 660]))).toBe(180);
   });
 
@@ -120,12 +118,10 @@ describe("runTotalMinutes", () => {
   });
 
   it("treats a gap too small to book as no break at all", () => {
-    // 5 minutes clear, which nobody else could reserve: still one sitting.
     expect(runTotalMinutes(605, 665, held([540, 600]), 15)).toBe(120);
   });
 
   it("lets a real gap break the run", () => {
-    // A clear hour between them, so the earlier booking doesn't count.
     expect(runTotalMinutes(660, 720, held([540, 600]), 15)).toBe(60);
   });
 
@@ -135,17 +131,14 @@ describe("runTotalMinutes", () => {
   });
 
   it("ignores an overlapping booking, which is a clash and not a run", () => {
-    // 14:30-15:30 over a held 14:00-15:00: double booking, not a longer sitting.
     expect(runTotalMinutes(870, 930, held([840, 900]), 15)).toBe(60);
   });
 
   // The far one is in reach on its own, so it must not swallow the one between.
   it("counts a short booking that fills the gap to a reachable neighbour", () => {
-    // 14:00-15:00, 15:00-15:15, booking 15:15-16:05: 125 continuous minutes.
     expect(runTotalMinutes(915, 965, held([840, 900], [900, 915]), 15)).toBe(
       125,
     );
-    // Same three in the other direction: booking first, fillers after it.
     expect(runTotalMinutes(840, 900, held([900, 915], [915, 965]), 15)).toBe(
       125,
     );
@@ -164,7 +157,7 @@ describe("runTotalMinutes", () => {
     );
   });
 
-  // Joining a neighbour extends the reach by its length, never past a real break.
+  // Joining a neighbour extends the reach by its length, never past a break.
   it("stops at the first gap nobody could have filled", () => {
     expect(runTotalMinutes(915, 965, held([840, 900], [1080, 1140]), 15)).toBe(
       110,

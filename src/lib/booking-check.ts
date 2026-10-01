@@ -16,13 +16,10 @@ export interface BookingCheck {
   runMinutes: number;
   /** Longer than this booking alone, so the wording must explain why. */
   partOfRun: boolean;
-  /** A note is required at this run length. */
   mustNote: boolean;
-  /** Over the limit, so an admin has to approve it. */
   needsApproval: boolean;
   /** The blocking problem, empty when there is none. */
   problem: string;
-  /** Set only when the problem belongs at a named field. */
   field?: ProblemField;
 }
 
@@ -30,7 +27,7 @@ export interface BookingCheckInput {
   /** Null until that end is chosen; nothing is judged before both are. */
   startMin: number | null;
   endMin: number | null;
-  /** First still-reservable minute today, so a passed slot can be named as such. */
+  /** First minute still reservable today. */
   earliestMin: number;
   reserved: readonly { start: number; end: number; label: string }[];
   /** Other bookings the board confirms; the server counts every booth. */
@@ -51,18 +48,18 @@ export interface Attempt {
   booker: string;
 }
 
-/** One key per distinct attempt, so a verdict can be tied to exactly what was judged. */
+/** Keys a verdict to exactly the attempt that was judged. */
 export function attemptKey(a: Attempt): string {
   // Encoded as a list, so no value can run into its neighbour.
   return JSON.stringify([a.boothId, a.date, a.start, a.end, a.booker]);
 }
 
-/** What the server said about each attempt, kept so the form need not ask twice. */
+/** Server messages by attempt key, so the form need not ask twice. */
 export type Verdicts = ReadonlyMap<string, string>;
 
 export const NO_VERDICTS: Verdicts = new Map();
 
-/** The verdicts with one more recorded; a later refusal must not evict an earlier one. */
+/** Copies and adds: a later refusal must not evict an earlier one. */
 export function withVerdict(
   verdicts: Verdicts,
   attempt: string,
@@ -71,12 +68,12 @@ export function withVerdict(
   return new Map(verdicts).set(attempt, message);
 }
 
-/** The server's message about this very attempt; it lapses once any part changes. */
+/** The verdict lapses once any part of the attempt changes. */
 export function verdictFor(verdicts: Verdicts, attempt: string): string {
   return verdicts.get(attempt) ?? "";
 }
 
-/** What must be said at the note box before a press may go out: the form's ask, else the server's. */
+/** The note prompt to show: the form's own ask, else the server's. */
 export function noteAsk(
   check: BookingCheck,
   demanded: string,
@@ -86,13 +83,11 @@ export function noteAsk(
   return demanded && !note.trim() ? demanded : "";
 }
 
-/** Does this problem block the reserve button, or wait for the press? */
 export function isBlocking(check: BookingCheck): boolean {
   // A missing note is about a field not reached yet, not the times chosen.
   return !!check.problem && check.field !== "note";
 }
 
-/** The note-required message, worded for whether a run pushed it over. */
 export function noteRequiredMessage(
   partOfRun: boolean,
   autoApproveMaxHours: number,
@@ -102,7 +97,7 @@ export function noteRequiredMessage(
     : `Please say what the reservation is for - a note is required for ${autoApproveMaxHours} hours or more.`;
 }
 
-/** Every route check the browser can make, so the form cannot submit a rejection. */
+/** Every route check the browser can make, to pre-empt a server rejection. */
 export function checkBooking(input: BookingCheckInput): BookingCheck {
   const {
     startMin,

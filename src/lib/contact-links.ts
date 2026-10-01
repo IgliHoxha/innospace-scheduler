@@ -7,7 +7,6 @@ export function whatsappLink(phone: string, message: string): string {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
 
-/** A mailto with the slot already described, so nobody has to retype it. */
 export function mailtoLink(
   email: string,
   subject: string,

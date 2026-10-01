@@ -3,11 +3,9 @@
 export interface DaySegment<T> {
   fromMin: number;
   toMin: number;
-  /** The reservation occupying this segment, or null when the segment is free. */
   reserved: T | null;
 }
 
-/** Split the day into reserved and free segments, clamped to its bounds. */
 export function buildDaySegments<T extends { start: number; end: number }>(
   dayStartMin: number,
   dayEndMin: number,
@@ -39,7 +37,6 @@ export function buildDaySegments<T extends { start: number; end: number }>(
   return segments;
 }
 
-/** Round a minute value to the nearest step (snap a click to the time grid). */
 export function snapToStep(min: number, stepMin: number): number {
   return Math.round(min / stepMin) * stepMin;
 }
@@ -55,7 +52,6 @@ export function suggestedEndMin(
   return Math.min(limitMin, startMin + Math.max(minDurationMin, preferredMin));
 }
 
-/** What a drag covers, snapped outward onto the grid, inside its free stretch. */
 export function dragRange(
   anchorMin: number,
   atMin: number,
@@ -84,7 +80,7 @@ export function dragRange(
   return { from, to };
 }
 
-/** The hour marks fitting this bar, thinned evenly, always keeping the last one. */
+/** Hour marks thinned evenly to fit the bar, always keeping the last. */
 export function tickMinutes(
   dayStartMin: number,
   dayEndMin: number,
@@ -96,14 +92,14 @@ export function tickMinutes(
     all.push(m);
   }
   const hours = (dayEndMin - dayStartMin) / 60;
-  // Nothing to thin before the bar is measured; negated, so a NaN measurement leaves here too.
+  // Negated comparisons, so a NaN measurement leaves here too.
   if (all.length < 3 || !(barPx > 0) || !(hours > 0) || !(labelPx > 0))
     return all;
   const fit = (labelPx * hours) / barPx;
-  // Infinity over infinity is no stride at all, so an unmeasurable pair keeps every mark.
+  // Infinity over infinity is NaN, so an unmeasurable pair keeps every mark.
   if (Number.isNaN(fit)) return all;
   let step = Math.max(1, Math.ceil(fit));
-  // A stride dividing a whole-hour span keeps the marks even and lands on the last.
+  // A stride dividing the span keeps the marks even and lands on the last.
   if (Number.isInteger(hours)) {
     step = Math.min(step, hours);
     // Bounded by the span itself, so no measurement can keep it turning.
@@ -120,20 +116,19 @@ export function tickMinutes(
   return kept;
 }
 
-/** Room a text needs: its designed floor, or more once its measured width outgrows that. */
+/** The designed floor, or more once the measured width outgrows it. */
 export function roomFor(
   measuredPx: number,
   floorPx: number,
-  /** How many of its own widths it needs: 1.5 for a mark beside an edge-anchored one. */
+  /** In its own widths: 1.5 for a mark beside an edge-anchored one. */
   widths: number,
   gapPx: number,
 ): number {
-  // Unmeasured, or measured as nonsense, the design's own figure stands.
   if (!(measuredPx > 0) || !Number.isFinite(measuredPx)) return floorPx;
   return Math.max(floorPx, Math.ceil(measuredPx * widths) + gapPx);
 }
 
-/** The hour marks to label at this text size: thinned to fit, and never one drawn over another. */
+/** Hour marks thinned to this text size, none drawn over another. */
 export function fittingTicks(
   dayStartMin: number,
   dayEndMin: number,
@@ -150,16 +145,33 @@ export function fittingTicks(
     roomFor(labelPx, floorPx, 1.5, gapPx),
   );
   // Nothing to judge a collision by until both are measured.
-  if (!(barPx > 0) || !(labelPx > 0) || marks.length < 2) return marks;
-  // Thinning stops at the two ends; when even those would touch, the start alone remains.
-  if (labelPx * 2 + gapPx <= barPx) return marks;
-  return labelPx <= barPx ? marks.slice(0, 1) : [];
+  if (!(barPx > 0) || !(labelPx > 0)) return marks;
+  const span = dayEndMin - dayStartMin;
+  // As drawn: the day's first and last marks hug the bar's ends, the rest centre.
+  const box = (m: number) => {
+    if (m <= dayStartMin) return [0, labelPx];
+    if (m >= dayEndMin) return [barPx - labelPx, barPx];
+    const at = ((m - dayStartMin) / span) * barPx;
+    return [at - labelPx / 2, at + labelPx / 2];
+  };
+  // A hair of slack, so float rounding cannot fail a pair that exactly fits.
+  const slack = 1e-6;
+  const fits = (ms: number[]) =>
+    ms.every((m, i) => {
+      const [from, to] = box(m);
+      if (from < -slack || to > barPx + slack) return false;
+      return i === 0 || from - box(ms[i - 1])[1] >= gapPx - slack;
+    });
+  let kept = marks;
+  // Thinning stops at the two ends, so past that the last mark gives way.
+  while (kept.length && !fits(kept)) kept = kept.slice(0, -1);
+  return kept;
 }
 
 /** Where the pick's tag sits: inside a roomy pick, else a chip above it. */
 export function pickTagPlacement(opts: {
   barPx: number;
-  /** The tag's width, 0 before first render, when percent centring stands in. */
+  /** 0 before first render, when percent centring stands in. */
   tagPx: number;
   fromPct: number;
   toPct: number;
@@ -169,9 +181,10 @@ export function pickTagPlacement(opts: {
   const { barPx, tagPx, fromPct, toPct, fitsPx } = opts;
   const centerPct = (fromPct + toPct) / 2;
   const above = barPx > 0 && (barPx * (toPct - fromPct)) / 100 < fitsPx;
-  // Nothing to clamp until both widths are known, and an oversized tag never fits.
-  if (!above || tagPx <= 0 || tagPx >= barPx)
-    return { above, centerPct, leftPx: null };
+  // No clamp until both widths are known.
+  if (!above || tagPx <= 0) return { above, centerPct, leftPx: null };
+  // Wider than the bar, it starts at the bar's left so the start time shows.
+  if (tagPx >= barPx) return { above, centerPct, leftPx: 0 };
   const wanted = (barPx * centerPct) / 100 - tagPx / 2;
   // Only the overhang gives way, so the tag stays over its pick until the end.
   return {
@@ -181,7 +194,6 @@ export function pickTagPlacement(opts: {
   };
 }
 
-/** Where a minute sits on the bar, as a percentage of the day it draws. */
 export function barPercent(
   min: number,
   dayStartMin: number,
@@ -191,7 +203,7 @@ export function barPercent(
   return Math.max(0, Math.min(100, ((min - dayStartMin) / span) * 100));
 }
 
-/** Where a range's closing edge sits: ending on the last step reaches the bar's end. */
+/** A range ending on the last step is drawn to the bar's end. */
 export function barEndPercent(
   min: number,
   dayStartMin: number,
@@ -205,13 +217,12 @@ export function barEndPercent(
 export interface HourCell {
   from: number;
   to: number;
-  /** Where a click on this box ends: the last box stops a step short of midnight. */
+  /** Where a click here ends: the last box stops a step short of midnight. */
   end: number;
   /** Wholly free, not past, and long enough to book. */
   free: boolean;
 }
 
-/** One box per hour of the bar, with the range a click on each would pick. */
 export function hourCells<T>(
   segments: readonly DaySegment<T>[],
   earliestMin: number,
@@ -238,7 +249,6 @@ export function hourCells<T>(
   return cells;
 }
 
-/** The free stretches from `earliestMin` to the day's end that can hold a booking. */
 export function findFreeGaps(
   reserved: readonly { start: number; end: number }[],
   earliestMin: number,
@@ -258,7 +268,6 @@ export function findFreeGaps(
   return gaps.filter((g) => g.to - g.from >= minDurationMin);
 }
 
-/** Too little of the day remains to hold even the shortest booking. */
 export function isDayOver(
   earliestMin: number,
   dayEndMin: number,
@@ -267,7 +276,7 @@ export function isDayOver(
   return dayEndMin - earliestMin < minDurationMin;
 }
 
-/** A day underway opens on its next free time; an untouched one at the preferred time. */
+/** A day underway opens on its next free time, else at the preferred one. */
 export function wantedStartMin(
   earliestMin: number,
   preferredMin: number,
@@ -275,7 +284,7 @@ export function wantedStartMin(
   return earliestMin > 0 ? earliestMin : preferredMin;
 }
 
-/** The stretch the picker opens on: the first with room from `wantedMin`, else the first. */
+/** The first stretch with room from `wantedMin`, else the first of all. */
 export function seedGap(
   gaps: readonly { from: number; to: number }[],
   wantedMin: number,
@@ -288,7 +297,7 @@ export function seedGap(
   return gaps[0] ?? null;
 }
 
-/** The end for a moved start, clamped to its stretch; null if it landed in none. */
+/** Null when the start landed in no free stretch. */
 export function endForStart(
   startMin: number,
   gaps: readonly { from: number; to: number }[],

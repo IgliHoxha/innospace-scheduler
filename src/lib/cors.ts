@@ -3,7 +3,6 @@ import { optionalEnv } from "./env-app";
 
 // An in-app origin gate, not CORS headers: those only ask a browser nicely.
 
-/** ALLOWED_ORIGINS parsed; "*" (allow any) when the optional flag is unset. */
 function allowedOrigins(): string[] {
   return (optionalEnv("ALLOWED_ORIGINS") ?? "*")
     .split(",")
@@ -11,7 +10,6 @@ function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-/** Is this origin on the allowlist? */
 export function isOriginAllowed(origin: string | null): boolean {
   const allowed = allowedOrigins();
   if (allowed.includes("*")) return true;
@@ -19,7 +17,6 @@ export function isOriginAllowed(origin: string | null): boolean {
   return allowed.includes(origin);
 }
 
-/** The Origin header, falling back to the Referer's origin. */
 export function requestOrigin(headers: Headers): string | null {
   const origin = headers.get("origin");
   if (origin) return origin;
@@ -42,11 +39,10 @@ function isSameOrigin(origin: string, headers: Headers): boolean {
     // Host only: TLS ends at Cloudflare, so the scheme is not the browser's.
     return new URL(origin).host === host;
   } catch {
-    return false; // malformed Origin
+    return false;
   }
 }
 
-/** Should this request pass the origin gate? */
 export function isRequestOriginAllowed(headers: Headers): boolean {
   const origin = requestOrigin(headers);
   if (!origin) return true;

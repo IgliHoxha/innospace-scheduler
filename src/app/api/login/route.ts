@@ -19,7 +19,6 @@ import {
 
 export const runtime = "nodejs";
 
-// Human-friendly "2 minutes" / "45 seconds" for the lockout message.
 function formatWait(seconds: number): string {
   if (seconds >= 60) {
     const mins = Math.ceil(seconds / 60);
@@ -49,7 +48,6 @@ function lockedResponse(retryAfterSeconds: number) {
   );
 }
 
-/** Admin login (env credentials); booking needs no account. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -68,12 +66,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Throttle: reject early if this IP or account is already blocked.
   const gate = checkLoginBlocked(ip, login);
   if (gate.banned) return bannedResponse();
   if (gate.blocked) return lockedResponse(gate.retryAfterSeconds);
 
-  // Reject oversized input before it reaches scrypt (unbounded input burns CPU).
+  // Reject oversized input before it reaches scrypt, where it would burn CPU.
   if (login.length > MAX_EMAIL || password.length > MAX_PASSWORD) {
     const s = registerLoginFailure(ip, login);
     if (s.banned) return bannedResponse();
@@ -103,7 +100,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  registerLoginSuccess(ip, login); // clear the failure history on success
+  registerLoginSuccess(ip, login);
 
   const res = NextResponse.json({ ok: true, role: session.role });
   res.cookies.set(SESSION_COOKIE, createSessionToken(session), {

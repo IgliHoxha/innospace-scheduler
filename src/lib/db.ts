@@ -1,4 +1,3 @@
-// SQLite (better-sqlite3) DB on the persistent volume. One file, indexed, ACID.
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
@@ -33,7 +32,6 @@ type Row = Record<string, string | number | null>;
 
 const ACTIVE_LIST = inList(ACTIVE_STATUSES);
 
-/** Thrown when a requested slot range overlaps an existing active reservation. */
 export class SlotUnavailableError extends Error {
   constructor(message = "That time slot is no longer available.") {
     super(message);
@@ -41,7 +39,6 @@ export class SlotUnavailableError extends Error {
   }
 }
 
-/** This email already holds an overlapping reservation, on any booth. */
 export class UserBusyError extends Error {
   constructor(message = "You already have a reservation during that time.") {
     super(message);
@@ -49,7 +46,7 @@ export class UserBusyError extends Error {
   }
 }
 
-// The whole schema, made on connect. No migrations: a column change wipes the file.
+// No migrations: a column change means wiping the DB file.
 function initSchema(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
   // Serves the dashboard's ORDER BY, so LIMIT stops early without a sort.
@@ -138,7 +135,7 @@ export interface ReservationPage {
   total: number; // rows matching the current filter + search
   page: number; // 1-based
   pageSize: number;
-  counts?: ReservationCounts; // omitted when the caller passed withCounts: false
+  counts?: ReservationCounts; // absent when withCounts is false
 }
 
 export interface ReservationQuery {
@@ -171,13 +168,12 @@ function reservationCounts(): ReservationCounts {
   };
 }
 
-/** Tallies come even without `withCounts`, so a first render can rely on them. */
+/** Omitting `withCounts` types the tallies as present, hence the overload. */
 export function queryReservations(
   q?: Omit<ReservationQuery, "withCounts">,
 ): ReservationPage & { counts: ReservationCounts };
 export function queryReservations(q: ReservationQuery): ReservationPage;
 
-/** Paginated, filtered, searchable list for the dashboard. */
 export function queryReservations(q: ReservationQuery = {}): ReservationPage {
   const db = getDb();
   const page = Math.max(1, Math.trunc(q.page ?? 1));
@@ -186,7 +182,6 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
   const where: string[] = [];
   const params: (string | number)[] = [];
 
-  // "all" (or unset) hides soft-deleted; any explicit status filters to it.
   if (!q.filter || q.filter === "all") {
     where.push("status != 'deleted'");
   } else {
@@ -214,7 +209,6 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
       .get(...params) as { n: number }
   ).n;
 
-  // Most imminent-looking first: latest reservation time, then creation.
   const rows = db
     .prepare(
       `SELECT * FROM reservations ${whereSql} ORDER BY startsAt DESC, createdAt DESC LIMIT ? OFFSET ?`,
@@ -231,7 +225,7 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
   };
 }
 
-/** A booth's active reservations for a day; the date prefixes the datetime index. */
+/** The date is a prefix of startsAt, so the index serves the day range. */
 export function reservedRanges(
   boothId: string,
   date: string,
@@ -249,7 +243,7 @@ export function reservedRanges(
   }));
 }
 
-/** How many active reservations each booth has that day; a booth with none is absent. */
+/** A booth with no active reservation that day is absent from the map. */
 export function reservationCountsByBooth(date: string): Map<string, number> {
   const rows = prep(
     `SELECT boothId, COUNT(*) AS n
@@ -281,7 +275,7 @@ export function heldRangesForEmail(
     }));
 }
 
-/** Create one; check and insert share a transaction, so racers cannot both win. */
+/** Check and insert share a transaction, so racers cannot both win. */
 export function createReservation(
   input: ReservationInput,
   status: Extract<ReservationStatus, "confirmed" | "pending"> = "confirmed",
@@ -297,7 +291,7 @@ export function createReservation(
   };
 
   const tx = db.transaction((r: Reservation) => {
-    // Half-open, so edges do not clash; the day bound keeps history out of the scan.
+    // Half-open, so edges do not clash; the day bound skips older history.
     const dayStart = `${r.startsAt!.slice(0, 10)}T00:00`;
     const clash = prep(
       `SELECT 1 FROM reservations
@@ -326,13 +320,12 @@ export function createReservation(
   return reservation;
 }
 
-/** Hard-delete, only for a booking whose confirmation failed: free the slot now. */
+/** Hard delete, only for a booking whose confirmation email failed. */
 export function discardReservation(id: string): boolean {
   const res = prep("DELETE FROM reservations WHERE id = ?").run(id);
   return res.changes > 0;
 }
 
-/** Permanently remove rows, soft-deleted ones only. Returns the count. */
 export function deleteReservations(ids: string[]): number {
   if (ids.length === 0) return 0;
   const db = getDb();
@@ -355,7 +348,6 @@ export function updateReservationStatus(
   id: string,
   status: ReservationStatus,
 ): Reservation | null {
-  // RETURNING hands back the updated row in one round-trip; no match -> undefined.
   const row = prep(
     "UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ? RETURNING *",
   ).get(status, new Date().toISOString(), id) as Row | undefined;

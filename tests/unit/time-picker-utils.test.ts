@@ -30,7 +30,7 @@ describe("arrow stepping (loops within range)", () => {
     // Below-min wraps straight to the max (a single boundary hop, not modulo).
     expect(u.getValidArrowMinute("00", -5)).toBe("59");
     expect(u.getValidArrowMinute("55", 5)).toBe("00");
-    expect(u.getValidArrowMinute("abc", 5)).toBe("00"); // non-numeric input
+    expect(u.getValidArrowMinute("abc", 5)).toBe("00");
   });
 });
 
@@ -53,13 +53,11 @@ describe("date <-> field helpers", () => {
 });
 
 describe("isCompleteEntry", () => {
-  // Two digits are always the whole value.
   it("treats two digits as finished", () => {
     expect(u.isCompleteEntry("13", "hours")).toBe(true);
     expect(u.isCompleteEntry("00", "minutes")).toBe(true);
   });
 
-  // One digit is finished only when nothing could legally follow it.
   it("waits on a digit that could still take a second", () => {
     expect(u.isCompleteEntry("1", "hours")).toBe(false); // 10-19 exist
     expect(u.isCompleteEntry("2", "hours")).toBe(false); // 20-23 exist

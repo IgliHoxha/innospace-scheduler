@@ -1,7 +1,6 @@
-// Central env access: required vars throw at read time, lazily so tests can stub.
+// Vars are read lazily, at call time, so tests can stub them.
 import type { ContactInfo } from "./types";
 
-/** A required string env var. Throws if unset or blank. */
 export function requireEnv(name: string): string {
   const v = process.env[name];
   if (v == null || v.trim() === "") {
@@ -10,7 +9,6 @@ export function requireEnv(name: string): string {
   return v;
 }
 
-/** A required integer env var. Throws if unset, blank, or not an integer. */
 export function requireIntEnv(name: string): number {
   const raw = requireEnv(name);
   const n = Number(raw);
@@ -22,13 +20,11 @@ export function requireIntEnv(name: string): number {
   return n;
 }
 
-/** An optional (feature-flag) env var: undefined when unset or blank. */
 export function optionalEnv(name: string): string | undefined {
   const v = process.env[name]?.trim();
   return v ? v : undefined;
 }
 
-/** Business contact block for emails. Every field is required (no defaults). */
 export function getContactFromEnv(): ContactInfo {
   return {
     name: requireEnv("EMAIL_SIGNOFF_NAME"),

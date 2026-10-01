@@ -7,7 +7,6 @@ let db: Db;
 const D = "2026-07-16";
 const at = (t: string) => `${D}T${t}`;
 
-// A confirmed booth-1 reservation over [start, end).
 async function reserve(
   start: string,
   end: string,
@@ -47,7 +46,6 @@ describe("createReservation + overlap", () => {
     await expect(reserve("10:30", "11:30")).rejects.toBeInstanceOf(
       db.SlotUnavailableError,
     );
-    // the loser did not persist
     expect(db.reservedRanges("booth-1", D)).toHaveLength(1);
   });
 
@@ -67,11 +65,10 @@ describe("createReservation + overlap", () => {
   });
 
   it("rejects the same email overlapping in another booth (no being in two at once)", async () => {
-    await reserve("10:00", "11:00"); // ada, booth-1
+    await reserve("10:00", "11:00");
     await expect(
-      reserve("10:30", "11:30", { boothId: "booth-2" }), // ada, booth-2, overlaps
+      reserve("10:30", "11:30", { boothId: "booth-2" }),
     ).rejects.toBeInstanceOf(db.UserBusyError);
-    // adjacent, half-open ranges in another booth are fine for the same person
     await expect(
       reserve("11:00", "12:00", { boothId: "booth-2" }),
     ).resolves.toBeTruthy();
@@ -186,7 +183,7 @@ describe("status update + delete guard", () => {
 
   it("hard-deletes only soft-deleted rows", async () => {
     const live = await reserve("10:00", "11:00");
-    expect(db.deleteReservations([live.id])).toBe(0); // not deleted yet
+    expect(db.deleteReservations([live.id])).toBe(0);
 
     db.updateReservationStatus(live.id, "deleted");
     expect(db.deleteReservations([live.id])).toBe(1);
@@ -208,7 +205,6 @@ describe("discardReservation", () => {
     expect(db.discardReservation(r.id)).toBe(true);
     expect(db.queryReservations({ filter: "all" }).total).toBe(0);
 
-    // The whole point: the same slot books again, which a soft delete would block.
     expect(
       db.createReservation({
         boothId: "booth-1",
@@ -241,7 +237,6 @@ describe("reservedRanges", () => {
     expect(db.reservedRanges("booth-1", D)).toEqual([]);
   });
 
-  // A pending request holds its slot, so the board shows it as taken.
   it("keeps a pending booking, which is holding its slot", async () => {
     await reserve("10:00", "11:00");
     db.createReservation(
@@ -341,7 +336,7 @@ describe("reservationCountsByBooth", () => {
   });
 });
 
-// With no opening hours the day's edges are bookable, so every day-bounded query must reach them.
+// No opening hours: every day-bounded query must reach the day's edges.
 describe("the first and last bookings a day can hold", () => {
   const NEXT = "2026-07-17";
 
