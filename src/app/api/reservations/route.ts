@@ -32,8 +32,10 @@ import {
   stepMinutes,
 } from "@/lib/schedule";
 import {
+  isDateTime,
   minutesOfDay,
   durationMinutes,
+  shiftDate,
   toDateTime,
   nowDateTime,
   epochMsOf,
@@ -43,6 +45,7 @@ import { sendReservationEmail } from "@/lib/email";
 import { postReservationToSlack } from "@/lib/slack";
 import {
   approvalRequiredFor,
+  dayEndMinute,
   meetsMinDuration,
   noteRequiredFor,
   runTotalMinutes,
@@ -104,17 +107,17 @@ export async function POST(req: NextRequest) {
   const startMin = minutesOfDay(startsAt);
   const endMin = minutesOfDay(endsAt);
 
-  // Both ends must be real times on the step grid, inside the open window.
+  // Both ends must be real clock times on the step grid; any hour of the day is open.
   if (
-    !/^\d{2}:\d{2}$/.test(start) ||
-    !/^\d{2}:\d{2}$/.test(end) ||
+    !isDateTime(startsAt) ||
+    !isDateTime(endsAt) ||
     !isValidTimeOfDay(startMin) ||
     !isValidTimeOfDay(endMin)
   ) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Please choose times within opening hours, in ${stepMinutes()}-minute steps.`,
+        error: `Please choose times in ${stepMinutes()}-minute steps.`,
       },
       { status: 400 },
     );
@@ -146,10 +149,19 @@ export async function POST(req: NextRequest) {
     );
   }
   // The limits apply to a back-to-back run, or a split stay would dodge them.
-  const held = heldRangesForEmail(guest.guest.email, date).map((h) => ({
-    start: minutesOfDay(h.startsAt),
-    end: minutesOfDay(h.endsAt),
-  }));
+  const heldOn = (day: string, offsetMin: number) =>
+    heldRangesForEmail(guest.guest.email, day).map((h) => ({
+      start: minutesOfDay(h.startsAt) + offsetMin,
+      end: minutesOfDay(h.endsAt) + offsetMin,
+    }));
+  // With no closing time a run can continue past midnight, so both neighbours count.
+  // Shifted by the last bookable minute, not 24h, so the dead step is not a gap.
+  const dayReach = dayEndMinute(stepMinutes());
+  const held = [
+    ...heldOn(shiftDate(date, -1), -dayReach),
+    ...heldOn(date, 0),
+    ...heldOn(shiftDate(date, 1), dayReach),
+  ];
   // One sitting spans the shortest bookable gap: nobody could take it.
   const runMinutes = runTotalMinutes(
     startMin,

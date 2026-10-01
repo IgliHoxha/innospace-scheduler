@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  barEndPercent,
+  barPercent,
   buildDaySegments,
   dragRange,
+  hourCells,
   pickTagPlacement,
   tickMinutes,
 } from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
+import { dayEndMinute } from "@/lib/reservation-rules";
 import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
 import { MailIcon, TrashIcon, WhatsAppIcon } from "@/components/ui/icons";
 import { useTooltip } from "@/components/ui/tooltip";
@@ -29,13 +33,11 @@ const TAG_FITS_PX = 96;
 // Travel (px) before a press is a drag; below it, it stays a click.
 const DRAG_SLOP_PX = 4;
 
-// Room (px) a tick needs clear of its neighbour, so a narrow bar shows fewer.
-const TICK_LABEL_PX = 44;
+// Room (px) a tick needs clear of its neighbour, edge labels included, so a narrow bar shows fewer.
+const TICK_LABEL_PX = 48;
 
 /** Availability graph for one booth and day; `onPick` also picks the range. */
 export default function DayTimeline({
-  opens,
-  closes,
   earliest,
   reserved,
   selection,
@@ -47,8 +49,6 @@ export default function DayTimeline({
   boothName = "booth",
   dateLabel = "that day",
 }: {
-  opens: string;
-  closes: string;
   earliest: string;
   reserved: Reserved[];
   selection: { start: string; end: string } | null;
@@ -65,17 +65,21 @@ export default function DayTimeline({
   boothName?: string;
   dateLabel?: string;
 }) {
-  const opensMin = timeToMinutes(opens);
-  const closesMin = timeToMinutes(closes);
-  const span = Math.max(1, closesMin - opensMin);
-  const earliestMin = Math.max(opensMin, timeToMinutes(earliest));
+  // The bar draws all 24 hours; a pick stops a step short, as "24:00" is not a time.
+  const dayStartMin = 0;
+  const dayEndMin = 24 * 60;
+  const lastEndMin = dayEndMinute(step);
+  const span = Math.max(1, dayEndMin - dayStartMin);
+  const earliestMin = Math.max(dayStartMin, timeToMinutes(earliest));
 
-  const pct = (min: number) =>
-    Math.max(0, Math.min(100, ((min - opensMin) / span) * 100));
+  const pct = (min: number) => barPercent(min, dayStartMin, dayEndMin);
+  // A booking or pick ending on the last step is drawn out to the bar's end.
+  const pctEnd = (min: number) =>
+    barEndPercent(min, dayStartMin, dayEndMin, lastEndMin);
 
   const segments = buildDaySegments(
-    opensMin,
-    closesMin,
+    dayStartMin,
+    dayEndMin,
     reserved.map((r) => ({
       start: timeToMinutes(r.start),
       end: timeToMinutes(r.end),
@@ -84,20 +88,23 @@ export default function DayTimeline({
   );
 
   const hourMarks: number[] = [];
-  for (let h = Math.ceil(opensMin / 60) * 60; h <= closesMin; h += 60) {
+  for (let h = Math.ceil(dayStartMin / 60) * 60; h <= dayEndMin; h += 60) {
     hourMarks.push(h);
   }
   // Edge ticks anchor to the bar's ends; inner ones centre on their mark.
   const tickStyle = (t: number) => {
-    if (t <= opensMin) return { left: 0 };
-    if (t >= closesMin) return { right: 0 };
+    if (t <= dayStartMin) return { left: 0 };
+    if (t >= dayEndMin) return { right: 0 };
     return { left: `${pct(t)}%`, transform: "translateX(-50%)" };
   };
 
   const selFrom = selection ? timeToMinutes(selection.start) : null;
   const selTo = selection ? timeToMinutes(selection.end) : null;
   const hasPick =
-    selFrom != null && selTo != null && selTo > opensMin && selFrom < closesMin;
+    selFrom != null &&
+    selTo != null &&
+    selTo > dayStartMin &&
+    selFrom < dayEndMin;
 
   // Measure the bar so a narrow pick can move its time tag outside the block.
   const barRef = useRef<HTMLDivElement>(null);
@@ -113,7 +120,7 @@ export default function DayTimeline({
   }, []);
 
   // A narrow bar labels fewer marks, though the grid still runs hourly.
-  const tickLabels = tickMinutes(opensMin, closesMin, barPx, TICK_LABEL_PX);
+  const tickLabels = tickMinutes(dayStartMin, dayEndMin, barPx, TICK_LABEL_PX);
 
   // The tag's width, so a floating tag centres on its pick inside the bar.
   const [tagPx, setTagPx] = useState(0);
@@ -129,17 +136,14 @@ export default function DayTimeline({
   }, []);
 
   // One box per hour, pickable only if wholly free and not past.
-  const cells: { from: number; to: number; free: boolean }[] = [];
-  for (let m = opensMin; m < closesMin; m += 60) {
-    const to = Math.min(m + 60, closesMin);
-    cells.push({
-      from: m,
-      to,
-      free:
-        m >= earliestMin &&
-        !segments.some((s) => s.reserved && s.fromMin < to && s.toMin > m),
-    });
-  }
+  const cells = hourCells(
+    segments,
+    earliestMin,
+    dayStartMin,
+    dayEndMin,
+    lastEndMin,
+    minMinutes,
+  );
 
   // The gesture in flight, in a ref so the window listeners read live values.
   const dragRef = useRef<{
@@ -155,9 +159,9 @@ export default function DayTimeline({
   /** The minute under the pointer, measured on the bar rather than on a box. */
   const minuteAt = (clientX: number): number => {
     const el = barRef.current;
-    if (!el) return opensMin;
+    if (!el) return dayStartMin;
     const r = el.getBoundingClientRect();
-    return opensMin + ((clientX - r.left) / Math.max(1, r.width)) * span;
+    return dayStartMin + ((clientX - r.left) / Math.max(1, r.width)) * span;
   };
 
   /** The free run of the day this hour box sits in, floored at "now". */
@@ -166,12 +170,16 @@ export default function DayTimeline({
     const s = segments.find(
       (g) => !g.reserved && g.fromMin < c.to && g.toMin > c.from,
     );
-    return s ? { from: Math.max(s.fromMin, earliestMin), to: s.toMin } : null;
+    if (!s) return null;
+    return {
+      from: Math.max(s.fromMin, earliestMin),
+      to: Math.min(s.toMin, lastEndMin),
+    };
   };
 
   const pickCell = (i: number) => {
     if (onPick && cells[i].free) {
-      onPick(minutesToTime(cells[i].from), minutesToTime(cells[i].to));
+      onPick(minutesToTime(cells[i].from), minutesToTime(cells[i].end));
     }
   };
 
@@ -332,7 +340,7 @@ export default function DayTimeline({
       barPx,
       tagPx,
       fromPct: pct(selFrom!),
-      toPct: pct(selTo!),
+      toPct: pctEnd(selTo!),
       fitsPx: TAG_FITS_PX,
     });
     tag = {
@@ -364,7 +372,7 @@ export default function DayTimeline({
           ref={barRef}
         >
           {hourMarks
-            .filter((t) => t > opensMin && t < closesMin)
+            .filter((t) => t > dayStartMin && t < dayEndMin)
             .map((t) => (
               <div
                 key={`g${t}`}
@@ -373,7 +381,7 @@ export default function DayTimeline({
               />
             ))}
 
-          {earliestMin > opensMin && (
+          {earliestMin > dayStartMin && (
             <div
               className="daycal-past"
               style={{ left: 0, width: `${pct(earliestMin)}%` }}
@@ -396,7 +404,7 @@ export default function DayTimeline({
                 className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""} ${seam ? "seam" : ""}`}
                 style={{
                   left: `${pct(s.fromMin)}%`,
-                  width: `${pct(s.toMin) - pct(s.fromMin)}%`,
+                  width: `${pctEnd(s.toMin) - pct(s.fromMin)}%`,
                 }}
                 {...tooltip(
                   canCancel
@@ -427,11 +435,11 @@ export default function DayTimeline({
             <div
               // At the bar's end the border must follow the curve, or it is sliced.
               className={`daycal-pick ${pct(selFrom!) === 0 ? "at-start" : ""} ${
-                pct(selTo!) === 100 ? "at-end" : ""
+                pctEnd(selTo!) === 100 ? "at-end" : ""
               }`}
               style={{
                 left: `${pct(selFrom!)}%`,
-                width: `${pct(selTo!) - pct(selFrom!)}%`,
+                width: `${pctEnd(selTo!) - pct(selFrom!)}%`,
               }}
             />
           )}
@@ -449,7 +457,7 @@ export default function DayTimeline({
                 }}
                 disabled={!c.free}
                 // No title: it would contradict the pick tag once a drag resizes.
-                aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.to)}`}
+                aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.end)}`}
                 onPointerDown={(e) => {
                   if (!c.free) return;
                   e.preventDefault(); // no text selection while dragging

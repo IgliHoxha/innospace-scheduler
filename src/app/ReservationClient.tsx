@@ -15,7 +15,11 @@ import {
   type GuestField,
 } from "@/lib/guest";
 import { checkBooking, isBlocking } from "@/lib/booking-check";
-import { availabilityQuery } from "@/lib/availability-url";
+import {
+  availabilityQuery,
+  countsForDate,
+  edgeMayBeStale,
+} from "@/lib/availability-url";
 import {
   heldRangesFor,
   readMine,
@@ -23,9 +27,17 @@ import {
   slotKey,
   type MineEntry,
 } from "@/lib/mine";
-import { endForStart, suggestedEndMin } from "@/lib/timeline";
+import {
+  endForStart,
+  findFreeGaps,
+  isDayOver,
+  seedGap,
+  suggestedEndMin,
+  wantedStartMin,
+} from "@/lib/timeline";
+import { dayEndMinute } from "@/lib/reservation-rules";
 import { formatDateLong, minutesToTime, timeToMinutes } from "@/lib/datetime";
-import { formatDuration } from "@/lib/schedule";
+import { formatDuration, reservationCountLabel } from "@/lib/schedule";
 
 /** A reservation already taken for the chosen booth+day, as "HH:MM" times. */
 interface Reserved {
@@ -39,10 +51,12 @@ interface Reserved {
 }
 
 interface Availability {
+  /** The day this board answers for, so a count is never shown against another date. */
+  date: string;
   reserved: Reserved[];
+  /** Active reservations per booth that day; absent on a copy cached before a deploy. */
+  counts?: Record<string, number>;
   earliest: string;
-  opens: string;
-  closes: string;
 }
 
 interface DateOption {
@@ -52,6 +66,9 @@ interface DateOption {
 
 // The length a booking opens on, and the one a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
+
+// Where an untouched day opens the picker.
+const PREFERRED_START_MIN = 9 * 60;
 
 // How long a confirmation stays up; the email repeats it, so nothing is lost.
 const SUCCESS_MS = 5000;
@@ -182,6 +199,9 @@ export default function ReservationClient({
     };
   }, [turnstileSiteKey]);
 
+  // When this browser last booked or cancelled, so later loads skip the edge's older copy.
+  const wroteAt = useRef(0);
+
   // Reload on booth or date change; a request id stops a slow response winning.
   const reqId = useRef(0);
   const loadAvailability = useCallback(
@@ -192,10 +212,12 @@ export default function ReservationClient({
       if (!boothId || !date) return;
       const id = ++reqId.current;
       setLoading(true);
+      // Another booth's cached board predates the write too, and would undo its count.
+      const bust = fresh || edgeMayBeStale(Date.now(), wroteAt.current);
       try {
         const res = await fetch(
           // `fresh` is for after a booking, where the edge's 30s copy would omit it.
-          `/api/availability?${availabilityQuery(boothId, date, fresh ? Date.now() : undefined)}`,
+          `/api/availability?${availabilityQuery(boothId, date, bust ? Date.now() : undefined)}`,
           // This browser's cache only: the CDN ignores it, hence the fresh URL.
           { cache: "no-store" },
         );
@@ -271,38 +293,39 @@ export default function ReservationClient({
     [mine, avail, boothId, date, booker],
   );
 
+  // No opening hours: the day runs to the last grid step a booking may end on.
+  const dayEnd = dayEndMinute(stepMinutes);
+
   // Reservable free stretches; with none, the picker gives way to the reason.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
-    const dayEnd = timeToMinutes(avail.closes);
-    const busy = avail.reserved
-      .map((b) => ({ from: timeToMinutes(b.start), to: timeToMinutes(b.end) }))
-      .sort((a, b) => a.from - b.from);
-    let cursor = Math.max(
-      timeToMinutes(avail.opens),
+    return findFreeGaps(
+      avail.reserved.map((b) => ({
+        start: timeToMinutes(b.start),
+        end: timeToMinutes(b.end),
+      })),
       timeToMinutes(avail.earliest),
+      dayEnd,
+      minReservationMinutes,
     );
-    const gaps: { from: number; to: number }[] = [];
-    for (const b of busy) {
-      if (b.from > cursor)
-        gaps.push({ from: cursor, to: Math.min(b.from, dayEnd) });
-      cursor = Math.max(cursor, b.to);
-    }
-    if (cursor < dayEnd) gaps.push({ from: cursor, to: dayEnd });
-    return gaps.filter((g) => g.to - g.from >= minReservationMinutes);
-  }, [avail, minReservationMinutes]);
+  }, [avail, dayEnd, minReservationMinutes]);
 
+  const earliestMin = avail ? timeToMinutes(avail.earliest) : 0;
   const noTimeLeft = !!avail && freeGaps.length === 0;
   const dayIsOver =
-    !!avail && timeToMinutes(avail.earliest) >= timeToMinutes(avail.closes);
+    !!avail && isDayOver(earliestMin, dayEnd, minReservationMinutes);
+  // Mid-morning for an untouched day, since midnight is nobody's first guess.
+  const seed = seedGap(
+    freeGaps,
+    wantedStartMin(earliestMin, PREFERRED_START_MIN),
+    minReservationMinutes,
+  );
 
   // Every route check the browser can make; nothing is judged before a board.
   const check = checkBooking({
     startMin: avail && start ? startMin : null,
     endMin: avail && end ? endMin : null,
-    openMin: avail ? timeToMinutes(avail.opens) : 0,
-    closeMin: avail ? timeToMinutes(avail.closes) : 0,
-    earliestMin: avail ? timeToMinutes(avail.earliest) : 0,
+    earliestMin,
     reserved: (avail?.reserved ?? []).map((b) => ({
       start: timeToMinutes(b.start),
       end: timeToMinutes(b.end),
@@ -315,6 +338,8 @@ export default function ReservationClient({
     autoApproveMaxHours,
   });
   const { mustNote, needsApproval: willNeedApproval } = check;
+  // The server sees runs this board cannot, so its demand makes the box required too.
+  const noteNeeded = mustNote || !!noteError;
   // Not live: the picker re-seeds, so it would scold a range nobody chose.
   const problem = isBlocking(check) ? check.problem : "";
 
@@ -388,6 +413,7 @@ export default function ReservationClient({
       if (res.ok && json.ok) {
         // An earlier verdict described a world that is gone; the picker re-seeds.
         setRefused(null);
+        wroteAt.current = Date.now();
         const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
         const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
         setSuccess(
@@ -435,6 +461,8 @@ export default function ReservationClient({
   }
 
   const selectedBooth = booths.find((b) => b.id === boothId);
+  // Only for the day on screen: the previous date's board lingers until the new one lands.
+  const counts = countsForDate(avail, date);
   const fieldError = (field: GuestField) =>
     guestError?.field === field ? guestError.error : "";
 
@@ -469,6 +497,12 @@ export default function ReservationClient({
               {b.capacity ? (
                 <span className="booth-cap">{b.capacity} seats</span>
               ) : null}
+              {/* Always rendered, so the cards do not grow when the counts land. */}
+              <span className="booth-count">
+                {counts?.[b.id] == null
+                  ? " "
+                  : reservationCountLabel(counts[b.id])}
+              </span>
             </button>
           ))}
         </div>
@@ -488,21 +522,16 @@ export default function ReservationClient({
         </div>
 
         {/* Step 3: time range */}
-        <div className="field-label">
-          Time{" "}
-          <span className="hint">
-            {avail ? `· open ${avail.opens} - ${avail.closes}` : "·"}
-          </span>
-        </div>
+        <div className="field-label">Time</div>
         <div className="card time-card">
           {loading ? (
             <span className="muted">Loading availability…</span>
           ) : !avail ? (
             <span className="muted">Couldn&apos;t load availability.</span>
-          ) : noTimeLeft ? (
+          ) : noTimeLeft || !seed ? (
             <div className="empty">
               {dayIsOver
-                ? `We're closed for today (${avail.opens} - ${avail.closes}). Pick another date.`
+                ? "There's no time left to reserve today. Pick another date."
                 : "This booth is fully reserved on this day. Try another booth or date."}
             </div>
           ) : (
@@ -531,14 +560,14 @@ export default function ReservationClient({
                       setNoteError("");
                     }}
                     defaultRange={{
-                      from: minutesToTime(freeGaps[0].from),
+                      from: minutesToTime(seed.from),
                       to: minutesToTime(
                         suggestedEndMin(
-                          freeGaps[0].from,
-                          freeGaps[0].to,
+                          seed.from,
+                          seed.to,
                           minReservationMinutes,
                           PREFERRED_MINUTES,
-                        ) ?? freeGaps[0].to,
+                        ) ?? seed.to,
                       ),
                     }}
                   />
@@ -552,8 +581,6 @@ export default function ReservationClient({
               </div>
 
               <DayTimeline
-                opens={avail.opens}
-                closes={avail.closes}
                 earliest={avail.earliest}
                 reserved={avail.reserved}
                 selection={start && end ? { start, end } : null}
@@ -570,6 +597,7 @@ export default function ReservationClient({
                   setError("");
                   // Freeing a slot can undo the very reason a pick was refused.
                   setRefused(null);
+                  wroteAt.current = Date.now();
                   loadAvailability({ fresh: true, keepPick: true });
                 }}
                 // Another way to choose a range, writing the same state.
@@ -632,9 +660,9 @@ export default function ReservationClient({
           id="note"
           name="note"
           aria-label="Note"
-          className={`note-box ${(mustNote && !note.trim()) || noteError ? "required" : ""}`}
+          className={`note-box ${(noteNeeded && !note.trim()) || noteError ? "required" : ""}`}
           placeholder={
-            mustNote
+            noteNeeded
               ? `Note (required for ${autoApproveMaxHours} hours or more) - what is the booth for?`
               : "Note (optional) - e.g. what the booth is for"
           }
@@ -646,7 +674,7 @@ export default function ReservationClient({
             setError("");
             setNoteError("");
           }}
-          aria-required={mustNote}
+          aria-required={noteNeeded}
         />
 
         {/* Collapsed until Cloudflare challenges, so an ordinary booking sees no gap. */}

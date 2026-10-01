@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  barEndPercent,
+  barPercent,
   buildDaySegments,
   dragRange,
   endForStart,
+  findFreeGaps,
+  hourCells,
+  isDayOver,
   pickTagPlacement,
+  seedGap,
   snapToStep,
   suggestedEndMin,
   tickMinutes,
+  wantedStartMin,
 } from "@/lib/timeline";
 
 // Reserved ranges as minutes-since-midnight (09:00 = 540, etc.).
@@ -117,6 +124,72 @@ describe("endForStart", () => {
 
   it("returns null when the remaining stretch is shorter than the minimum", () => {
     expect(endForStart(895, gaps, 15, 60)).toBeNull(); // only 5 min left
+  });
+});
+
+describe("seedGap", () => {
+  const MORNING = 9 * 60;
+  const wholeDay = [{ from: 0, to: 1435 }];
+
+  it("opens an empty day at the wanted time, not at midnight", () => {
+    expect(seedGap(wholeDay, MORNING, 15)).toEqual({ from: MORNING, to: 1435 });
+  });
+
+  it("opens on the stretch's own start when that is already later", () => {
+    // Today at 13:10: the free stretch starts after the wanted time.
+    expect(seedGap([{ from: 790, to: 1435 }], MORNING, 15)).toEqual({
+      from: 790,
+      to: 1435,
+    });
+  });
+
+  it("skips to the next stretch when the wanted time is taken", () => {
+    // 09:00-11:00 booked: free until 09:00, then from 11:00.
+    const gaps = [
+      { from: 0, to: 540 },
+      { from: 660, to: 1435 },
+    ];
+    expect(seedGap(gaps, MORNING, 15)).toEqual({ from: 660, to: 1435 });
+  });
+
+  it("starts mid-stretch when the wanted time falls inside one", () => {
+    const gaps = [
+      { from: 0, to: 600 },
+      { from: 720, to: 1435 },
+    ];
+    expect(seedGap(gaps, MORNING, 15)).toEqual({ from: MORNING, to: 600 });
+  });
+
+  it("passes over a stretch with less than the minimum left after the wanted time", () => {
+    // 09:00 to 09:10 is free but too short, so the seed moves on to 11:00.
+    const gaps = [
+      { from: 0, to: 550 },
+      { from: 660, to: 1435 },
+    ];
+    expect(seedGap(gaps, MORNING, 15)).toEqual({ from: 660, to: 1435 });
+  });
+
+  it("takes a stretch with exactly the minimum left", () => {
+    const gaps = [{ from: 0, to: 555 }];
+    expect(seedGap(gaps, MORNING, 15)).toEqual({ from: MORNING, to: 555 });
+  });
+
+  // Booked solid from 09:00: only the early morning is left, so open there.
+  it("falls back to the day's first stretch when nothing later has room", () => {
+    const gaps = [{ from: 0, to: 540 }];
+    expect(seedGap(gaps, MORNING, 15)).toEqual({ from: 0, to: 540 });
+  });
+
+  it("falls back to the first of several early stretches, not the last", () => {
+    const gaps = [
+      { from: 0, to: 180 },
+      { from: 240, to: 540 },
+    ];
+    expect(seedGap(gaps, MORNING, 15)).toEqual({ from: 0, to: 180 });
+  });
+
+  it("returns null when there is no free stretch at all", () => {
+    expect(seedGap([], MORNING, 15)).toBeNull();
   });
 });
 
@@ -265,50 +338,363 @@ describe("pickTagPlacement", () => {
 });
 
 describe("tickMinutes", () => {
-  // A 09:00-23:00 day, the shape the booking screen actually shows.
-  const OPEN = 540;
-  const CLOSE = 1380;
-  const LABEL = 44;
-  const at = (barPx: number) => tickMinutes(OPEN, CLOSE, barPx, LABEL);
+  // The 24-hour day the booking screen draws, 00:00 to 24:00.
+  const START = 0;
+  const END = 1440;
+  const LABEL = 48;
+  const at = (barPx: number) => tickMinutes(START, END, barPx, LABEL);
   const hours = (mins: number[]) => mins.map((m) => m / 60);
 
   it("labels every hour when the bar is wide enough", () => {
+    expect(at(1200)).toHaveLength(25);
+    expect(hours(at(1200)).slice(0, 3)).toEqual([0, 1, 2]);
+  });
+
+  it("labels every other hour on the desktop bar", () => {
     expect(hours(at(1126))).toEqual([
-      9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+      0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24,
     ]);
   });
 
-  // The bug: 15 labels needing 44px each cannot fit a phone's ~350px bar.
   it("thins the labels on a phone-width bar", () => {
-    expect(hours(at(350))).toEqual([9, 11, 13, 15, 17, 19, 21, 23]);
+    expect(hours(at(301))).toEqual([0, 4, 8, 12, 16, 20, 24]);
   });
 
-  it("thins further the narrower it gets, and never below the two ends", () => {
-    expect(hours(at(220))).toEqual([9, 12, 15, 18, 23]);
-    expect(at(1)).toEqual([OPEN, CLOSE]);
+  // 5 hours would fit here, but 5 does not divide 24 and would leave the evening bare.
+  it("rounds the stride up to one that divides the day, so marks stay even", () => {
+    expect(hours(at(286))).toEqual([0, 6, 12, 18, 24]);
+    expect(hours(at(246))).toEqual([0, 6, 12, 18, 24]);
+    expect(hours(at(150))).toEqual([0, 8, 16, 24]);
+    expect(hours(at(100))).toEqual([0, 12, 24]);
   });
 
-  it("keeps closing time whatever the step, dropping the mark that would crowd it", () => {
-    for (const barPx of [1126, 350, 300, 220, 160, 90, 40]) {
+  // A width that is not a number must not spin the divisor loop.
+  it("gives every mark for an unmeasurable bar", () => {
+    expect(at(Number.NaN)).toHaveLength(25);
+    expect(at(-10)).toHaveLength(25);
+    expect(tickMinutes(0, 1440, 300, Number.NaN)).toHaveLength(25);
+  });
+
+  it("never goes below the two ends, however narrow", () => {
+    expect(at(60)).toEqual([START, END]);
+    expect(at(1)).toEqual([START, END]);
+  });
+
+  it("keeps both ends, evenly spaced, with room for each label, at any width", () => {
+    for (const barPx of [
+      1200, 1126, 768, 375, 301, 286, 246, 150, 100, 60, 1,
+    ]) {
       const marks = at(barPx);
-      expect(marks[0]).toBe(OPEN);
-      expect(marks[marks.length - 1]).toBe(CLOSE);
+      expect(marks[0]).toBe(START);
+      expect(marks[marks.length - 1]).toBe(END);
+      const gaps = marks.slice(1).map((m, i) => m - marks[i]);
+      expect(new Set(gaps).size).toBe(1);
       // Whatever survives has to have room for its own label.
-      const gapPx = ((marks[1] - marks[0]) / (CLOSE - OPEN)) * barPx;
+      const gapPx = (gaps[0] / (END - START)) * barPx;
       if (marks.length > 2) expect(gapPx).toBeGreaterThanOrEqual(LABEL);
     }
   });
 
   it("labels every hour until the bar has been measured", () => {
-    expect(at(0)).toHaveLength(15);
+    expect(at(0)).toHaveLength(25);
   });
 
-  it("starts on the first whole hour of a day that opens mid-hour", () => {
-    expect(hours(tickMinutes(570, 720, 1000, LABEL))).toEqual([10, 11, 12]);
+  it("uses a divisor for any whole-hour span, not only 24", () => {
+    // 14 hours at a stride of 3 would be uneven, so it steps up to 7.
+    expect(hours(tickMinutes(540, 1380, 220, 44))).toEqual([9, 16, 23]);
+    expect(hours(tickMinutes(540, 1380, 350, 44))).toEqual([
+      9, 11, 13, 15, 17, 19, 21, 23,
+    ]);
   });
 
-  // Opening time never gives way to closing time; the two ends are the floor.
+  it("starts on the first whole hour of a span that begins mid-hour", () => {
+    expect(hours(tickMinutes(570, 720, 1000, 44))).toEqual([10, 11, 12]);
+  });
+
+  // No stride divides a part-hour span, so the last mark is kept by dropping its neighbour.
+  it("keeps the last mark of a part-hour span, dropping the one that would crowd it", () => {
+    expect(hours(tickMinutes(570, 1380, 220, 44))).toEqual([
+      10, 13, 16, 19, 23,
+    ]);
+  });
+
   it("keeps both ends of a bar with room for nothing else", () => {
-    expect(hours(tickMinutes(540, 660, 40, LABEL))).toEqual([9, 11]);
+    expect(hours(tickMinutes(540, 660, 40, 44))).toEqual([9, 11]);
+  });
+});
+
+describe("barPercent", () => {
+  const at = (min: number) => barPercent(min, 0, 1440);
+
+  it("places a minute by its share of the 24-hour bar", () => {
+    expect(at(0)).toBe(0);
+    expect(at(720)).toBe(50);
+    expect(at(360)).toBe(25);
+    expect(at(1440)).toBe(100);
+  });
+
+  // Hour lines, boxes and ticks all read this, so the grid must stay even.
+  it("keeps every hour evenly spaced, including the last", () => {
+    for (let h = 0; h <= 24; h++)
+      expect(at(h * 60)).toBeCloseTo(h * (100 / 24), 9);
+  });
+
+  it("clamps a minute outside the bar", () => {
+    expect(at(-30)).toBe(0);
+    expect(at(1500)).toBe(100);
+  });
+
+  it("reads a window that is not a whole day", () => {
+    expect(barPercent(600, 540, 660)).toBe(50);
+  });
+
+  // A zero-width day would divide by zero; it clamps instead of returning NaN.
+  it("does not divide by a zero-width day", () => {
+    expect(barPercent(5, 600, 600)).toBe(0);
+    expect(barPercent(605, 600, 600)).toBe(100);
+  });
+});
+
+describe("barEndPercent", () => {
+  const at = (min: number) => barEndPercent(min, 0, 1440, 1435);
+
+  // A booking cannot end later, so its edge belongs on the bar's rounded end.
+  it("draws an end on the last bookable minute at the very end of the bar", () => {
+    expect(at(1435)).toBe(100);
+    expect(at(1440)).toBe(100);
+  });
+
+  it("leaves the minute before it where it falls", () => {
+    expect(at(1430)).toBeLessThan(100);
+    expect(at(1430)).toBeCloseTo((1430 / 1440) * 100, 5);
+  });
+
+  it("agrees with barPercent everywhere else", () => {
+    for (const m of [0, 60, 720, 1380, 1425]) {
+      expect(at(m)).toBe(barPercent(m, 0, 1440));
+    }
+  });
+
+  // With hourly steps the last step is an hour mark, which must not snap.
+  it("snaps only the end edge, so an hourly step keeps its 23:00 mark", () => {
+    expect(barEndPercent(1380, 0, 1440, 1380)).toBe(100);
+    expect(barPercent(1380, 0, 1440)).toBeCloseTo(95.8333, 3);
+  });
+});
+
+describe("hourCells", () => {
+  const LAST = 1435; // 23:55, the last step on a 5-minute grid
+  const cells = (
+    reserved: { start: number; end: number }[],
+    earliest = 0,
+    lastEnd = LAST,
+    minDuration = 15,
+  ) =>
+    hourCells(
+      buildDaySegments(0, 1440, reserved),
+      earliest,
+      0,
+      1440,
+      lastEnd,
+      minDuration,
+    );
+
+  it("gives an empty day 24 free boxes, one per hour", () => {
+    const all = cells([]);
+    expect(all).toHaveLength(24);
+    expect(all.every((c) => c.free)).toBe(true);
+    expect(all[0]).toEqual({ from: 0, to: 60, end: 60, free: true });
+    expect(all[9]).toEqual({ from: 540, to: 600, end: 600, free: true });
+  });
+
+  // The box still spans its hour on the bar, but a click stops at 23:55.
+  it("ends the last box's pick a step short of midnight", () => {
+    expect(cells([])[23]).toEqual({
+      from: 1380,
+      to: 1440,
+      end: 1435,
+      free: true,
+    });
+  });
+
+  it("closes every box that has already started", () => {
+    const all = cells([], 13 * 60 + 10);
+    expect(all[12].free).toBe(false);
+    expect(all[13].free).toBe(false); // 13:00 began ten minutes ago
+    expect(all[14].free).toBe(true);
+  });
+
+  it("opens the box that starts exactly now", () => {
+    expect(cells([], 14 * 60)[14].free).toBe(true);
+  });
+
+  it("closes a box that is booked, wholly or in part", () => {
+    const all = cells([
+      { start: 600, end: 660 },
+      { start: 14 * 60 + 30, end: 14 * 60 + 45 },
+    ]);
+    expect(all[10].free).toBe(false);
+    expect(all[14].free).toBe(false);
+    expect(all[9].free).toBe(true);
+    expect(all[11].free).toBe(true);
+    expect(all[15].free).toBe(true);
+  });
+
+  it("leaves a box free when a booking only touches its edge", () => {
+    const all = cells([{ start: 600, end: 660 }]);
+    expect(all[9].free).toBe(true);
+    expect(all[11].free).toBe(true);
+  });
+
+  // 23:00 - 23:30 is all the last box can offer here, short of the 60-minute minimum.
+  it("closes the last box when what is left of it is under the minimum", () => {
+    const all = cells([], 0, 1410, 60);
+    expect(all[23]).toMatchObject({ end: 1410, free: false });
+    expect(all[22].free).toBe(true);
+  });
+
+  it("closes the last box when an hourly step leaves it nothing", () => {
+    const all = cells([], 0, 1380, 15);
+    expect(all[23]).toMatchObject({ end: 1380, free: false });
+    expect(all[22]).toMatchObject({ end: 1380, free: true });
+  });
+
+  it("keeps every ordinary box open when the minimum runs past an hour", () => {
+    const long = cells([], 0, LAST, 90);
+    expect(long.slice(0, 23).every((c) => c.free)).toBe(true);
+    expect(long[23].free).toBe(false);
+    expect(cells([], 0, LAST, 180)[9].free).toBe(true);
+  });
+
+  it("keeps the last box open when the minimum just fits", () => {
+    expect(cells([], 0, LAST, 55)[23].free).toBe(true);
+    expect(cells([], 0, LAST, 56)[23].free).toBe(false);
+  });
+});
+
+describe("findFreeGaps", () => {
+  const END = 1435;
+
+  it("gives an empty day one stretch, midnight to the last step", () => {
+    expect(findFreeGaps([], 0, END, 15)).toEqual([{ from: 0, to: END }]);
+  });
+
+  it("starts at the earliest reservable minute, not at midnight", () => {
+    expect(findFreeGaps([], 790, END, 15)).toEqual([{ from: 790, to: END }]);
+  });
+
+  it("splits around bookings, whatever order they arrive in", () => {
+    const reserved = [
+      { start: 840, end: 900 },
+      { start: 540, end: 600 },
+    ];
+    expect(findFreeGaps(reserved, 0, END, 15)).toEqual([
+      { from: 0, to: 540 },
+      { from: 600, to: 840 },
+      { from: 900, to: END },
+    ]);
+  });
+
+  it("drops a stretch too short to hold a booking", () => {
+    const reserved = [
+      { start: 540, end: 600 },
+      { start: 610, end: 660 },
+    ];
+    expect(findFreeGaps(reserved, 0, END, 15)).toEqual([
+      { from: 0, to: 540 },
+      { from: 660, to: END },
+    ]);
+  });
+
+  it("keeps a stretch of exactly the minimum", () => {
+    const reserved = [
+      { start: 540, end: 600 },
+      { start: 615, end: 660 },
+    ];
+    expect(findFreeGaps(reserved, 0, END, 15)).toContainEqual({
+      from: 600,
+      to: 615,
+    });
+  });
+
+  it("leaves no gap between bookings that touch", () => {
+    const reserved = [
+      { start: 540, end: 600 },
+      { start: 600, end: 660 },
+    ];
+    expect(findFreeGaps(reserved, 0, END, 15)).toEqual([
+      { from: 0, to: 540 },
+      { from: 660, to: END },
+    ]);
+  });
+
+  // The ordinary state of today's board once a booking has finished.
+  it("does not reopen a booking that ended before the earliest minute", () => {
+    expect(findFreeGaps([{ start: 540, end: 600 }], 840, END, 15)).toEqual([
+      { from: 840, to: END },
+    ]);
+  });
+
+  it("starts after a booking already underway", () => {
+    expect(findFreeGaps([{ start: 540, end: 600 }], 570, END, 15)).toEqual([
+      { from: 600, to: END },
+    ]);
+  });
+
+  it("stops at the last step, so no stretch offers an end at 24:00", () => {
+    const gaps = findFreeGaps([{ start: 0, end: 1380 }], 0, END, 15);
+    expect(gaps).toEqual([{ from: 1380, to: END }]);
+  });
+
+  it("is empty when a booking runs to the end of the day", () => {
+    expect(findFreeGaps([{ start: 0, end: END }], 0, END, 15)).toEqual([]);
+  });
+
+  it("is empty once the earliest minute is past the last step", () => {
+    expect(findFreeGaps([], 1440, END, 15)).toEqual([]);
+    expect(findFreeGaps([], 1425, END, 15)).toEqual([]);
+  });
+
+  it("does not reorder the caller's list", () => {
+    const reserved = [
+      { start: 840, end: 900 },
+      { start: 540, end: 600 },
+    ];
+    findFreeGaps(reserved, 0, END, 15);
+    expect(reserved[0].start).toBe(840);
+  });
+});
+
+describe("isDayOver", () => {
+  const END = 1435;
+
+  it("is false while a whole booking still fits", () => {
+    expect(isDayOver(0, END, 15)).toBe(false);
+    expect(isDayOver(1420, END, 15)).toBe(false); // exactly the minimum left
+  });
+
+  it("is true once less than the minimum remains", () => {
+    expect(isDayOver(1425, END, 15)).toBe(true);
+    expect(isDayOver(END, END, 15)).toBe(true);
+  });
+
+  // The route rounds 23:56 up to "24:00", which is past the last step.
+  it("is true for an earliest minute past the end of the day", () => {
+    expect(isDayOver(1440, END, 15)).toBe(true);
+  });
+});
+
+describe("wantedStartMin", () => {
+  const MORNING = 9 * 60;
+
+  it("prefers mid-morning on a day nothing has passed on", () => {
+    expect(wantedStartMin(0, MORNING)).toBe(MORNING);
+  });
+
+  it("uses the next free time on a day already underway", () => {
+    expect(wantedStartMin(1, MORNING)).toBe(1);
+    expect(wantedStartMin(5, MORNING)).toBe(5);
+    expect(wantedStartMin(6 * 60, MORNING)).toBe(6 * 60);
+    expect(wantedStartMin(13 * 60 + 10, MORNING)).toBe(13 * 60 + 10);
   });
 });

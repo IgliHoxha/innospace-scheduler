@@ -7,16 +7,6 @@ import {
 import { requireIntEnv } from "./env-app";
 import { timeOf, durationMinutes, ymd } from "./datetime";
 
-/** First reservable hour of the day, 24h. */
-export function openHour(): number {
-  return Math.min(23, Math.max(0, requireIntEnv("OPEN_HOUR")));
-}
-
-/** Closing hour: a reservation must end by this, and it always beats openHour(). */
-export function closeHour(): number {
-  return Math.min(24, Math.max(openHour() + 1, requireIntEnv("CLOSE_HOUR")));
-}
-
 /** How many days ahead, including today, can be reserved. */
 export function reservationWindowDays(): number {
   return Math.max(0, requireIntEnv("RESERVATION_WINDOW_DAYS"));
@@ -65,14 +55,9 @@ export function ceilToStep(minutes: number): number {
   return Math.ceil(minutes / step) * step;
 }
 
-/** The same rule the form runs, with this server's hours supplied. */
+/** The same rule the form runs, with this server's step supplied. */
 export function isValidTimeOfDay(minutes: number): boolean {
-  return isBookableMinute(
-    minutes,
-    openHour() * 60,
-    closeHour() * 60,
-    stepMinutes(),
-  );
+  return isBookableMinute(minutes, stepMinutes());
 }
 
 /** "09:30 - 11:00" for a reservation. */
@@ -87,6 +72,12 @@ export function formatDuration(mins: number): string {
   if (h && m) return `${h}h ${m}m`;
   if (h) return `${h}h`;
   return `${m}m`;
+}
+
+/** "0 reservations" / "1 reservation" / "3 reservations" for a booth card. */
+export function reservationCountLabel(count: number): string {
+  const n = Math.max(0, count);
+  return n === 1 ? "1 reservation" : `${n} reservations`;
 }
 
 /** "1h 30m" / "45m": a human duration for a reservation. */

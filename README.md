@@ -17,7 +17,7 @@ deploy to Fly.io.
 
 - **Arbitrary time ranges**, not fixed slots. A reservation is a start and end
   datetime; times snap to a configurable step (default 5 min) with a configurable
-  minimum length (default 15 min), inside the open hours.
+  minimum length (default 15 min), at any time of day.
 - **No double-reservation.** Overlaps are rejected atomically inside a DB transaction,
   so two people racing for the same slot cannot both win. Ranges are half-open, so
   10:00-11:00 and 11:00-12:00 do not clash.
@@ -41,7 +41,7 @@ deploy to Fly.io.
   are not offered.
 - `ACTIVE_STATUSES` = `confirmed` + `pending`: a pending reservation holds the slot
   exactly like a confirmed one. Cancelled and deleted reservations free it.
-- The picker only collects the two times. Opening hours, the step grid, the
+- The picker only collects the two times. The step grid, the
   minimum length, and clashes are enforced by the reservation form and, definitively,
   by the API route and the database.
 
@@ -115,8 +115,8 @@ for anything beyond local dev:
 | `TZ` | Timezone for the day boundary (e.g. `Europe/Tirane`). |
 | `DATA_FILE` | SQLite path (default `./data/scheduler.db`). |
 
-Scheduling knobs (all optional, with sensible defaults): `OPEN_HOUR`,
-`CLOSE_HOUR`, `TIME_STEP_MINUTES`, `MIN_RESERVATION_MINUTES`, `RESERVATION_WINDOW_DAYS`,
+Scheduling knobs (all optional, with sensible defaults):
+`TIME_STEP_MINUTES`, `MIN_RESERVATION_MINUTES`, `RESERVATION_WINDOW_DAYS`,
 `AUTO_APPROVE_MAX_HOURS`, `INVITE_TTL_DAYS`. Booths come from `SCHEDULER_BOOTHS`
 (`id:Name:capacity`, comma-separated); omit it for the built-in defaults.
 

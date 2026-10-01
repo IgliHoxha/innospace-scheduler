@@ -88,7 +88,7 @@ coverage: ## Run the tests with a V8 coverage report
 # The only long-lived cached page. Availability expires on its own in 30s.
 PURGE_URL ?= https://scheduler.innospacetirana.com/
 
-secret: ## Set a Fly secret AND purge the edge: make secret KEY=CLOSE_HOUR VALUE=23
+secret: ## Set a Fly secret AND purge the edge: make secret KEY=AUTO_APPROVE_MAX_HOURS VALUE=3
 	@test -n "$(KEY)" || { echo "Usage: make secret KEY=NAME VALUE=value"; exit 1; }
 	@test -n "$(VALUE)" || { echo "Usage: make secret KEY=NAME VALUE=value"; exit 1; }
 	flyctl secrets set $(KEY)="$(VALUE)" --config fly.toml.example

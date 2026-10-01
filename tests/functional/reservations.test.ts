@@ -216,7 +216,35 @@ describe("POST /api/reservations - slot validation", () => {
     expect((await post({ ...ok, date: "1999-01-01" })).status).toBe(400);
   });
   it("400 for an off-grid time", async () => {
-    expect((await post({ ...ok, start: "14:07" })).status).toBe(400);
+    const res = await post({ ...ok, start: "14:07" });
+    expect(res.status).toBe(400);
+    const { error } = await json(res);
+    expect(error).toContain("5-minute steps");
+    expect(error).not.toContain("opening");
+  });
+  it("400 for an off-grid end, which the start check alone would let through", async () => {
+    const res = await post({ ...ok, end: "15:07" });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("5-minute steps");
+  });
+  // 24:00 is on the grid but is not a clock time, so the day ends a step short.
+  it("400 for an end at 24:00", async () => {
+    expect((await post({ ...ok, start: "23:00", end: "24:00" })).status).toBe(
+      400,
+    );
+  });
+  // 12:65 counts out to 13:05, on the grid, so only the clock check stops it.
+  it("400 for a time no clock shows, even when its minutes land on the grid", async () => {
+    expect((await post({ ...ok, start: "12:65" })).status).toBe(400);
+    expect((await post({ ...ok, end: "14:75" })).status).toBe(400);
+    expect((await post({ ...ok, start: "25:00", end: "26:00" })).status).toBe(
+      400,
+    );
+  });
+  it("400 for a time that is not HH:MM at all", async () => {
+    expect((await post({ ...ok, start: "2pm" })).status).toBe(400);
+    expect((await post({ ...ok, start: "" })).status).toBe(400);
+    expect((await post({ ...ok, end: "15:00:00" })).status).toBe(400);
   });
   it("400 when the end is not after the start", async () => {
     expect((await post({ ...ok, end: "14:00" })).status).toBe(400);
@@ -250,6 +278,193 @@ describe("POST /api/reservations - slot validation", () => {
       }),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// There are no opening hours: every hour of the day takes a booking.
+describe("POST /api/reservations - any hour of the day", () => {
+  const TOMORROW = "2026-07-17";
+
+  it("201 for a booking starting at midnight", async () => {
+    const res = await post({
+      ...ok,
+      date: TOMORROW,
+      start: "00:00",
+      end: "01:00",
+    });
+    expect(res.status).toBe(201);
+    const row = db.getReservation((await json(res)).reservation!.id!);
+    expect(row).toMatchObject({
+      startsAt: `${TOMORROW}T00:00`,
+      endsAt: `${TOMORROW}T01:00`,
+    });
+  });
+
+  it("201 in the early morning, before the old opening time", async () => {
+    const res = await post({
+      ...ok,
+      date: TOMORROW,
+      start: "05:30",
+      end: "06:30",
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("201 in the late evening, after the old closing time", async () => {
+    expect((await post({ ...ok, start: "21:00", end: "22:00" })).status).toBe(
+      201,
+    );
+  });
+
+  it("201 for a booking ending on the day's last step", async () => {
+    const res = await post({ ...ok, start: "23:00", end: "23:55" });
+    expect(res.status).toBe(201);
+    const row = db.getReservation((await json(res)).reservation!.id!);
+    expect(row?.endsAt).toBe(`${DAY}T23:55`);
+  });
+
+  it("works with OPEN_HOUR and CLOSE_HOUR unset, as the baseline leaves them", async () => {
+    expect(process.env.OPEN_HOUR).toBeUndefined();
+    expect(process.env.CLOSE_HOUR).toBeUndefined();
+    expect((await post(ok)).status).toBe(201);
+  });
+
+  it("409 for a second booking over a midnight one, as at any other hour", async () => {
+    const first = { ...ok, date: TOMORROW, start: "00:00", end: "01:00" };
+    expect((await post(first)).status).toBe(201);
+    const res = await post(
+      {
+        ...first,
+        start: "00:30",
+        end: "01:30",
+        fullName: "Bob Builder",
+        email: "bob@example.com",
+      },
+      "10.0.0.2",
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("409 for a second booking over the day's last one", async () => {
+    expect((await post({ ...ok, start: "23:00", end: "23:55" })).status).toBe(
+      201,
+    );
+    const res = await post(
+      {
+        ...ok,
+        start: "23:30",
+        end: "23:55",
+        fullName: "Bob Builder",
+        email: "bob@example.com",
+      },
+      "10.0.0.2",
+    );
+    expect(res.status).toBe(409);
+  });
+});
+
+// With no closing time a sitting can run past midnight, so the run rule must follow it.
+describe("POST /api/reservations - a run across midnight", () => {
+  const TOMORROW = "2026-07-17";
+  // Each just under the 2-hour limit alone; together 3h50 with a 5-minute seam.
+  const tonight = { ...ok, start: "22:00", end: "23:55" };
+  const afterMidnight = {
+    ...ok,
+    date: TOMORROW,
+    start: "00:00",
+    end: "01:55",
+  };
+
+  it("asks for a note when the next day's booking continues tonight's", async () => {
+    expect((await post(tonight)).status).toBe(201);
+    const res = await post(afterMidnight);
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.field).toBe("note");
+    expect(body.error).toContain("back to back");
+  });
+
+  it("asks for a note the other way round too", async () => {
+    expect((await post(afterMidnight)).status).toBe(201);
+    const res = await post(tonight);
+    expect(res.status).toBe(400);
+    expect((await json(res)).field).toBe("note");
+  });
+
+  it("holds the continued run for approval once the note is given", async () => {
+    expect((await post(tonight)).status).toBe(201);
+    const res = await post({ ...afterMidnight, note: "Overnight workshop" });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("pending");
+  });
+
+  // The dead last step is not free time, so it cannot break a sitting in two.
+  it("joins across a seam that no one could book either side of midnight", async () => {
+    expect((await post({ ...ok, start: "21:50", end: "23:45" })).status).toBe(
+      201,
+    );
+    const res = await post({
+      ...ok,
+      date: TOMORROW,
+      start: "00:05",
+      end: "02:00",
+    });
+    expect(res.status).toBe(400);
+    expect((await json(res)).field).toBe("note");
+  });
+
+  it("lets a real gap across midnight break the run", async () => {
+    expect((await post({ ...ok, start: "21:00", end: "22:55" })).status).toBe(
+      201,
+    );
+    const res = await post({
+      ...ok,
+      date: TOMORROW,
+      start: "00:30",
+      end: "02:25",
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("counts a short booking bridging midnight, not just the two long ones", async () => {
+    expect((await post({ ...ok, start: "22:40", end: "23:55" })).status).toBe(
+      201,
+    );
+    expect(
+      (await post({ ...ok, date: TOMORROW, start: "00:00", end: "00:15" }))
+        .status,
+    ).toBe(201);
+    const res = await post({
+      ...ok,
+      date: TOMORROW,
+      start: "00:15",
+      end: "01:00",
+    });
+    expect(res.status).toBe(400);
+    expect((await json(res)).field).toBe("note");
+  });
+
+  it("leaves a next-day booking alone when it does not touch tonight's", async () => {
+    expect((await post(tonight)).status).toBe(201);
+    const res = await post({
+      ...ok,
+      date: TOMORROW,
+      start: "10:00",
+      end: "11:00",
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
+  });
+
+  it("does not join another person's booking across midnight", async () => {
+    expect((await post(tonight)).status).toBe(201);
+    const res = await post(
+      { ...afterMidnight, fullName: "Bob Builder", email: "bob@example.com" },
+      "10.0.0.2",
+    );
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.status).toBe("confirmed");
   });
 });
 

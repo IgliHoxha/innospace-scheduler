@@ -7,20 +7,20 @@ export interface DaySegment<T> {
   reserved: T | null;
 }
 
-/** Split the open day into reserved and free segments, clamped to the window. */
+/** Split the day into reserved and free segments, clamped to its bounds. */
 export function buildDaySegments<T extends { start: number; end: number }>(
-  opensMin: number,
-  closesMin: number,
+  dayStartMin: number,
+  dayEndMin: number,
   reserved: readonly T[],
 ): DaySegment<T>[] {
   const inWindow = reserved
-    .filter((r) => r.end > opensMin && r.start < closesMin)
+    .filter((r) => r.end > dayStartMin && r.start < dayEndMin)
     .sort((a, b) => a.start - b.start);
   const segments: DaySegment<T>[] = [];
-  let cursor = opensMin;
+  let cursor = dayStartMin;
   for (const r of inWindow) {
-    const from = Math.max(r.start, opensMin);
-    const to = Math.min(r.end, closesMin);
+    const from = Math.max(r.start, dayStartMin);
+    const to = Math.min(r.end, dayEndMin);
     if (from > cursor) {
       segments.push({ fromMin: cursor, toMin: from, reserved: null });
     }
@@ -33,8 +33,8 @@ export function buildDaySegments<T extends { start: number; end: number }>(
       cursor = to;
     }
   }
-  if (cursor < closesMin) {
-    segments.push({ fromMin: cursor, toMin: closesMin, reserved: null });
+  if (cursor < dayEndMin) {
+    segments.push({ fromMin: cursor, toMin: dayEndMin, reserved: null });
   }
   return segments;
 }
@@ -84,26 +84,33 @@ export function dragRange(
   return { from, to };
 }
 
-/** The hour marks fitting this bar, thinned evenly, always keeping closing time. */
+/** The hour marks fitting this bar, thinned evenly, always keeping the last one. */
 export function tickMinutes(
-  opensMin: number,
-  closesMin: number,
+  dayStartMin: number,
+  dayEndMin: number,
   barPx: number,
   labelPx: number,
 ): number[] {
   const all: number[] = [];
-  for (let m = Math.ceil(opensMin / 60) * 60; m <= closesMin; m += 60) {
+  for (let m = Math.ceil(dayStartMin / 60) * 60; m <= dayEndMin; m += 60) {
     all.push(m);
   }
-  const hours = (closesMin - opensMin) / 60;
+  const hours = (dayEndMin - dayStartMin) / 60;
   // Nothing to thin before the bar is measured; two marks are the ends.
-  if (all.length < 3 || barPx <= 0 || hours <= 0) return all;
-  const step = Math.max(1, Math.ceil((labelPx * hours) / barPx));
+  // Negated, so a NaN measurement takes this exit rather than the loop below.
+  if (all.length < 3 || !(barPx > 0) || !(hours > 0) || !(labelPx > 0))
+    return all;
+  let step = Math.max(1, Math.ceil((labelPx * hours) / barPx));
+  // A stride dividing a whole-hour span keeps the marks even and lands on the last.
+  if (Number.isInteger(hours)) {
+    step = Math.min(step, hours);
+    while (hours % step !== 0) step++;
+  }
   if (step === 1) return all;
   const kept = all.filter((_, i) => i % step === 0);
   const last = all[all.length - 1];
   if (kept[kept.length - 1] !== last) {
-    // Closing time earns its place, so a mark too close to it gives way.
+    // The last mark earns its place, so one too close to it gives way.
     if (kept.length > 1 && last - kept[kept.length - 1] < step * 60) kept.pop();
     kept.push(last);
   }
@@ -133,6 +140,113 @@ export function pickTagPlacement(opts: {
     centerPct,
     leftPx: Math.max(0, Math.min(wanted, barPx - tagPx)),
   };
+}
+
+/** Where a minute sits on the bar, as a percentage of the day it draws. */
+export function barPercent(
+  min: number,
+  dayStartMin: number,
+  dayEndMin: number,
+): number {
+  const span = Math.max(1, dayEndMin - dayStartMin);
+  return Math.max(0, Math.min(100, ((min - dayStartMin) / span) * 100));
+}
+
+/** Where a range's closing edge sits: ending on the last step reaches the bar's end. */
+export function barEndPercent(
+  min: number,
+  dayStartMin: number,
+  dayEndMin: number,
+  lastEndMin: number,
+): number {
+  if (min >= lastEndMin) return 100;
+  return barPercent(min, dayStartMin, dayEndMin);
+}
+
+export interface HourCell {
+  from: number;
+  to: number;
+  /** Where a click on this box ends: the last box stops a step short of midnight. */
+  end: number;
+  /** Wholly free, not past, and long enough to book. */
+  free: boolean;
+}
+
+/** One box per hour of the bar, with the range a click on each would pick. */
+export function hourCells<T>(
+  segments: readonly DaySegment<T>[],
+  earliestMin: number,
+  dayStartMin: number,
+  dayEndMin: number,
+  lastEndMin: number,
+  minDurationMin: number,
+): HourCell[] {
+  const cells: HourCell[] = [];
+  for (let m = dayStartMin; m < dayEndMin; m += 60) {
+    const to = Math.min(m + 60, dayEndMin);
+    const end = Math.min(to, lastEndMin);
+    cells.push({
+      from: m,
+      to,
+      end,
+      free:
+        m >= earliestMin &&
+        // A box cut short of its hour must still hold the shortest booking.
+        end - m >= Math.min(minDurationMin, to - m) &&
+        !segments.some((s) => s.reserved && s.fromMin < to && s.toMin > m),
+    });
+  }
+  return cells;
+}
+
+/** The free stretches from `earliestMin` to the day's end that can hold a booking. */
+export function findFreeGaps(
+  reserved: readonly { start: number; end: number }[],
+  earliestMin: number,
+  dayEndMin: number,
+  minDurationMin: number,
+): { from: number; to: number }[] {
+  const busy = [...reserved].sort((a, b) => a.start - b.start);
+  let cursor = earliestMin;
+  const gaps: { from: number; to: number }[] = [];
+  for (const b of busy) {
+    if (b.start > cursor) {
+      gaps.push({ from: cursor, to: Math.min(b.start, dayEndMin) });
+    }
+    cursor = Math.max(cursor, b.end);
+  }
+  if (cursor < dayEndMin) gaps.push({ from: cursor, to: dayEndMin });
+  return gaps.filter((g) => g.to - g.from >= minDurationMin);
+}
+
+/** Too little of the day remains to hold even the shortest booking. */
+export function isDayOver(
+  earliestMin: number,
+  dayEndMin: number,
+  minDurationMin: number,
+): boolean {
+  return dayEndMin - earliestMin < minDurationMin;
+}
+
+/** A day underway opens on its next free time; an untouched one at the preferred time. */
+export function wantedStartMin(
+  earliestMin: number,
+  preferredMin: number,
+): number {
+  return earliestMin > 0 ? earliestMin : preferredMin;
+}
+
+/** The stretch the picker opens on: the first with room from `wantedMin`, else the first. */
+export function seedGap(
+  gaps: readonly { from: number; to: number }[],
+  wantedMin: number,
+  minDurationMin: number,
+): { from: number; to: number } | null {
+  for (const g of gaps) {
+    const from = Math.max(g.from, wantedMin);
+    if (g.to - from >= minDurationMin) return { from, to: g.to };
+  }
+  return gaps[0] ?? null;
 }
 
 /** The end for a moved start, clamped to its stretch; null if it landed in none. */

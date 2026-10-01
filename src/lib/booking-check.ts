@@ -30,8 +30,6 @@ export interface BookingCheckInput {
   /** Null until that end is chosen; nothing is judged before both are. */
   startMin: number | null;
   endMin: number | null;
-  openMin: number;
-  closeMin: number;
   /** First still-reservable minute today, so a passed slot can be named as such. */
   earliestMin: number;
   reserved: readonly { start: number; end: number; label: string }[];
@@ -64,8 +62,6 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
   const {
     startMin,
     endMin,
-    openMin,
-    closeMin,
     earliestMin,
     reserved,
     held,
@@ -98,12 +94,10 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
 
   if (!chosen) return no("");
   if (
-    !isBookableMinute(startMin, openMin, closeMin, stepMinutes) ||
-    !isBookableMinute(endMin, openMin, closeMin, stepMinutes)
+    !isBookableMinute(startMin, stepMinutes) ||
+    !isBookableMinute(endMin, stepMinutes)
   )
-    return no(
-      `Please choose times within opening hours, in ${stepMinutes}-minute steps.`,
-    );
+    return no(`Please choose times in ${stepMinutes}-minute steps.`);
   if (endMin <= startMin)
     return no("The end time must be after the start time.");
   if (!meetsMinDuration(duration, minReservationMinutes))

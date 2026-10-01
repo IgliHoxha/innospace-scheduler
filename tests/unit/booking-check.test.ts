@@ -6,12 +6,10 @@ import {
   type BookingCheckInput,
 } from "@/lib/booking-check";
 
-// The test baseline: 09:00-18:00, 5-minute grid, 15-minute minimum, 2-hour limit.
+// The test baseline: 5-minute grid, 15-minute minimum, 2-hour limit.
 const base: BookingCheckInput = {
   startMin: 10 * 60,
   endMin: 11 * 60,
-  openMin: 9 * 60,
-  closeMin: 18 * 60,
   earliestMin: 9 * 60,
   reserved: [],
   held: [],
@@ -55,7 +53,7 @@ describe("checkBooking: the happy path", () => {
   });
 });
 
-describe("checkBooking: the grid and opening hours", () => {
+describe("checkBooking: the grid and the clock", () => {
   it("refuses a start off the step grid", () => {
     expect(check({ startMin: 10 * 60 + 7 }).problem).toContain(
       "5-minute steps",
@@ -66,17 +64,27 @@ describe("checkBooking: the grid and opening hours", () => {
     expect(check({ endMin: 11 * 60 + 3 }).problem).toContain("5-minute steps");
   });
 
-  it("refuses a start before opening and an end after closing", () => {
-    expect(check({ startMin: 8 * 60, endMin: 9 * 60 }).problem).toContain(
-      "opening hours",
-    );
-    expect(check({ startMin: 17 * 60, endMin: 19 * 60 }).problem).toContain(
-      "opening hours",
+  it("accepts the small hours and the late evening, since nothing is closed", () => {
+    expect(check({ startMin: 0, endMin: 60, earliestMin: 0 }).problem).toBe("");
+    expect(
+      check({ startMin: 6 * 60, endMin: 7 * 60, earliestMin: 0 }).problem,
+    ).toBe("");
+    expect(check({ startMin: 22 * 60, endMin: 23 * 60 }).problem).toBe("");
+  });
+
+  it("allows a booking ending on the day's last step", () => {
+    expect(check({ startMin: 23 * 60, endMin: 23 * 60 + 55 }).problem).toBe("");
+  });
+
+  // 24:00 is on the grid but is not a clock time, so the day stops a step short.
+  it("refuses an end at 24:00", () => {
+    expect(check({ startMin: 23 * 60, endMin: 24 * 60 }).problem).toContain(
+      "5-minute steps",
     );
   });
 
-  it("allows a booking ending exactly at closing time", () => {
-    expect(check({ startMin: 17 * 60, endMin: 18 * 60 }).problem).toBe("");
+  it("never mentions opening hours", () => {
+    expect(check({ startMin: 10 * 60 + 7 }).problem).not.toContain("opening");
   });
 });
 

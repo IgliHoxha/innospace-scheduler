@@ -95,6 +95,35 @@ describe("clock-based helpers", () => {
   });
 });
 
+describe("shiftDate", () => {
+  it("steps to the next and the previous calendar day", () => {
+    expect(t.shiftDate("2026-07-16", 1)).toBe("2026-07-17");
+    expect(t.shiftDate("2026-07-16", -1)).toBe("2026-07-15");
+    expect(t.shiftDate("2026-07-16", 0)).toBe("2026-07-16");
+  });
+
+  it("rolls over a month, a year and a leap day", () => {
+    expect(t.shiftDate("2026-07-31", 1)).toBe("2026-08-01");
+    expect(t.shiftDate("2026-08-01", -1)).toBe("2026-07-31");
+    expect(t.shiftDate("2026-12-31", 1)).toBe("2027-01-01");
+    expect(t.shiftDate("2028-02-28", 1)).toBe("2028-02-29");
+    expect(t.shiftDate("2027-02-28", 1)).toBe("2027-03-01");
+  });
+
+  // A 23-hour or 25-hour day must still be exactly one date apart.
+  it("is not thrown by a clock change on either side", () => {
+    expect(t.shiftDate("2026-10-24", 1)).toBe("2026-10-25");
+    expect(t.shiftDate("2026-10-25", 1)).toBe("2026-10-26");
+    expect(t.shiftDate("2026-03-29", -1)).toBe("2026-03-28");
+    expect(t.shiftDate("2026-03-29", 1)).toBe("2026-03-30");
+  });
+
+  it("hands back what it cannot parse", () => {
+    expect(t.shiftDate("not-a-date", 1)).toBe("not-a-date");
+    expect(t.shiftDate("", 1)).toBe("");
+  });
+});
+
 describe("date + time formatting", () => {
   it("formatDMYShort", () => {
     expect(t.formatDMYShort("2026-07-14")).toBe("14/07/26");

@@ -279,6 +279,145 @@ describe("reservedRanges", () => {
   });
 });
 
+// The number on each booth card.
+describe("reservationCountsByBooth", () => {
+  it("is empty for a day nobody has booked", async () => {
+    expect(db.reservationCountsByBooth(D).size).toBe(0);
+  });
+
+  it("counts each booth's bookings separately", async () => {
+    await reserve("09:00", "10:00");
+    await reserve("11:00", "12:00");
+    await reserve("09:00", "10:00", {
+      boothId: "booth-2",
+      email: "bob@example.com",
+    });
+    const counts = db.reservationCountsByBooth(D);
+    expect(counts.get("booth-1")).toBe(2);
+    expect(counts.get("booth-2")).toBe(1);
+    // A booth with no booking has no row, so the caller supplies the zero.
+    expect(counts.has("booth-3")).toBe(false);
+  });
+
+  it("counts a pending booking, which holds its slot", async () => {
+    db.createReservation(
+      { boothId: "booth-1", startsAt: at("14:00"), endsAt: at("15:00") },
+      "pending",
+    );
+    expect(db.reservationCountsByBooth(D).get("booth-1")).toBe(1);
+  });
+
+  it("leaves out cancelled and deleted ones, which hold nothing", async () => {
+    const gone = await reserve("09:00", "10:00");
+    const binned = await reserve("11:00", "12:00");
+    await reserve("14:00", "15:00");
+    db.updateReservationStatus(gone.id, "cancelled");
+    db.updateReservationStatus(binned.id, "deleted");
+    expect(db.reservationCountsByBooth(D).get("booth-1")).toBe(1);
+  });
+
+  it("counts one day only, on either side of it", async () => {
+    await reserve("10:00", "11:00", {
+      startsAt: "2026-07-15T10:00",
+      endsAt: "2026-07-15T11:00",
+    });
+    await reserve("10:00", "11:00", {
+      startsAt: "2026-07-17T10:00",
+      endsAt: "2026-07-17T11:00",
+    });
+    expect(db.reservationCountsByBooth(D).size).toBe(0);
+    expect(db.reservationCountsByBooth("2026-07-17").get("booth-1")).toBe(1);
+  });
+
+  // The card and the board describe the same day, so they must never disagree.
+  it("agrees with the number of ranges the board lists", async () => {
+    await reserve("09:00", "10:00");
+    const dropped = await reserve("11:00", "12:00");
+    await reserve("14:00", "15:00");
+    db.updateReservationStatus(dropped.id, "cancelled");
+    expect(db.reservationCountsByBooth(D).get("booth-1")).toBe(
+      db.reservedRanges("booth-1", D).length,
+    );
+  });
+});
+
+// With no opening hours the day's edges are bookable, so every day-bounded query must reach them.
+describe("the first and last bookings a day can hold", () => {
+  const NEXT = "2026-07-17";
+
+  it("are both counted on the booth card", async () => {
+    await reserve("00:00", "01:00");
+    await reserve("23:40", "23:55");
+    expect(db.reservationCountsByBooth(D).get("booth-1")).toBe(2);
+  });
+
+  it("are both listed on the board, in order", async () => {
+    await reserve("23:40", "23:55");
+    await reserve("00:00", "01:00");
+    expect(db.reservedRanges("booth-1", D)).toEqual([
+      { startsAt: at("00:00"), endsAt: at("01:00") },
+      { startsAt: at("23:40"), endsAt: at("23:55") },
+    ]);
+  });
+
+  it("are both held by their booker, for the run rule", async () => {
+    await reserve("00:00", "01:00");
+    await reserve("23:40", "23:55");
+    expect(db.heldRangesForEmail("ada@example.com", D)).toEqual([
+      { startsAt: at("00:00"), endsAt: at("01:00") },
+      { startsAt: at("23:40"), endsAt: at("23:55") },
+    ]);
+  });
+
+  it("reject an overlap at midnight", async () => {
+    await reserve("00:00", "01:00");
+    await expect(
+      reserve("00:30", "01:30", { email: "bob@example.com" }),
+    ).rejects.toBeInstanceOf(db.SlotUnavailableError);
+    expect(db.reservedRanges("booth-1", D)).toHaveLength(1);
+  });
+
+  it("reject an overlap in the early morning", async () => {
+    await reserve("05:00", "06:00");
+    await expect(
+      reserve("05:30", "06:30", { email: "bob@example.com" }),
+    ).rejects.toBeInstanceOf(db.SlotUnavailableError);
+  });
+
+  it("reject an overlap at the end of the day", async () => {
+    await reserve("23:00", "23:55");
+    await expect(
+      reserve("23:30", "23:55", { email: "bob@example.com" }),
+    ).rejects.toBeInstanceOf(db.SlotUnavailableError);
+  });
+
+  it("keep one person out of two booths at once, early or late", async () => {
+    await reserve("05:00", "06:00");
+    await expect(
+      reserve("05:30", "06:30", { boothId: "booth-2" }),
+    ).rejects.toBeInstanceOf(db.UserBusyError);
+    await reserve("23:00", "23:55");
+    await expect(
+      reserve("23:30", "23:55", { boothId: "booth-2" }),
+    ).rejects.toBeInstanceOf(db.UserBusyError);
+  });
+
+  // 23:55 on one day and 00:00 on the next are neighbours, not the same slot.
+  it("stay on their own day either side of midnight", async () => {
+    await reserve("23:40", "23:55");
+    await reserve("00:00", "01:00", {
+      startsAt: `${NEXT}T00:00`,
+      endsAt: `${NEXT}T01:00`,
+    });
+    expect(db.reservationCountsByBooth(D).get("booth-1")).toBe(1);
+    expect(db.reservationCountsByBooth(NEXT).get("booth-1")).toBe(1);
+    expect(db.reservedRanges("booth-1", NEXT)).toEqual([
+      { startsAt: `${NEXT}T00:00`, endsAt: `${NEXT}T01:00` },
+    ]);
+    expect(db.heldRangesForEmail("ada@example.com", D)).toHaveLength(1);
+  });
+});
+
 describe("heldRangesForEmail", () => {
   it("returns that person's active ranges for the day, in order", async () => {
     await reserve("14:00", "15:00");

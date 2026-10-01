@@ -1,14 +1,14 @@
 // Pure predicates with config injected, so server and form cannot drift. Minutes.
 
-/** Inside opening hours and on the step grid; the form checks it first. */
-export function isBookableMinute(
-  minutes: number,
-  openMin: number,
-  closeMin: number,
-  stepMin: number,
-): boolean {
+/** The latest a booking may end: the day's last grid step, as "24:00" is not a time. */
+export function dayEndMinute(stepMin: number): number {
+  return 24 * 60 - stepMin;
+}
+
+/** A time of day on the step grid, any hour; the form checks it first. */
+export function isBookableMinute(minutes: number, stepMin: number): boolean {
   if (!Number.isInteger(minutes)) return false;
-  if (minutes < openMin || minutes > closeMin) return false;
+  if (minutes < 0 || minutes > dayEndMinute(stepMin)) return false;
   return minutes % stepMin === 0;
 }
 
@@ -47,23 +47,27 @@ export function runTotalMinutes(
   let runEnd = endMin;
   let total = Math.max(0, endMin - startMin);
 
-  // A pass can extend the run and bring another in reach, so sweep until none joins.
+  // Nearest first, so a reachable far one cannot swallow the booking filling the gap.
   const taken = new Set<number>();
-  for (let grew = true; grew;) {
-    grew = false;
+  for (;;) {
+    let best = -1;
+    let bestGap = Infinity;
     held.forEach((h, i) => {
       if (taken.has(i) || h.end <= h.start) return;
-      if (h.start > runEnd + maxGapMin || h.end < runStart - maxGapMin) return;
       // Beside the run, never across: an overlap is a clash, and would count twice.
       if (h.end > runStart && h.start < runEnd) return;
-      taken.add(i);
-      total += h.end - h.start;
-      runStart = Math.min(runStart, h.start);
-      runEnd = Math.max(runEnd, h.end);
-      grew = true;
+      const gap = h.start >= runEnd ? h.start - runEnd : runStart - h.end;
+      if (gap > maxGapMin || gap >= bestGap) return;
+      best = i;
+      bestGap = gap;
     });
+    if (best < 0) return total;
+    const h = held[best];
+    taken.add(best);
+    total += h.end - h.start;
+    runStart = Math.min(runStart, h.start);
+    runEnd = Math.max(runEnd, h.end);
   }
-  return total;
 }
 
 /** First range overlapping [startMin, endMin), or null; edges never clash. */

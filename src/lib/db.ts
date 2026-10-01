@@ -249,6 +249,17 @@ export function reservedRanges(
   }));
 }
 
+/** How many active reservations each booth has that day; a booth with none is absent. */
+export function reservationCountsByBooth(date: string): Map<string, number> {
+  const rows = prep(
+    `SELECT boothId, COUNT(*) AS n
+       FROM reservations
+       WHERE startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
+       GROUP BY boothId`,
+  ).all(`${date}T00:00`, `${date}T23:59`) as Row[];
+  return new Map(rows.map((r) => [String(r.boothId), Number(r.n)]));
+}
+
 /** What this email holds that day, across booths, since a run can span them. */
 export function heldRangesForEmail(
   email: string,

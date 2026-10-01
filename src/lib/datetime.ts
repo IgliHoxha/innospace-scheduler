@@ -69,6 +69,13 @@ export function ymd(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** The calendar date `days` away; noon keeps a DST shift from skipping a day. */
+export function shiftDate(date: string, days: number): string {
+  const p = parseYMD(date);
+  if (!p) return date;
+  return ymd(new Date(p.y, p.m - 1, p.d + days, 12));
+}
+
 /** Server-local today as YYYY-MM-DD. */
 export function todayYMD(): string {
   return ymd(new Date());

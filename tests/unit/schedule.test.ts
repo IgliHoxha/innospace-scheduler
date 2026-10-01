@@ -31,6 +31,26 @@ describe("durations", () => {
   });
 });
 
+describe("reservationCountLabel", () => {
+  it("shows a zero rather than hiding an empty booth", () => {
+    expect(schedule.reservationCountLabel(0)).toBe("0 reservations");
+  });
+
+  it("keeps one singular", () => {
+    expect(schedule.reservationCountLabel(1)).toBe("1 reservation");
+  });
+
+  it("pluralises anything above one", () => {
+    expect(schedule.reservationCountLabel(2)).toBe("2 reservations");
+    expect(schedule.reservationCountLabel(37)).toBe("37 reservations");
+  });
+
+  // A count is never negative, but a bad one must not print "-1 reservations".
+  it("reads a negative count as zero", () => {
+    expect(schedule.reservationCountLabel(-1)).toBe("0 reservations");
+  });
+});
+
 describe("approval + note thresholds", () => {
   it("needs approval strictly over the auto-approve limit; note at or over it", () => {
     // default AUTO_APPROVE_MAX_HOURS = 2
@@ -86,23 +106,38 @@ describe("ceilToStep", () => {
 });
 
 describe("isValidTimeOfDay", () => {
-  it("enforces the step grid and opening window (defaults 09-18, step 5)", () => {
-    expect(schedule.isValidTimeOfDay(9 * 60)).toBe(true); // 09:00 opening
-    expect(schedule.isValidTimeOfDay(18 * 60)).toBe(true); // 18:00 closing
-    expect(schedule.isValidTimeOfDay(9 * 60 + 5)).toBe(true); // 09:05 on grid
+  it("enforces the step grid at any hour of the day (step 5)", () => {
+    expect(schedule.isValidTimeOfDay(0)).toBe(true); // 00:00, the day's first minute
+    expect(schedule.isValidTimeOfDay(3 * 60 + 5)).toBe(true); // 03:05, the small hours
+    expect(schedule.isValidTimeOfDay(9 * 60)).toBe(true);
+    expect(schedule.isValidTimeOfDay(23 * 60 + 55)).toBe(true); // the last step
     expect(schedule.isValidTimeOfDay(9 * 60 + 7)).toBe(false); // 09:07 off grid
-    expect(schedule.isValidTimeOfDay(8 * 60 + 55)).toBe(false); // before open
-    expect(schedule.isValidTimeOfDay(18 * 60 + 5)).toBe(false); // after close
+    expect(schedule.isValidTimeOfDay(24 * 60)).toBe(false); // 24:00 is not a time
+    expect(schedule.isValidTimeOfDay(-5)).toBe(false);
     expect(schedule.isValidTimeOfDay(9.5 as unknown as number)).toBe(false); // non-integer
   });
 
-  it("honours OPEN_HOUR / CLOSE_HOUR / TIME_STEP_MINUTES overrides", () => {
-    vi.stubEnv("OPEN_HOUR", "8");
-    vi.stubEnv("CLOSE_HOUR", "20");
+  it("honours a TIME_STEP_MINUTES override, which also moves the last step", () => {
     vi.stubEnv("TIME_STEP_MINUTES", "15");
     expect(schedule.isValidTimeOfDay(8 * 60)).toBe(true);
     expect(schedule.isValidTimeOfDay(8 * 60 + 5)).toBe(false); // off the 15-min grid
     expect(schedule.isValidTimeOfDay(8 * 60 + 15)).toBe(true);
+    expect(schedule.isValidTimeOfDay(23 * 60 + 45)).toBe(true);
+    expect(schedule.isValidTimeOfDay(24 * 60)).toBe(false);
+  });
+
+  // The two vars may linger in a deployed env; they must change nothing.
+  it("ignores OPEN_HOUR and CLOSE_HOUR entirely, set or unset", () => {
+    expect(schedule.isValidTimeOfDay(6 * 60)).toBe(true);
+    vi.stubEnv("OPEN_HOUR", "10");
+    vi.stubEnv("CLOSE_HOUR", "12");
+    expect(schedule.isValidTimeOfDay(6 * 60)).toBe(true);
+    expect(schedule.isValidTimeOfDay(20 * 60)).toBe(true);
+  });
+
+  it("no longer exports the opening-hour readers", () => {
+    expect("openHour" in schedule).toBe(false);
+    expect("closeHour" in schedule).toBe(false);
   });
 
   it("throws when TIME_STEP_MINUTES does not divide 60", () => {

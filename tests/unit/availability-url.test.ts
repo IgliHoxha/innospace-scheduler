@@ -1,7 +1,73 @@
 import { describe, expect, it } from "vitest";
-import { availabilityQuery } from "@/lib/availability-url";
+import {
+  EDGE_STALE_MS,
+  availabilityQuery,
+  countsForDate,
+  edgeMayBeStale,
+} from "@/lib/availability-url";
+import nextConfig from "../../next.config.mjs";
 
 const parse = (q: string) => new URLSearchParams(q);
+
+describe("countsForDate", () => {
+  const counts = { "booth-1": 2, "booth-2": 0 };
+
+  it("hands back the counts of a board for the day on screen", () => {
+    expect(countsForDate({ date: "2026-07-16", counts }, "2026-07-16")).toBe(
+      counts,
+    );
+  });
+
+  // The old board lingers while the next one loads; its numbers are another day's.
+  it("withholds the counts of a board for a different day", () => {
+    expect(
+      countsForDate({ date: "2026-07-16", counts }, "2026-07-17"),
+    ).toBeUndefined();
+  });
+
+  it("has nothing to give before any board has loaded", () => {
+    expect(countsForDate(null, "2026-07-16")).toBeUndefined();
+  });
+
+  it("has nothing to give for a board that carries no counts", () => {
+    expect(countsForDate({ date: "2026-07-16" }, "2026-07-16")).toBeUndefined();
+  });
+
+  it("withholds the counts of a board that does not say which day it is for", () => {
+    expect(countsForDate({ counts }, "2026-07-16")).toBeUndefined();
+  });
+});
+
+describe("edgeMayBeStale", () => {
+  const WROTE = 1_700_000_000_000;
+
+  it("is false for a browser that has never written", () => {
+    expect(edgeMayBeStale(WROTE, 0)).toBe(false);
+  });
+
+  it("is true from the write until the window closes", () => {
+    expect(edgeMayBeStale(WROTE, WROTE)).toBe(true);
+    expect(edgeMayBeStale(WROTE + 1, WROTE)).toBe(true);
+    expect(edgeMayBeStale(WROTE + EDGE_STALE_MS - 1, WROTE)).toBe(true);
+  });
+
+  it("is false once the edge's oldest possible copy has expired", () => {
+    expect(edgeMayBeStale(WROTE + EDGE_STALE_MS, WROTE)).toBe(false);
+    expect(edgeMayBeStale(WROTE + EDGE_STALE_MS * 10, WROTE)).toBe(false);
+  });
+
+  // The window is only right while it matches what next.config tells the edge.
+  it("covers the s-maxage plus stale-while-revalidate the board is served with", async () => {
+    const rules = await nextConfig.headers!();
+    const rule = rules.find((r) => r.source === "/api/availability");
+    const value = rule?.headers.find((h) => h.key === "Cache-Control")?.value;
+    const seconds = (name: string) =>
+      Number(new RegExp(`${name}=(\\d+)`).exec(value ?? "")?.[1]);
+    expect(EDGE_STALE_MS).toBe(
+      (seconds("s-maxage") + seconds("stale-while-revalidate")) * 1000,
+    );
+  });
+});
 
 describe("availabilityQuery", () => {
   it("carries the booth and date, and nothing else, for an ordinary load", () => {

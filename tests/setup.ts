@@ -7,8 +7,6 @@ import { SIGNING } from "./helpers/fixtures";
 const REQUIRED_BASELINE: Record<string, string> = {
   AUTH_SECRET: SIGNING,
   SCHEDULER_BOOTHS: "booth-1:Booth 1:2,booth-2:Booth 2:4,booth-3:Booth 3:6",
-  OPEN_HOUR: "9",
-  CLOSE_HOUR: "18",
   RESERVATION_WINDOW_DAYS: "14",
   TIME_STEP_MINUTES: "5",
   MIN_RESERVATION_MINUTES: "15",
@@ -34,6 +32,11 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
 
 // Optional flags stay off for determinism; loadDb() sets DATA_FILE per test.
 for (const key of ["RESEND_API_KEY", "ALLOWED_ORIGINS", "DATA_FILE"]) {
+  delete process.env[key];
+}
+
+// Retired vars a shell may still export: unset, so no test depends on the caller.
+for (const key of ["OPEN_HOUR", "CLOSE_HOUR"]) {
   delete process.env[key];
 }
 

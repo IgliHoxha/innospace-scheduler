@@ -342,7 +342,8 @@ button {
   font-size: 15px;
 }
 
-.booth-cap {
+.booth-cap,
+.booth-count {
   font-size: 12px;
   color: var(--muted);
 }
@@ -459,8 +460,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 6, not 8: "Booked" only just clears an hour-wide block at the default font. */
-  padding: 0 6px;
+  /* No padding here: it would floor a short booking at a width wider than its time. */
+  padding: 0;
+  /* Lets the label ask how wide its block is, and bow out when it will not fit. */
+  container-type: inline-size;
   border: 0;
   border-radius: 0;
   overflow: hidden;
@@ -500,6 +503,17 @@ button {
 .daycal-block .daycal-block-label.on-hover {
   display: none;
   line-height: 0;
+  /* Outside the text label's box, so the icon centres and clips evenly on a thin block. */
+  padding: 0;
+  flex: none;
+  overflow: visible;
+}
+
+/* Narrower than the icon: no sliver of a bin, and the tooltip still offers the action. */
+@container (max-width: 15px) {
+  .daycal-block.can-cancel .daycal-block-label.on-hover {
+    display: none;
+  }
 }
 
 .daycal-block .daycal-block-label.on-hover .btn-icon {
@@ -518,12 +532,26 @@ button {
 }
 
 .daycal-block-label {
+  padding: 0 3px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Dropped rather than cut to a stub; the px allow slack for a font wider than measured. */
+@container (max-width: 48px) {
+  .daycal-block:not(.mine) .daycal-block-label:not(.on-hover) {
+    display: none;
+  }
+}
+
+@container (max-width: 30px) {
+  .daycal-block.mine .daycal-block-label:not(.on-hover) {
+    display: none;
+  }
 }
 
 .daycal-pick {

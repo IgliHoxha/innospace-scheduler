@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { reservedRanges } from "@/lib/db";
-import { isBoothId } from "@/lib/booths";
-import {
-  ceilToStep,
-  isReservableDate,
-  rangeLabel,
-  openHour,
-  closeHour,
-} from "@/lib/schedule";
+import { reservationCountsByBooth, reservedRanges } from "@/lib/db";
+import { getBooths, isBoothId } from "@/lib/booths";
+import { ceilToStep, isReservableDate, rangeLabel } from "@/lib/schedule";
 import {
   timeOf,
   todayYMD,
@@ -15,12 +9,11 @@ import {
   minutesOfDay,
   minutesToTime,
 } from "@/lib/datetime";
-import { pad2 } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** What's taken for a booth on a day, plus the first reservable time. Public. */
+/** What's taken for a booth on a day, every booth's count, and the first reservable time. Public. */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const boothId = sp.get("booth") ?? "";
@@ -46,22 +39,24 @@ export async function GET(req: NextRequest) {
     label: rangeLabel(b.startsAt, b.endsAt),
   }));
 
-  const opens = `${pad2(openHour())}:00`;
+  // Every configured booth and no other, so a card never guesses and a retired id never leaks.
+  const taken = reservationCountsByBooth(date);
+  const counts = Object.fromEntries(
+    getBooths().map((b) => [b.id, taken.get(b.id) ?? 0]),
+  );
+
   // Today, anything past is gone, rounded onto the grid the picker seeds from.
   const earliest =
     date === todayYMD()
-      ? minutesToTime(
-          Math.max(openHour() * 60, ceilToStep(minutesOfDay(nowDateTime()))),
-        )
-      : opens;
+      ? minutesToTime(ceilToStep(minutesOfDay(nowDateTime())))
+      : "00:00";
 
   return NextResponse.json({
     ok: true,
     booth: boothId,
     date,
     reserved,
+    counts,
     earliest,
-    opens,
-    closes: `${pad2(closeHour())}:00`,
   });
 }
