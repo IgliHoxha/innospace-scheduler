@@ -451,9 +451,6 @@ export default function ReservationClient({
         setRefused(NO_VERDICTS);
         setNoteDemands(NO_VERDICTS);
         setAskedFor(null);
-        // Dropped at once, so the booked range cannot be pressed again mid-reload.
-        setStart("");
-        setEnd("");
         wroteAt.current = Date.now();
         setSuccess(
           json.reservation?.status === "pending"

@@ -425,7 +425,7 @@ describe("a booking that goes through", () => {
     );
   });
 
-  it("drops the booked pick at once, so it cannot be pressed again mid-reload", async () => {
+  it("keeps Reserve off until the board is back, so the slot cannot be sent twice", async () => {
     const { user } = await ready();
     await fillGuest(user);
     const post = server.holdPost();
