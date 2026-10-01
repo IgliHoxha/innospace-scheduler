@@ -14,7 +14,15 @@ import {
   validateGuest,
   type GuestField,
 } from "@/lib/guest";
-import { checkBooking, isBlocking } from "@/lib/booking-check";
+import {
+  attemptKey,
+  checkBooking,
+  isBlocking,
+  noteAsk,
+  NO_VERDICTS,
+  verdictFor,
+  withVerdict,
+} from "@/lib/booking-check";
 import {
   availabilityQuery,
   countsForDate,
@@ -129,13 +137,12 @@ export default function ReservationClient({
   const [loading, setLoading] = useState(false);
   const [reservation, setReservation] = useState(false);
   const [error, setError] = useState("");
-  // Apart from `error` so it can sit at the note box, like the live check.
-  const [noteError, setNoteError] = useState("");
   // What the server refused and why, so Reserve cannot repeat it.
-  const [refused, setRefused] = useState<{
-    attempt: string;
-    message: string;
-  } | null>(null);
+  const [refused, setRefused] = useState(NO_VERDICTS);
+  // The notes the server asked for: it counts runs across days this board cannot see.
+  const [noteDemands, setNoteDemands] = useState(NO_VERDICTS);
+  // The attempt a press last asked a note for, so the ask is not shown before any press.
+  const [askedFor, setAskedFor] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mine, setMine] = useState<MineEntry[]>([]);
 
@@ -254,7 +261,10 @@ export default function ReservationClient({
     [boothId, date],
   );
 
+  // The newest loader, so a reply landing after a booth switch reloads the board on screen.
+  const reload = useRef(loadAvailability);
   useEffect(() => {
+    reload.current = loadAvailability;
     loadAvailability();
   }, [loadAvailability]);
 
@@ -262,8 +272,7 @@ export default function ReservationClient({
   useEffect(() => {
     setSuccess(null);
     setError("");
-    setNoteError("");
-    setRefused(null);
+    setRefused(NO_VERDICTS);
   }, [boothId, date]);
 
   // A confirmation is a moment, not a state, so it retires itself.
@@ -338,14 +347,24 @@ export default function ReservationClient({
     autoApproveMaxHours,
   });
   const { mustNote, needsApproval: willNeedApproval } = check;
-  // The server sees runs this board cannot, so its demand makes the box required too.
-  const noteNeeded = mustNote || !!noteError;
   // Not live: the picker re-seeds, so it would scold a range nobody chose.
   const problem = isBlocking(check) ? check.problem : "";
 
   // What the server judged, so its verdict expires the moment any of it changes.
-  const attempt = `${boothId}|${date}|${start}|${end}|${booker}`;
-  const refusal = refused?.attempt === attempt ? refused.message : "";
+  const attempt = attemptKey({ boothId, date, start, end, booker });
+  const refusal = verdictFor(refused, attempt);
+  // Outlives every keystroke in the note box: typing does not change the attempt.
+  const demanded = verdictFor(noteDemands, attempt);
+  const noteNeeded = mustNote || !!demanded;
+  const ask = noteAsk(check, demanded, note);
+  // Derived, so the message cannot outlive the attempt or the demand it speaks for.
+  const noteError = askedFor === attempt ? ask : "";
+
+  // The attempt on screen now, for a reply that lands after the form has moved on.
+  const liveAttempt = useRef(attempt);
+  useEffect(() => {
+    liveAttempt.current = attempt;
+  }, [attempt]);
   const canReserve = !!start && !!end && !problem && !reservation && !refusal;
 
   /** Clear a field's error as soon as it's edited, so it can't linger. */
@@ -353,8 +372,6 @@ export default function ReservationClient({
     return (value: string) => {
       set(value);
       setError("");
-      // The run counted was that email's, so a new address voids the verdict.
-      if (field === "email") setNoteError("");
       if (guestError?.field === field) setGuestError(null);
     };
   };
@@ -372,8 +389,8 @@ export default function ReservationClient({
     setGuestError(null);
 
     // Held back, so the ask lands on the booking attempt, not a picker move.
-    if (check.field === "note") {
-      setNoteError(check.problem);
+    if (ask) {
+      setAskedFor(attempt);
       document.getElementById("note")?.focus();
       return;
     }
@@ -387,7 +404,6 @@ export default function ReservationClient({
 
     setReservation(true);
     setError("");
-    setNoteError("");
     setSuccess(null);
     try {
       const res = await fetch("/api/reservations", {
@@ -412,7 +428,9 @@ export default function ReservationClient({
       };
       if (res.ok && json.ok) {
         // An earlier verdict described a world that is gone; the picker re-seeds.
-        setRefused(null);
+        setRefused(NO_VERDICTS);
+        setNoteDemands(NO_VERDICTS);
+        setAskedFor(null);
         wroteAt.current = Date.now();
         const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
         const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
@@ -435,20 +453,28 @@ export default function ReservationClient({
             }),
           );
         }
-        await loadAvailability({ fresh: true });
+        await reload.current({ fresh: true });
       } else {
         const message = json.error || "Could not reserve that time.";
         const field = json.field;
         // Shown at the field it names, so a long form cannot hide the reason.
-        if (field === "note") setNoteError(message);
-        else if (field) setGuestError({ field, error: message });
+        if (field === "note") {
+          // A blank note refused is a demand on this attempt; any other fault is about the text.
+          if (note.trim()) setError(message);
+          else {
+            setNoteDemands((d) => withVerdict(d, attempt, message));
+            setAskedFor(attempt);
+          }
+        } else if (field) setGuestError({ field, error: message });
         // A verdict on the pick: it stands until the range or booker changes.
         else if (res.status === 400 || res.status === 409)
-          setRefused({ attempt, message });
+          setRefused((r) => withVerdict(r, attempt, message));
         else setError(message);
-        if (field) document.getElementById(field)?.focus();
+        // Not onto a form that has moved on: the reply was about an attempt no longer on screen.
+        if (field && liveAttempt.current === attempt)
+          document.getElementById(field)?.focus();
         // Someone may have just taken it, which the cached board would not show.
-        loadAvailability({ fresh: true, keepPick: true });
+        reload.current({ fresh: true, keepPick: true });
       }
     } finally {
       setReservation(false);
@@ -557,7 +583,6 @@ export default function ReservationClient({
                         reanchored == null ? to : minutesToTime(reanchored),
                       );
                       setError("");
-                      setNoteError("");
                     }}
                     defaultRange={{
                       from: minutesToTime(seed.from),
@@ -595,8 +620,9 @@ export default function ReservationClient({
                     "Your reservation is cancelled. The slot is free for someone else now.",
                   );
                   setError("");
-                  // Freeing a slot can undo the very reason a pick was refused.
-                  setRefused(null);
+                  // Freeing a slot can undo the very reason a pick was refused or needed a note.
+                  setRefused(NO_VERDICTS);
+                  setNoteDemands(NO_VERDICTS);
                   wroteAt.current = Date.now();
                   loadAvailability({ fresh: true, keepPick: true });
                 }}
@@ -605,7 +631,6 @@ export default function ReservationClient({
                   setStart(from);
                   setEnd(to);
                   setError("");
-                  setNoteError("");
                 }}
               />
             </>
@@ -660,7 +685,7 @@ export default function ReservationClient({
           id="note"
           name="note"
           aria-label="Note"
-          className={`note-box ${(noteNeeded && !note.trim()) || noteError ? "required" : ""}`}
+          className={`note-box ${noteNeeded && !note.trim() ? "required" : ""}`}
           placeholder={
             noteNeeded
               ? `Note (required for ${autoApproveMaxHours} hours or more) - what is the booth for?`
@@ -672,7 +697,6 @@ export default function ReservationClient({
           onChange={(e) => {
             setNote(e.target.value);
             setError("");
-            setNoteError("");
           }}
           aria-required={noteNeeded}
         />

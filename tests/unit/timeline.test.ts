@@ -375,6 +375,37 @@ describe("tickMinutes", () => {
     expect(tickMinutes(0, 1440, 300, Number.NaN)).toHaveLength(25);
   });
 
+  it("settles on an answer for extreme measurements", () => {
+    expect(at(Number.POSITIVE_INFINITY)).toHaveLength(25);
+    expect(at(Number.MIN_VALUE)).toEqual([START, END]);
+    expect(at(1e-9)).toEqual([START, END]);
+    expect(tickMinutes(0, 1440, 300, Number.POSITIVE_INFINITY)).toEqual([
+      START,
+      END,
+    ]);
+    expect(tickMinutes(0, 1440, 300, Number.MAX_VALUE)).toEqual([START, END]);
+  });
+
+  // Infinity over infinity is NaN, which no stride comparison ever settles.
+  it("keeps every mark when the bar and the label are both unmeasurable", () => {
+    const inf = Number.POSITIVE_INFINITY;
+    expect(tickMinutes(0, 1440, inf, inf)).toHaveLength(25);
+    expect(tickMinutes(0, 1440, inf, Number.MAX_VALUE)).toHaveLength(25);
+    expect(tickMinutes(0, 1440, inf, 1e308)).toHaveLength(25);
+    expect(tickMinutes(0, 1439, inf, inf)).toEqual(
+      Array.from({ length: 24 }, (_, h) => h * 60),
+    );
+  });
+
+  it("returns for every whole pixel width a screen could give it", () => {
+    for (let barPx = 1; barPx <= 2600; barPx++) {
+      const marks = at(barPx);
+      expect(marks[0]).toBe(START);
+      expect(marks[marks.length - 1]).toBe(END);
+      expect(24 % (marks.length - 1)).toBe(0);
+    }
+  });
+
   it("never goes below the two ends, however narrow", () => {
     expect(at(60)).toEqual([START, END]);
     expect(at(1)).toEqual([START, END]);

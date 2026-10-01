@@ -458,20 +458,31 @@ button {
   top: 0;
   bottom: 0;
   display: flex;
+  /* A label or icon too wide for its block wraps to a second line, which is clipped whole. */
+  flex-wrap: wrap;
+  align-content: flex-start;
   align-items: center;
   justify-content: center;
   /* No padding here: it would floor a short booking at a width wider than its time. */
   padding: 0;
-  /* Lets the label ask how wide its block is, and bow out when it will not fit. */
-  container-type: inline-size;
   border: 0;
   border-radius: 0;
   overflow: hidden;
+  /* Where supported, clip cannot be scrolled, so find-in-page cannot pull line two into view. */
+  overflow: clip;
   /* Taken time reads muted red against the free bar. */
   background: #fbdcdc;
   color: #a32323;
   font: inherit;
   cursor: pointer;
+}
+
+/* A strut as tall as the block, so line one is the whole block and line two is out of sight. */
+.daycal-block::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 100%;
 }
 
 /* Only where the next block touches: alone it reads as a gap in the booking. */
@@ -503,17 +514,8 @@ button {
 .daycal-block .daycal-block-label.on-hover {
   display: none;
   line-height: 0;
-  /* Outside the text label's box, so the icon centres and clips evenly on a thin block. */
+  /* The icon needs no text gutter; on a block too thin for it, it wraps away like a label. */
   padding: 0;
-  flex: none;
-  overflow: visible;
-}
-
-/* Narrower than the icon: no sliver of a bin, and the tooltip still offers the action. */
-@container (max-width: 15px) {
-  .daycal-block.can-cancel .daycal-block-label.on-hover {
-    display: none;
-  }
 }
 
 .daycal-block .daycal-block-label.on-hover .btn-icon {
@@ -528,30 +530,18 @@ button {
 
 .daycal-block.can-cancel:hover .daycal-block-label.on-hover,
 .daycal-block.can-cancel:focus-visible .daycal-block-label.on-hover {
-  display: block;
+  /* Flex, not block: no line box, so a forced line-height cannot push the icon off centre. */
+  display: flex;
 }
 
 .daycal-block-label {
+  /* Never shrunk: it either fits on the block's one visible line or wraps off it whole. */
+  flex: none;
   padding: 0 3px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Dropped rather than cut to a stub; the px allow slack for a font wider than measured. */
-@container (max-width: 48px) {
-  .daycal-block:not(.mine) .daycal-block-label:not(.on-hover) {
-    display: none;
-  }
-}
-
-@container (max-width: 30px) {
-  .daycal-block.mine .daycal-block-label:not(.on-hover) {
-    display: none;
-  }
 }
 
 .daycal-pick {

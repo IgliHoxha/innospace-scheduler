@@ -1,10 +1,114 @@
 import { describe, expect, it } from "vitest";
 import {
+  attemptKey,
   checkBooking,
   isBlocking,
+  noteAsk,
   noteRequiredMessage,
+  NO_VERDICTS,
+  verdictFor,
+  withVerdict,
+  type Attempt,
   type BookingCheckInput,
 } from "@/lib/booking-check";
+
+const ada: Attempt = {
+  boothId: "booth-1",
+  date: "2026-07-16",
+  start: "22:00",
+  end: "23:55",
+  booker: "ada@example.com",
+};
+
+describe("attemptKey", () => {
+  it("gives the same key for the same attempt", () => {
+    expect(attemptKey({ ...ada })).toBe(attemptKey(ada));
+  });
+
+  it("changes when the booth, the date, either time or the booker changes", () => {
+    const others: Attempt = {
+      boothId: "booth-2",
+      date: "2026-07-17",
+      start: "21:00",
+      end: "23:00",
+      booker: "bob@example.com",
+    };
+    for (const part of Object.keys(others) as (keyof Attempt)[]) {
+      expect(attemptKey({ ...ada, [part]: others[part] })).not.toBe(
+        attemptKey(ada),
+      );
+    }
+  });
+
+  // The note is what the server asks for, so writing one must not void its demand.
+  it("ignores everything that is not part of the attempt, the note included", () => {
+    const withNote = { ...ada, note: "Board meeting", fullName: "Ada L" };
+    expect(attemptKey(withNote)).toBe(attemptKey(ada));
+  });
+
+  it("tells a swapped start and end apart", () => {
+    expect(attemptKey({ ...ada, start: ada.end, end: ada.start })).not.toBe(
+      attemptKey(ada),
+    );
+  });
+
+  it("is exact about letter case, leaving the canonical form to the caller", () => {
+    expect(attemptKey({ ...ada, booker: "ADA@example.com" })).not.toBe(
+      attemptKey(ada),
+    );
+  });
+
+  // Joined with a bare separator, these two would be one key.
+  it("keeps a value from running into its neighbour", () => {
+    expect(attemptKey({ ...ada, boothId: "a|b", date: "c" })).not.toBe(
+      attemptKey({ ...ada, boothId: "a", date: "b|c" }),
+    );
+    expect(attemptKey({ ...ada, start: "", end: "09:00" })).not.toBe(
+      attemptKey({ ...ada, start: "09:00", end: "" }),
+    );
+  });
+});
+
+describe("verdictFor and withVerdict", () => {
+  const attempt = attemptKey(ada);
+  const later = attemptKey({ ...ada, start: "12:00", end: "13:00" });
+  const one = withVerdict(NO_VERDICTS, attempt, "Please add a note.");
+
+  it("gives the message back for the very attempt it judged", () => {
+    expect(verdictFor(one, attempt)).toBe("Please add a note.");
+  });
+
+  it("has nothing to say about an attempt nobody judged", () => {
+    expect(verdictFor(NO_VERDICTS, attempt)).toBe("");
+    expect(verdictFor(one, later)).toBe("");
+    expect(verdictFor(one, "")).toBe("");
+  });
+
+  it("does not match on a prefix or a longer attempt", () => {
+    expect(verdictFor(one, attempt.slice(0, -1))).toBe("");
+    expect(verdictFor(one, `${attempt}x`)).toBe("");
+  });
+
+  // Going back to the first pick must not send the refused request again.
+  it("keeps an earlier verdict when a later attempt is refused too", () => {
+    const two = withVerdict(one, later, "Add a note for this one too.");
+    expect(verdictFor(two, attempt)).toBe("Please add a note.");
+    expect(verdictFor(two, later)).toBe("Add a note for this one too.");
+  });
+
+  it("lets the newest word on an attempt replace the older one", () => {
+    const again = withVerdict(one, attempt, "Still needs a note.");
+    expect(verdictFor(again, attempt)).toBe("Still needs a note.");
+  });
+
+  // React state: a changed map must be a new one, and the old one untouched.
+  it("returns a new collection and leaves the one it was given alone", () => {
+    const two = withVerdict(one, later, "x");
+    expect(two).not.toBe(one);
+    expect(verdictFor(one, later)).toBe("");
+    expect(NO_VERDICTS.size).toBe(0);
+  });
+});
 
 // The test baseline: 5-minute grid, 15-minute minimum, 2-hour limit.
 const base: BookingCheckInput = {
@@ -165,6 +269,53 @@ describe("checkBooking: the note rule", () => {
     const r = check({ endMin: 11 * 60 + 55 });
     expect(r.mustNote).toBe(false);
     expect(r.problem).toBe("");
+  });
+});
+
+// What holds a Reserve press back at the note box, and what it says there.
+describe("noteAsk", () => {
+  const demand = "Please add a note - back to back this comes to 2 hours.";
+
+  it("asks nothing of a clean booking the server has not judged", () => {
+    expect(noteAsk(check(), "", "")).toBe("");
+    expect(noteAsk(check({ note: "hello" }), "", "hello")).toBe("");
+  });
+
+  it("gives the form's own ask when the form can see a note is needed", () => {
+    const r = check({ endMin: 12 * 60 });
+    expect(noteAsk(r, "", "")).toBe(noteRequiredMessage(false, 2));
+  });
+
+  // The server counts days this board cannot see, so the form alone says nothing.
+  it("gives the server's demand while the note is still empty", () => {
+    expect(check().mustNote).toBe(false);
+    expect(noteAsk(check(), demand, "")).toBe(demand);
+  });
+
+  it("treats a whitespace-only note as still empty", () => {
+    expect(noteAsk(check({ note: " \n " }), demand, " \n ")).toBe(demand);
+  });
+
+  it("lets the press through once a note is written, demand or not", () => {
+    expect(noteAsk(check({ note: "Client call" }), demand, "Client call")).toBe(
+      "",
+    );
+    const long = check({ endMin: 12 * 60, note: "Board meeting" });
+    expect(noteAsk(long, demand, "Board meeting")).toBe("");
+  });
+
+  it("puts the form's own wording first when both ask", () => {
+    const r = check({ endMin: 12 * 60 });
+    expect(noteAsk(r, demand, "")).toBe(noteRequiredMessage(false, 2));
+  });
+
+  // A clash is said by the button; the note box must not speak for it.
+  it("stays silent about problems that are not the note's", () => {
+    const clash = check({
+      reserved: [{ start: 10 * 60, end: 11 * 60, label: "10:00 - 11:00" }],
+    });
+    expect(clash.problem).not.toBe("");
+    expect(noteAsk(clash, "", "")).toBe("");
   });
 });
 

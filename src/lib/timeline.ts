@@ -96,15 +96,18 @@ export function tickMinutes(
     all.push(m);
   }
   const hours = (dayEndMin - dayStartMin) / 60;
-  // Nothing to thin before the bar is measured; two marks are the ends.
-  // Negated, so a NaN measurement takes this exit rather than the loop below.
+  // Nothing to thin before the bar is measured; negated, so a NaN measurement leaves here too.
   if (all.length < 3 || !(barPx > 0) || !(hours > 0) || !(labelPx > 0))
     return all;
-  let step = Math.max(1, Math.ceil((labelPx * hours) / barPx));
+  const fit = (labelPx * hours) / barPx;
+  // Infinity over infinity is no stride at all, so an unmeasurable pair keeps every mark.
+  if (Number.isNaN(fit)) return all;
+  let step = Math.max(1, Math.ceil(fit));
   // A stride dividing a whole-hour span keeps the marks even and lands on the last.
   if (Number.isInteger(hours)) {
     step = Math.min(step, hours);
-    while (hours % step !== 0) step++;
+    // Bounded by the span itself, so no measurement can keep it turning.
+    while (step < hours && hours % step !== 0) step++;
   }
   if (step === 1) return all;
   const kept = all.filter((_, i) => i % step === 0);

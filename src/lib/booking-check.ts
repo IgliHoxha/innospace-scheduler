@@ -41,6 +41,51 @@ export interface BookingCheckInput {
   autoApproveMaxHours: number;
 }
 
+/** Everything the server judges a booking on; the note is not part of it. */
+export interface Attempt {
+  boothId: string;
+  date: string;
+  start: string;
+  end: string;
+  /** The canonical email, since the run counted is that person's. */
+  booker: string;
+}
+
+/** One key per distinct attempt, so a verdict can be tied to exactly what was judged. */
+export function attemptKey(a: Attempt): string {
+  // Encoded as a list, so no value can run into its neighbour.
+  return JSON.stringify([a.boothId, a.date, a.start, a.end, a.booker]);
+}
+
+/** What the server said about each attempt, kept so the form need not ask twice. */
+export type Verdicts = ReadonlyMap<string, string>;
+
+export const NO_VERDICTS: Verdicts = new Map();
+
+/** The verdicts with one more recorded; a later refusal must not evict an earlier one. */
+export function withVerdict(
+  verdicts: Verdicts,
+  attempt: string,
+  message: string,
+): Verdicts {
+  return new Map(verdicts).set(attempt, message);
+}
+
+/** The server's message about this very attempt; it lapses once any part changes. */
+export function verdictFor(verdicts: Verdicts, attempt: string): string {
+  return verdicts.get(attempt) ?? "";
+}
+
+/** What must be said at the note box before a press may go out: the form's ask, else the server's. */
+export function noteAsk(
+  check: BookingCheck,
+  demanded: string,
+  note: string,
+): string {
+  if (check.field === "note") return check.problem;
+  return demanded && !note.trim() ? demanded : "";
+}
+
 /** Does this problem block the reserve button, or wait for the press? */
 export function isBlocking(check: BookingCheck): boolean {
   // A missing note is about a field not reached yet, not the times chosen.
