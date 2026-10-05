@@ -71,6 +71,31 @@ const ACTION_COPY: Record<
 const cancelActionLabel = (status: ReservationStatus) =>
   status === "pending" ? "Reject reservation" : "Cancel reservation";
 
+const UNREACHABLE = "The server could not be reached.";
+const SIGNED_OUT =
+  "You have been signed out: reload the page to sign in again.";
+
+/** One API request, never thrown: its body when it went through, else why it did not. */
+async function call<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<{ json: T | null; why: string }> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    return { json: null, why: UNREACHABLE };
+  }
+  const json = (await res.json().catch(() => null)) as
+    (T & { ok?: boolean; error?: string }) | null;
+  if (res.ok && json?.ok) return { json, why: "" };
+  const why = res.status === 401 ? SIGNED_OUT : (json?.error ?? "");
+  return { json: null, why };
+}
+
+/** What failed, with the reason after it when there is one. */
+const because = (what: string, why: string) => (why ? `${what} ${why}` : what);
+
 export default function DashboardClient({
   initialData,
   username,
@@ -97,6 +122,8 @@ export default function DashboardClient({
   // Per-reservation edited cancellation email bodies (id -> body).
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [writeError, setWriteError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const reservations = data.reservations;
   const counts = data.counts;
@@ -130,36 +157,44 @@ export default function DashboardClient({
         pageSize: String(PAGE_SIZE),
         counts: withCounts ? "1" : "0",
       });
-      try {
-        const res = await fetch(`/api/reservations?${params.toString()}`);
-        const json = (await res.json()) as ReservationPage & { ok: boolean };
-        if (id !== reqId.current) return;
-        if (!json.ok) return;
-        const tp = pageCount(json.total, PAGE_SIZE);
-        if (page > tp) {
-          // These rows are for a page now gone, but a write's fresh tallies still stand.
-          const { counts } = json;
-          if (counts) setData((prev) => ({ ...prev, counts }));
-          setPage(tp);
-          return;
-        }
-        // A countless response must not blank the boxes: the last set stands.
-        setData((prev) => ({ ...json, counts: json.counts ?? prev.counts }));
-      } finally {
-        if (id === reqId.current) setLoading(false);
+      const { json, why } = await call<ReservationPage>(
+        `/api/reservations?${params.toString()}`,
+      );
+      if (id !== reqId.current) return;
+      setLoading(false);
+      setLoadError(
+        json ? "" : because("Could not load the reservations.", why),
+      );
+      if (!json) return;
+      const tp = pageCount(json.total, PAGE_SIZE);
+      if (page > tp) {
+        // These rows are for a page now gone, but a write's fresh tallies still stand.
+        const { counts } = json;
+        if (counts) setData((prev) => ({ ...prev, counts }));
+        setPage(tp);
+        return;
       }
+      // A countless response must not blank the boxes: the last set stands.
+      setData((prev) => ({ ...json, counts: json.counts ?? prev.counts }));
     },
     [filter, debouncedQuery, page],
   );
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(t);
-  }, [query]);
+  // Page one goes in the same update as the change, or a later page is asked for first.
+  function pickFilter(next: ReservationFilter) {
+    if (next === filter) return;
+    setFilter(next);
+    setPage(1);
+  }
 
   useEffect(() => {
-    setPage(1);
-  }, [filter, debouncedQuery]);
+    if (query === debouncedQuery) return;
+    const t = setTimeout(() => {
+      setDebouncedQuery(query);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, debouncedQuery]);
 
   const didMount = useRef(false);
   useEffect(() => {
@@ -170,17 +205,32 @@ export default function DashboardClient({
     loadPage();
   }, [loadPage]);
 
-  async function setStatus(
-    id: string,
-    status: PendingStatus,
-    emailBody?: string,
+  // The list is asked for again even after a refusal, which often means it is stale.
+  async function write(
+    url: string,
+    method: "PATCH" | "DELETE",
+    body: unknown,
+    failed: string,
   ) {
-    await fetch(`/api/reservations/${id}`, {
-      method: "PATCH",
+    setWriteError("");
+    const { json, why } = await call(url, {
+      method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, emailBody }),
+      body: JSON.stringify(body),
     });
+    if (!json) setWriteError(because(failed, why));
     loadPage(true);
+  }
+
+  function setStatus({ id, name, status, body }: PendingAction) {
+    const emailBody = status === "confirmed" ? undefined : body;
+    const whose = name ? ` for ${name}` : "";
+    return write(
+      `/api/reservations/${id}`,
+      "PATCH",
+      { status, emailBody },
+      `Could not ${ACTION_COPY[status].verb} the reservation${whose}.`,
+    );
   }
 
   function toggleSelected(id: string) {
@@ -206,16 +256,19 @@ export default function DashboardClient({
     if (ids.length === 0) return;
     setSelected(new Set());
     setConfirmPurge(false);
-    await fetch("/api/reservations", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
-    loadPage(true);
+    const what =
+      ids.length === 1 ? "1 reservation" : `${ids.length} reservations`;
+    await write(
+      "/api/reservations",
+      "DELETE",
+      { ids },
+      `Could not permanently delete ${what}.`,
+    );
   }
 
   useEffect(() => {
     setSelected(new Set());
+    setWriteError("");
   }, [filter, debouncedQuery, page]);
 
   return (
@@ -238,7 +291,7 @@ export default function DashboardClient({
               num={f.key === "all" ? counts.total : counts[f.key]}
               label={f.stat}
               active={filter === f.key}
-              onClick={() => setFilter(f.key)}
+              onClick={() => pickFilter(f.key)}
             />
           ))}
         </div>
@@ -256,12 +309,41 @@ export default function DashboardClient({
             <button
               key={f.key}
               className={`chip ${filter === f.key ? "active" : ""}`}
-              onClick={() => setFilter(f.key)}
+              onClick={() => pickFilter(f.key)}
             >
               {f.label}
             </button>
           ))}
         </div>
+
+        {(writeError || loadError) && (
+          <div className="list-alerts">
+            {writeError && (
+              <p className="error" role="alert">
+                <span>{writeError}</span>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={() => setWriteError("")}
+                >
+                  Dismiss
+                </button>
+              </p>
+            )}
+            {loadError && (
+              <p className="error" role="alert">
+                <span>{loadError}</span>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={() => loadPage(true)}
+                >
+                  Try again
+                </button>
+              </p>
+            )}
+          </div>
+        )}
 
         {filter === "deleted" && reservations.length > 0 && (
           <div className="bulk-bar">
@@ -433,11 +515,7 @@ export default function DashboardClient({
           variant={pending.status === "confirmed" ? "primary" : "danger"}
           onClose={() => setPending(null)}
           onConfirm={() => {
-            setStatus(
-              pending.id,
-              pending.status,
-              pending.status === "confirmed" ? undefined : pending.body,
-            );
+            setStatus(pending);
             setPending(null);
           }}
           confirmLabel={<>Yes, {ACTION_COPY[pending.status].verb}</>}

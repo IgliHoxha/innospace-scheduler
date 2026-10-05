@@ -1046,6 +1046,23 @@ button {
   color: var(--muted);
 }
 
+/* Stuck under the top bar: the row that failed can be a long scroll down the list. */
+.list-alerts {
+  position: sticky;
+  top: 81px;
+  z-index: 20;
+}
+
+.list-alerts .error {
+  box-shadow: 0 4px 14px rgba(82, 69, 82, 0.12);
+}
+
+.list-alerts .btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--card);
+}
+
 .bulk-bar {
   display: flex;
   align-items: center;

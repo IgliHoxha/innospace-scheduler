@@ -174,12 +174,19 @@ function fakeApi() {
     matching: (() => ROWS) as (q: Query) => Reservation[],
     /** Sent only with a reply that was asked for counts, as the real route does. */
     counts: COUNTS,
-    /** Answers a list request the way an expired session would. */
+    /** Answers a list request with `listRefusal`: an expired session, unless a test changes it. */
     refuses: false,
-    /** Answers a PATCH or DELETE the way a server that will not do it would. */
+    listRefusal: { status: 401, body: { ok: false, error: "Unauthorized" } },
+    /** Answers a PATCH or DELETE with `refusal`, the way a server that will not do it would. */
     refusesWrites: false,
+    refusal: {
+      status: 409,
+      body: { ok: false, error: "That reservation changed." } as unknown,
+    },
     /** "drop" rejects a list request like a lost connection; "html" answers with a gateway page. */
     listFails: null as null | "drop" | "html",
+    /** The same two failures, for a PATCH or DELETE. */
+    writeFails: null as null | "drop" | "html",
     gates: [] as ReturnType<typeof gate>[],
     /** Holds the next request back, whichever it is, until the test opens it. */
     hold() {
@@ -210,16 +217,19 @@ function fakeApi() {
         status,
         json: async () => body,
       });
-      if (call.method !== "GET") {
-        return api.refusesWrites
-          ? json(409, { ok: false, error: "That reservation changed." })
-          : json(200, { ok: true });
-      }
-      if (api.listFails === "drop") throw new TypeError("Failed to fetch");
-      if (api.listFails === "html") {
+      const failing = call.method === "GET" ? api.listFails : api.writeFails;
+      if (failing === "drop") throw new TypeError("Failed to fetch");
+      if (failing === "html") {
         return { ok: false, status: 502, json: async () => JSON.parse("<") };
       }
-      if (api.refuses) return json(401, { ok: false, error: "Unauthorized" });
+      if (call.method !== "GET") {
+        return api.refusesWrites
+          ? json(api.refusal.status, api.refusal.body)
+          : json(200, { ok: true });
+      }
+      if (api.refuses) {
+        return json(api.listRefusal.status, api.listRefusal.body);
+      }
       const asked = call.query ?? {};
       const q = {
         status: asked.status ?? "",
@@ -302,6 +312,18 @@ const dash = {
     toolbar().getByRole<HTMLButtonElement>("button", { name }),
   search: () => screen.getByRole<HTMLInputElement>("searchbox"),
   busy: () => document.querySelector(".card")?.getAttribute("aria-busy"),
+  /** Each alert above the list, as its sentence and the one button beside it. */
+  alerts: () =>
+    screen
+      .queryAllByRole("alert")
+      .map((a) => [
+        text(a.querySelector("span")),
+        text(a.querySelector("button")),
+      ]),
+  dismiss: () =>
+    screen.getByRole<HTMLButtonElement>("button", { name: "Dismiss" }),
+  retry: () =>
+    screen.getByRole<HTMLButtonElement>("button", { name: "Try again" }),
   empty: () => text(document.querySelector(".card .empty")),
   heads: () => all("thead th").map(text),
   rows: () => all<HTMLTableRowElement>("tbody tr"),
@@ -393,17 +415,23 @@ const dash = {
 };
 
 let api: ReturnType<typeof fakeApi>;
-const strays: (() => void)[] = [];
+// A request the page lets fail unheard lands here, wherever in the file it happens.
+let unheard: unknown[];
+const hear = (reason: unknown) => unheard.push(reason);
 
 beforeEach(() => {
   api = fakeApi();
+  unheard = [];
+  process.on("unhandledRejection", hear);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await settle();
+  process.off("unhandledRejection", hear);
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  for (const stop of strays.splice(0)) stop();
+  expect(unheard).toEqual([]);
 });
 
 function mount(initial: Page = page(ROWS), username = "admin") {
@@ -448,12 +476,17 @@ function fakeDebounce() {
 /** Lets every reply already let through land; the fake server answers without timers. */
 const settle = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 
-/** The page lets a failed list request reject unheard; a listener here tells Vitest that is expected. */
-function allowStrayRejection() {
-  const hear = () => {};
-  process.on("unhandledRejection", hear);
-  strays.push(() => process.off("unhandledRejection", hear));
+/** Presses one of a row's actions and says yes to the dialog it opens. */
+async function confirm(user: User, row: number, button: string, yes: string) {
+  await user.click(dash.button(row, button));
+  await user.click(dash.answer(yes));
 }
+
+const SIGNED_OUT =
+  "You have been signed out: reload the page to sign in again.";
+const UNREACHABLE = "The server could not be reached.";
+const NOT_LOADED = "Could not load the reservations.";
+const BOB_KEPT = "Could not cancel the reservation for Bob Stone.";
 
 /** The four ways out of a dialog that must not act; Enter at once lands on No. */
 const WAYS_OUT: ((user: User) => Promise<void>)[] = [
@@ -464,6 +497,12 @@ const WAYS_OUT: ((user: User) => Promise<void>)[] = [
 ];
 
 describe("first render", () => {
+  it("opens with no alert above the list", () => {
+    mount();
+    expect(dash.alerts()).toEqual([]);
+    expect(document.querySelector(".list-alerts")).toBeNull();
+  });
+
   it("shows the page it was given and asks the server for nothing", () => {
     const tick = fakeDebounce();
     mount();
@@ -605,6 +644,36 @@ describe("filtering", () => {
     expect(dash.current()).toEqual(["1"]);
     expect(dash.marked()).toEqual(["1"]);
   });
+
+  // It used to ask for the new filter's page three first, then throw that reply away.
+  for (const [kind, called] of KINDS) {
+    it(`asks once, for page one, when a ${called} is pressed on a later page`, async () => {
+      api.matching = () => many(60);
+      const { user } = mount(page(many(25), 60));
+      await user.click(dash.page("3"));
+      await waitFor(() => expect(dash.info()).toBe("51-60 of 60"));
+      await user.click(dash[kind]("Confirmed"));
+      await waitFor(() => expect(dash.info()).toBe("1-25 of 60"));
+      await settle();
+      expect(api.calls).toEqual([
+        listed("all", { page: 3 }),
+        listed("confirmed"),
+      ]);
+    });
+  }
+
+  it("stays on a later page, and sends nothing, when the filter that is on is pressed there", async () => {
+    api.matching = () => many(60);
+    const { user } = mount(page(many(25), 60));
+    await user.click(dash.page("3"));
+    await waitFor(() => expect(dash.info()).toBe("51-60 of 60"));
+    await user.click(dash.chip("All"));
+    await user.click(dash.stat("Total"));
+    await settle();
+    expect(api.calls).toEqual([listed("all", { page: 3 })]);
+    expect(dash.info()).toBe("51-60 of 60");
+    expect(dash.current()).toEqual(["3"]);
+  });
 });
 
 describe("searching", () => {
@@ -667,6 +736,64 @@ describe("searching", () => {
     await waitFor(() => expect(dash.info()).toBe("1-25 of 30"));
     expect(api.calls.at(-1)).toEqual(listed("all", { q: "guest" }));
     expect(dash.current()).toEqual(["1"]);
+  });
+
+  it("asks once, for page one, when a search settles on a later page", async () => {
+    api.matching = (q) => many(q.q ? 30 : 60);
+    const { user } = mount(page(many(25), 60));
+    await user.click(dash.page("2"));
+    await waitFor(() => expect(dash.info()).toBe("26-50 of 60"));
+    await user.type(dash.search(), "guest");
+    await waitFor(() => expect(dash.info()).toBe("1-25 of 30"));
+    await settle();
+    expect(api.calls).toEqual([
+      listed("all", { page: 2 }),
+      listed("all", { q: "guest" }),
+    ]);
+  });
+
+  it("sends nothing for text typed and wiped inside the wait", async () => {
+    const tick = fakeDebounce();
+    mount();
+    fireEvent.change(dash.search(), { target: { value: "bo" } });
+    tick(200);
+    fireEvent.change(dash.search(), { target: { value: "" } });
+    tick(600);
+    expect(api.calls).toEqual([]);
+  });
+
+  it("leaves alone a page pressed before the first 300 ms are up", async () => {
+    api.matching = () => many(60);
+    const tick = fakeDebounce();
+    mount(page(many(25), 60));
+    tick(100);
+    fireEvent.click(dash.page("2"));
+    tick(600);
+    await act(async () => {});
+    expect(api.calls).toEqual([listed("all", { page: 2 })]);
+    expect(dash.current()).toEqual(["2"]);
+    expect(dash.info()).toBe("26-50 of 60");
+  });
+
+  it("keeps the page when the same text is typed back inside the wait", async () => {
+    api.matching = () => many(60);
+    const tick = fakeDebounce();
+    mount(page(many(25), 60));
+    fireEvent.change(dash.search(), { target: { value: "guest" } });
+    tick(300);
+    await act(async () => {});
+    fireEvent.click(dash.page("2"));
+    await act(async () => {});
+    fireEvent.change(dash.search(), { target: { value: "gues" } });
+    tick(100);
+    fireEvent.change(dash.search(), { target: { value: "guest" } });
+    tick(600);
+    await act(async () => {});
+    expect(api.calls).toEqual([
+      listed("all", { q: "guest" }),
+      listed("all", { q: "guest", page: 2 }),
+    ]);
+    expect(dash.current()).toEqual(["2"]);
   });
 
   it("keeps the filter that is on", async () => {
@@ -1186,13 +1313,13 @@ describe("confirming", () => {
       ["Cancel reservation", false],
       ["Delete reservation", false],
     ]);
+    expect(dash.alerts()).toEqual([]);
   });
 
   it("refetches with counts even when the server refuses the write", async () => {
     api.refusesWrites = true;
     const { user } = mount();
-    await user.click(dash.button(2, "Cancel reservation"));
-    await user.click(dash.answer("Yes, cancel"));
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
     await waitFor(() => expect(api.calls).toHaveLength(2));
     expect(api.calls).toEqual([
       patched("c1", { status: "cancelled", emailBody: BOB_LETTER }),
@@ -1497,6 +1624,45 @@ describe("the Deleted filter", () => {
     ]);
     await waitFor(() => expect(dash.busy()).toBe("false"));
     expect(dash.names()).toEqual(["Dee Gone", "Eli Gone", "-"]);
+    expect(dash.alerts()).toEqual([
+      [
+        "Could not permanently delete 1 reservation. That reservation changed.",
+        "Dismiss",
+      ],
+    ]);
+  });
+
+  it("counts the reservations a failed purge left in place", async () => {
+    const { user } = await openDeleted();
+    await user.click(dash.selectAll()[0]);
+    api.writeFails = "html";
+    await press(user, dash.purge);
+    await user.click(dash.answer("Yes, delete permanently"));
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        ["Could not permanently delete 3 reservations.", "Dismiss"],
+      ]),
+    );
+    expect(api.calls.at(1)).toEqual(purged(["d1", "d2", "d3"]));
+  });
+
+  it("says so when a purge never reaches the server, and still asks for the list", async () => {
+    const { user } = await openDeleted();
+    await user.click(dash.tick(2));
+    api.writeFails = "drop";
+    await press(user, dash.purge);
+    await user.click(dash.answer("Yes, delete permanently"));
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [
+          `Could not permanently delete 1 reservation. ${UNREACHABLE}`,
+          "Dismiss",
+        ],
+      ]),
+    );
+    await waitFor(() => expect(api.calls).toHaveLength(3));
+    expect(api.calls.at(-1)).toEqual(listed("deleted", { counts: 1 }));
+    expect(dash.selected()).toBe("0 selected");
   });
 
   it("sends every id on the page after Select all, in row order", async () => {
@@ -1690,25 +1856,415 @@ describe("replies", () => {
     await waitFor(() => expect(dash.busy()).toBe("false"));
     expect(dash.names()).toEqual(NAMES);
     expect(dash.stats()).toEqual(STATS);
+    expect(dash.alerts()).toEqual([
+      [`${NOT_LOADED} ${SIGNED_OUT}`, "Try again"],
+    ]);
   });
 
-  for (const [how, failure] of [
-    ["the connection drops", "drop"],
-    ["the reply is not JSON", "html"],
+  // Both used to reject unheard, with nothing on screen to say the rows were stale.
+  for (const [how, failure, says] of [
+    ["the connection drops", "drop", `${NOT_LOADED} ${UNREACHABLE}`],
+    ["the reply is not JSON", "html", NOT_LOADED],
   ] as const) {
-    it(`ends the wait and keeps the rows when ${how}`, async () => {
-      allowStrayRejection();
+    it(`ends the wait, keeps the rows and says so when ${how}`, async () => {
       api.listFails = failure;
       const { user } = mount();
       const reply = api.hold();
       await user.click(dash.chip("Confirmed"));
       expect(dash.busy()).toBe("true");
+      expect(dash.alerts()).toEqual([]);
 
       reply.open();
       await waitFor(() => expect(dash.busy()).toBe("false"));
       expect(dash.info()).toBe("1-3 of 3");
       expect(dash.names()).toEqual(NAMES);
       expect(dash.stats()).toEqual(STATS);
+      expect(dash.alerts()).toEqual([[says, "Try again"]]);
+      await settle();
+      expect(unheard).toEqual([]);
+    });
+  }
+});
+
+describe("a list that could not be loaded", () => {
+  it("gives the server's own reason when it sends one", async () => {
+    api.refuses = true;
+    api.listRefusal = {
+      status: 500,
+      body: { ok: false, error: "The database is busy." },
+    };
+    const { user } = mount();
+    await user.click(dash.chip("Confirmed"));
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [`${NOT_LOADED} The database is busy.`, "Try again"],
+      ]),
+    );
+  });
+
+  it("does not take a 200 that says no for a list", async () => {
+    api.refuses = true;
+    api.listRefusal = { status: 200, body: { ok: false, error: "Not now." } };
+    const { user } = mount();
+    await user.click(dash.chip("Confirmed"));
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([[`${NOT_LOADED} Not now.`, "Try again"]]),
+    );
+    expect(dash.names()).toEqual(NAMES);
+  });
+
+  it("sits between the toolbar and the list, as an error box with a plain button", async () => {
+    api.listFails = "drop";
+    const { user } = mount();
+    await user.click(dash.chip("Confirmed"));
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    const box = document.querySelector(".toolbar")!.nextElementSibling!;
+    expect(box.className).toBe("list-alerts");
+    expect(box.nextElementSibling?.className).toBe("card");
+    const alert = screen.getByRole("alert");
+    expect(alert.parentElement).toBe(box);
+    expect(alert.tagName).toBe("P");
+    expect(alert.className).toBe("error");
+    expect(dash.retry().className).toBe("btn ghost sm");
+    expect(dash.retry().type).toBe("button");
+  });
+
+  it("asks again on Try again, with counts, for what is on screen", async () => {
+    api.matching = (q) => many(q.status === "confirmed" ? 60 : 3);
+    const { user } = mount();
+    await user.click(dash.chip("Confirmed"));
+    await user.type(dash.search(), "guest");
+    await waitFor(() => expect(dash.info()).toBe("1-25 of 60"));
+    api.listFails = "drop";
+    await user.click(dash.page("2"));
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    expect(dash.info()).toBe("1-25 of 60");
+    api.calls.length = 0;
+
+    api.listFails = null;
+    api.counts = { ...COUNTS, confirmed: 60 };
+    const reply = api.hold();
+    await user.click(dash.retry());
+    expect(api.calls).toEqual([
+      listed("confirmed", { q: "guest", page: 2, counts: 1 }),
+    ]);
+    // Still said while the new answer is on its way: nothing has gone right yet.
+    expect(dash.busy()).toBe("true");
+    expect(dash.alerts()).toHaveLength(1);
+
+    reply.open();
+    await waitFor(() => expect(dash.alerts()).toEqual([]));
+    expect(dash.info()).toBe("26-50 of 60");
+    expect(dash.names()).toEqual(guests(26, 50));
+    expect(dash.stats()).toEqual([
+      ...STATS.slice(0, 2),
+      ["Confirmed", "60"],
+      ...STATS.slice(3),
+    ]);
+    expect(document.querySelector(".list-alerts")).toBeNull();
+  });
+
+  it("keeps the alert, once, when Try again fails too", async () => {
+    api.listFails = "drop";
+    const { user } = mount();
+    await user.click(dash.chip("Confirmed"));
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    api.listFails = "html";
+    await user.click(dash.retry());
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([[NOT_LOADED, "Try again"]]),
+    );
+    expect(api.calls).toHaveLength(2);
+    expect(dash.busy()).toBe("false");
+  });
+
+  it("drops the alert as soon as any later request lands", async () => {
+    api.matching = (q) => ROWS.filter((r) => r.status === q.status);
+    api.listFails = "drop";
+    const { user } = mount();
+    await user.click(dash.chip("Confirmed"));
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    api.listFails = null;
+    await user.click(dash.chip("Cancelled"));
+    await waitFor(() => expect(dash.names()).toEqual(["Cy Young"]));
+    expect(dash.alerts()).toEqual([]);
+  });
+
+  it("raises nothing for an older request that fails after a newer one landed", async () => {
+    api.matching = (q) => ROWS.filter((r) => r.status === q.status);
+    const { user } = mount();
+    const older = api.hold();
+    await user.click(dash.chip("Confirmed"));
+    await user.click(dash.chip("Cancelled"));
+    await waitFor(() => expect(dash.names()).toEqual(["Cy Young"]));
+    await waitFor(() => expect(dash.busy()).toBe("false"));
+
+    api.listFails = "drop";
+    older.open();
+    await settle();
+    expect(dash.alerts()).toEqual([]);
+    expect(dash.names()).toEqual(["Cy Young"]);
+    expect(dash.busy()).toBe("false");
+  });
+
+  it("does not let an older request that lands clear a newer one's alert", async () => {
+    const { user } = mount();
+    const older = api.hold();
+    await user.click(dash.chip("Confirmed"));
+    api.listFails = "drop";
+    await user.click(dash.chip("Cancelled"));
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+
+    api.listFails = null;
+    older.open();
+    await settle();
+    expect(dash.alerts()).toEqual([
+      [`${NOT_LOADED} ${UNREACHABLE}`, "Try again"],
+    ]);
+    expect(dash.names()).toEqual(NAMES);
+  });
+});
+
+describe("a write that fails", () => {
+  const REFUSED = [
+    {
+      button: "Approve reservation",
+      row: 1,
+      yes: "Yes, approve",
+      says: "Could not approve the reservation for Ada Lovelace.",
+    },
+    {
+      button: "Reject reservation",
+      row: 1,
+      yes: "Yes, cancel",
+      says: "Could not cancel the reservation for Ada Lovelace.",
+    },
+    {
+      button: "Cancel reservation",
+      row: 2,
+      yes: "Yes, cancel",
+      says: BOB_KEPT,
+    },
+    {
+      button: "Delete reservation",
+      row: 3,
+      yes: "Yes, delete",
+      says: "Could not delete the reservation for Cy Young.",
+    },
+  ];
+
+  // Each used to close its dialog and leave the row as it was, with nothing said.
+  for (const { button, row, yes, says } of REFUSED) {
+    it(`says what could not be done, and why, after ${button}`, async () => {
+      api.refusesWrites = true;
+      const { user } = mount();
+      const write = api.hold();
+      await confirm(user, row, button, yes);
+      expect(dash.dialog()).toBeNull();
+      expect(dash.alerts()).toEqual([]);
+
+      write.open();
+      const told = [[`${says} That reservation changed.`, "Dismiss"]];
+      await waitFor(() => expect(dash.alerts()).toEqual(told));
+      // The refetch that follows lands fine, and must leave the alert where it is.
+      await waitFor(() => expect(api.calls).toHaveLength(2));
+      await waitFor(() => expect(dash.busy()).toBe("false"));
+      await settle();
+      expect(dash.alerts()).toEqual(told);
+      expect(dash.names()).toEqual(NAMES);
+    });
+  }
+
+  it("leaves the guest out when the row carries no name", async () => {
+    api.refusesWrites = true;
+    const { user } = mount(page([{ ...BOB, fullName: "" }]));
+    await confirm(user, 1, "Delete reservation", "Yes, delete");
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [
+          "Could not delete the reservation. That reservation changed.",
+          "Dismiss",
+        ],
+      ]),
+    );
+  });
+
+  for (const [how, set] of [
+    ["is not JSON", () => (api.writeFails = "html")],
+    [
+      "carries no reason",
+      () => {
+        api.refusesWrites = true;
+        api.refusal = { status: 500, body: { ok: false } };
+      },
+    ],
+    [
+      "carries an empty reason",
+      () => {
+        api.refusesWrites = true;
+        api.refusal = { status: 400, body: { ok: false, error: "" } };
+      },
+    ],
+  ] as const) {
+    it(`says only what could not be done when the reply ${how}`, async () => {
+      set();
+      const { user } = mount();
+      await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+      await waitFor(() =>
+        expect(dash.alerts()).toEqual([[BOB_KEPT, "Dismiss"]]),
+      );
+    });
+  }
+
+  it("does not take a 200 that says no for a write that went through", async () => {
+    api.refusesWrites = true;
+    api.refusal = { status: 200, body: { ok: false, error: "Not this time." } };
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [`${BOB_KEPT} Not this time.`, "Dismiss"],
+      ]),
+    );
+  });
+
+  it("does not take a refusal whose body says ok for a write that went through", async () => {
+    api.refusesWrites = true;
+    api.refusal = { status: 500, body: { ok: true } };
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() => expect(dash.alerts()).toEqual([[BOB_KEPT, "Dismiss"]]));
+  });
+
+  // The request used to reject unheard, and the list was never asked for again.
+  it("says the server could not be reached when the connection drops, and still asks for the list", async () => {
+    api.writeFails = "drop";
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [`${BOB_KEPT} ${UNREACHABLE}`, "Dismiss"],
+      ]),
+    );
+    await waitFor(() => expect(api.calls).toHaveLength(2));
+    expect(api.calls).toEqual([
+      patched("c1", { status: "cancelled", emailBody: BOB_LETTER }),
+      listed("all", { counts: 1 }),
+    ]);
+    await settle();
+    expect(unheard).toEqual([]);
+  });
+
+  it("tells a signed-out admin so, for the write and for the list after it", async () => {
+    api.refusesWrites = true;
+    api.refusal = { status: 401, body: { ok: false, error: "Unauthorized" } };
+    api.refuses = true;
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [`${BOB_KEPT} ${SIGNED_OUT}`, "Dismiss"],
+        [`${NOT_LOADED} ${SIGNED_OUT}`, "Try again"],
+      ]),
+    );
+  });
+
+  it("lists a lost write above its lost refetch, and each goes by its own button", async () => {
+    api.writeFails = "drop";
+    api.listFails = "drop";
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    const write = [`${BOB_KEPT} ${UNREACHABLE}`, "Dismiss"];
+    const list = [`${NOT_LOADED} ${UNREACHABLE}`, "Try again"];
+    await waitFor(() => expect(dash.alerts()).toEqual([write, list]));
+
+    api.listFails = null;
+    await user.click(dash.retry());
+    await waitFor(() => expect(dash.alerts()).toEqual([write]));
+    expect(api.calls.at(-1)).toEqual(listed("all", { counts: 1 }));
+
+    await user.click(dash.dismiss());
+    expect(dash.alerts()).toEqual([]);
+    expect(document.querySelector(".list-alerts")).toBeNull();
+  });
+
+  it("goes on Dismiss, which sends nothing", async () => {
+    api.refusesWrites = true;
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    await waitFor(() => expect(dash.busy()).toBe("false"));
+    expect(dash.dismiss().className).toBe("btn ghost sm");
+    expect(dash.dismiss().type).toBe("button");
+    api.calls.length = 0;
+
+    await user.click(dash.dismiss());
+    expect(dash.alerts()).toEqual([]);
+    await settle();
+    expect(api.calls).toEqual([]);
+  });
+
+  it("stays while a dialog is opened and closed again", async () => {
+    api.refusesWrites = true;
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    await user.click(dash.button(1, "Approve reservation"));
+    await user.click(dash.answer("No"));
+    expect(dash.alerts()).toEqual([
+      [`${BOB_KEPT} That reservation changed.`, "Dismiss"],
+    ]);
+  });
+
+  it("goes as the next write is sent, before its answer is in", async () => {
+    api.refusesWrites = true;
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    await waitFor(() => expect(dash.busy()).toBe("false"));
+
+    api.refusesWrites = false;
+    const write = api.hold();
+    await confirm(user, 1, "Approve reservation", "Yes, approve");
+    expect(dash.alerts()).toEqual([]);
+
+    write.open();
+    await waitFor(() => expect(api.calls).toHaveLength(4));
+    await waitFor(() => expect(dash.busy()).toBe("false"));
+    expect(dash.alerts()).toEqual([]);
+  });
+
+  it("is replaced, not added to, by the next write that fails", async () => {
+    api.refusesWrites = true;
+    const { user } = mount();
+    await confirm(user, 2, "Cancel reservation", "Yes, cancel");
+    await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+    await confirm(user, 3, "Delete reservation", "Yes, delete");
+    await waitFor(() =>
+      expect(dash.alerts()).toEqual([
+        [
+          "Could not delete the reservation for Cy Young. That reservation changed.",
+          "Dismiss",
+        ],
+      ]),
+    );
+  });
+
+  for (const [what, move] of [
+    ["the filter", (user: User) => user.click(dash.chip("Confirmed"))],
+    ["the page", (user: User) => user.click(dash.page("2"))],
+    ["the search", (user: User) => user.type(dash.search(), "guest")],
+  ] as const) {
+    it(`goes when ${what} changes`, async () => {
+      api.matching = () => many(60);
+      api.refusesWrites = true;
+      const { user } = mount(page(many(25), 60));
+      await confirm(user, 1, "Cancel reservation", "Yes, cancel");
+      await waitFor(() => expect(dash.alerts()).toHaveLength(1));
+      await waitFor(() => expect(dash.busy()).toBe("false"));
+
+      await move(user);
+      await waitFor(() => expect(dash.alerts()).toEqual([]));
     });
   }
 });
