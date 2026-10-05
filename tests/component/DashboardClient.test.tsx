@@ -426,10 +426,11 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  // Real timers first: the wait below would never end on a faked clock.
+  vi.useRealTimers();
   await settle();
   process.off("unhandledRejection", hear);
   cleanup();
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   expect(unheard).toEqual([]);
 });
@@ -1934,11 +1935,14 @@ describe("a list that could not be loaded", () => {
     const { user } = mount();
     await user.click(dash.chip("Confirmed"));
     await user.type(dash.search(), "guest");
-    await waitFor(() => expect(dash.info()).toBe("1-25 of 60"));
+    await waitFor(() =>
+      expect(api.calls.at(-1)).toEqual(listed("confirmed", { q: "guest" })),
+    );
+    await waitFor(() => expect(dash.busy()).toBe("false"));
     api.listFails = "drop";
     await user.click(dash.page("2"));
     await waitFor(() => expect(dash.alerts()).toHaveLength(1));
-    expect(dash.info()).toBe("1-25 of 60");
+    expect(dash.names()).toEqual(guests(1, 25));
     api.calls.length = 0;
 
     api.listFails = null;
