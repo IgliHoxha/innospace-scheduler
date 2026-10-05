@@ -7,6 +7,7 @@ import {
   type Session,
 } from "@/lib/auth";
 import { requireSession } from "@/lib/api-auth";
+import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { requireEnv } from "@/lib/env-app";
@@ -56,10 +57,10 @@ export async function POST(req: NextRequest) {
 
   const ip = clientKey(req.headers);
 
-  const { login, password } = (await req.json().catch(() => ({}))) as {
-    login?: string;
-    password?: string;
-  };
+  const body = await jsonBody(req);
+  // Strings only: anything else would throw further down instead of being refused.
+  const login = typeof body.login === "string" ? body.login : "";
+  const password = typeof body.password === "string" ? body.password : "";
 
   if (!login || !password) {
     return jsonError("Enter your login and password.", 400);

@@ -33,15 +33,8 @@ describe("datetime string primitives", () => {
     expect(t.minutesOfDay("2026-07-16T09:30")).toBe(570);
   });
 
-  it("maxTime returns the later of two HH:MM strings", () => {
-    expect(t.maxTime("09:00", "11:30")).toBe("11:30");
-    expect(t.maxTime("14:05", "14:00")).toBe("14:05");
-    expect(t.maxTime("10:00", "10:00")).toBe("10:00");
-  });
-
-  it("measures duration in minutes and hours across a range", () => {
+  it("measures duration in minutes across a range", () => {
     expect(t.durationMinutes("2026-07-16T09:00", "2026-07-16T10:30")).toBe(90);
-    expect(t.durationHours("2026-07-16T09:00", "2026-07-16T10:30")).toBe(1.5);
   });
 
   it("minutesOfDay reads a string with no time half as midnight", () => {
@@ -67,14 +60,6 @@ describe("datetime string primitives", () => {
 });
 
 describe("durations", () => {
-  it("labels durations for humans", () => {
-    expect(t.durationLabel("2026-07-16T09:00", "2026-07-16T10:30")).toBe(
-      "1h 30m",
-    );
-    expect(t.durationLabel("2026-07-16T09:00", "2026-07-16T10:00")).toBe("1h");
-    expect(t.durationLabel("2026-07-16T09:00", "2026-07-16T09:45")).toBe("45m");
-  });
-
   it("formatDuration formats a plain minute count", () => {
     expect(t.formatDuration(90)).toBe("1h 30m");
     expect(t.formatDuration(60)).toBe("1h");

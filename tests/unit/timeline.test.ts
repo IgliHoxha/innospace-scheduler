@@ -14,7 +14,6 @@ import {
   pickTagPlacement,
   roomFor,
   seedGap,
-  snapToStep,
   suggestedEndMin,
   tickMinutes,
   wantedStartMin,
@@ -70,14 +69,6 @@ describe("buildDaySegments", () => {
     expect(buildDaySegments(540, 1140, [r(0, 540), r(1140, 1200)])).toEqual([
       { fromMin: 540, toMin: 1140, reserved: null },
     ]);
-  });
-});
-
-describe("snapToStep", () => {
-  it("rounds to the nearest step", () => {
-    expect(snapToStep(612, 30)).toBe(600);
-    expect(snapToStep(628, 30)).toBe(630);
-    expect(snapToStep(615, 30)).toBe(630); // exact midpoint rounds up
   });
 });
 

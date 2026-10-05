@@ -4,31 +4,18 @@ import { todayYMD } from "@/lib/datetime";
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("approval + note thresholds", () => {
-  it("needs approval strictly over the auto-approve limit; note at or over it", () => {
-    // default AUTO_APPROVE_MAX_HOURS = 2
-    expect(schedule.needsApproval("2026-07-16T09:00", "2026-07-16T11:00")).toBe(
-      false,
-    );
-    expect(schedule.needsApproval("2026-07-16T09:00", "2026-07-16T11:30")).toBe(
-      true,
-    );
-    expect(schedule.noteRequired("2026-07-16T09:00", "2026-07-16T11:00")).toBe(
-      true,
-    );
-    expect(schedule.noteRequired("2026-07-16T09:00", "2026-07-16T10:59")).toBe(
-      false,
-    );
+describe("autoApproveMaxHours", () => {
+  it("reads the limit at call time, so an override takes effect", () => {
+    expect(schedule.autoApproveMaxHours()).toBe(2);
+    vi.stubEnv("AUTO_APPROVE_MAX_HOURS", "1");
+    expect(schedule.autoApproveMaxHours()).toBe(1);
+    vi.stubEnv("AUTO_APPROVE_MAX_HOURS", "5");
+    expect(schedule.autoApproveMaxHours()).toBe(5);
   });
 
-  it("respects an AUTO_APPROVE_MAX_HOURS override", () => {
-    vi.stubEnv("AUTO_APPROVE_MAX_HOURS", "1");
-    expect(schedule.needsApproval("2026-07-16T09:00", "2026-07-16T10:30")).toBe(
-      true,
-    );
-    expect(schedule.noteRequired("2026-07-16T09:00", "2026-07-16T10:00")).toBe(
-      true,
-    );
+  it("never drops below one hour", () => {
+    vi.stubEnv("AUTO_APPROVE_MAX_HOURS", "0");
+    expect(schedule.autoApproveMaxHours()).toBe(1);
   });
 });
 

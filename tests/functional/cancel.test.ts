@@ -176,3 +176,21 @@ describe("the Slack notice on a guest cancellation", () => {
     expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/cancel - a body that is not an object", () => {
+  it.each([
+    ["a literal null", "null"],
+    ["a list", '["token"]'],
+    ["a number", "5"],
+    ["a bare string", '"token"'],
+  ])("400s %s like any dead link", async (_name, rawBody) => {
+    const res = await route.POST(
+      makeRequest("/api/cancel", { method: "POST", rawBody }),
+    );
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({
+      ok: false,
+      error: "This cancellation link is no longer valid.",
+    });
+  });
+});

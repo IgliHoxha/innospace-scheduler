@@ -4,6 +4,7 @@ import { sendReservationEmail } from "@/lib/email";
 import { boothName } from "@/lib/booths";
 import { postReservationToSlack } from "@/lib/slack";
 import { requireAdmin } from "@/lib/api-auth";
+import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { isReservationStatus, MAX_EMAIL_BODY } from "@/lib/types";
@@ -23,10 +24,7 @@ export async function PATCH(
   if (admin instanceof NextResponse) return admin;
 
   const { id } = await params;
-  const { status, emailBody } = (await req.json().catch(() => ({}))) as {
-    status?: unknown;
-    emailBody?: unknown;
-  };
+  const { status, emailBody } = await jsonBody(req);
 
   if (!isReservationStatus(status)) {
     return jsonError("Invalid status.", 400);

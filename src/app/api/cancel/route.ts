@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getReservation, updateReservationStatus } from "@/lib/db";
 import { verifyCancelToken } from "@/lib/auth";
+import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { isActiveStatus } from "@/lib/types";
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
 
-  const { token } = (await req.json().catch(() => ({}))) as { token?: unknown };
+  const { token } = await jsonBody(req);
   const id = verifyCancelToken(typeof token === "string" ? token : undefined);
   if (!id) {
     return jsonError("This cancellation link is no longer valid.", 400);

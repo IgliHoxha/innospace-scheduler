@@ -31,11 +31,6 @@ export function timeOf(dt: string): string {
   return dt.slice(11, 16);
 }
 
-/** The later of two "HH:MM" times (they compare correctly as text). */
-export function maxTime(a: string, b: string): string {
-  return a >= b ? a : b;
-}
-
 export function toDateTime(date: string, time: string): string {
   return `${date}T${time}`;
 }
@@ -57,10 +52,6 @@ export function durationMinutes(startsAt: string, endsAt: string): number {
   return minutesOfDay(endsAt) - minutesOfDay(startsAt);
 }
 
-export function durationHours(startsAt: string, endsAt: string): number {
-  return durationMinutes(startsAt, endsAt) / 60;
-}
-
 export function rangeLabel(startsAt: string, endsAt: string): string {
   return `${timeOf(startsAt)} - ${timeOf(endsAt)}`;
 }
@@ -71,10 +62,6 @@ export function formatDuration(mins: number): string {
   if (h && m) return `${h}h ${m}m`;
   if (h) return `${h}h`;
   return `${m}m`;
-}
-
-export function durationLabel(startsAt: string, endsAt: string): string {
-  return formatDuration(durationMinutes(startsAt, endsAt));
 }
 
 export function ymd(d: Date): string {

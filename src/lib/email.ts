@@ -13,8 +13,6 @@ import {
   type EmailStatus,
 } from "./templates";
 
-export { getContactFromEnv };
-
 const BRAND = COLORS.brand;
 const INK = COLORS.emailText;
 

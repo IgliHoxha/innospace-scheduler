@@ -37,10 +37,6 @@ export function buildDaySegments<T extends { start: number; end: number }>(
   return segments;
 }
 
-export function snapToStep(min: number, stepMin: number): number {
-  return Math.round(min / stepMin) * stepMin;
-}
-
 /** An end for a start, clamped to its free stretch; null if it will not fit. */
 export function suggestedEndMin(
   startMin: number,

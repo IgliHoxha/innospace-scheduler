@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { queryReservations } from "@/lib/db";
 import { getBooths } from "@/lib/booths";
-import { getContactFromEnv } from "@/lib/email";
+import { getContactFromEnv } from "@/lib/env-app";
 import DashboardClient from "./DashboardClient";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 

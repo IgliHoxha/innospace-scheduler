@@ -11,6 +11,7 @@ import {
 import { isReservationStatus, MAX_NOTE } from "@/lib/types";
 import { PAGE_SIZE } from "@/lib/pagination";
 import { requireAdmin } from "@/lib/api-auth";
+import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { validateGuest } from "@/lib/guest";
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const body = await jsonBody(req);
   const boothId = typeof body.boothId === "string" ? body.boothId : "";
   const date = typeof body.date === "string" ? body.date : "";
   const start = typeof body.start === "string" ? body.start : "";
@@ -270,7 +271,7 @@ export async function DELETE(req: NextRequest) {
   const admin = requireAdmin(req);
   if (admin instanceof NextResponse) return admin;
 
-  const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
+  const { ids } = await jsonBody(req);
   if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
     return jsonError("Expected { ids: string[] }.", 400);
   }

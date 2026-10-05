@@ -20,18 +20,24 @@ export default function CancelClient({
   async function cancel() {
     setBusy(true);
     setError("");
-    const res = await fetch("/api/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      error?: string;
-    };
-    setBusy(false);
-    if (res.ok && json.ok) setDone(true);
-    else setError(json.error || "Could not cancel that reservation.");
+    try {
+      const res = await fetch("/api/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (res.ok && json.ok) setDone(true);
+      else setError(json.error || "Could not cancel that reservation.");
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      // Always released, or a dropped connection leaves the button stuck.
+      setBusy(false);
+    }
   }
 
   if (done) {

@@ -86,3 +86,42 @@ describe("DELETE /api/login", () => {
     expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
   });
 });
+
+// A body that parses but is not an object of strings used to throw: a 500, not a refusal.
+describe("POST /api/login - a body that is not what the form sends", () => {
+  const refused = { ok: false, error: "Enter your login and password." };
+
+  it.each([
+    ["a literal null", null],
+    ["a list", [{ login: DEFAULT_ADMIN_USER, password: DEFAULT_ADMIN_PASS }]],
+    ["a number", 5],
+    ["a bare string", "admin"],
+  ])("400s %s", async (_name, body) => {
+    const { res, json } = await post(body);
+    expect(res.status).toBe(400);
+    expect(json).toEqual(refused);
+  });
+
+  it.each([
+    ["a numeric login", { login: 123, password: DEFAULT_ADMIN_PASS }],
+    ["an object as the login", { login: { a: 1 }, password: "x" }],
+    ["a list as the login", { login: [DEFAULT_ADMIN_USER], password: "x" }],
+    ["a numeric password", { login: DEFAULT_ADMIN_USER, password: 12345 }],
+    ["true for both", { login: true, password: true }],
+  ])("400s %s without signing anyone in", async (_name, body) => {
+    const { res, json } = await post(body);
+    expect(res.status).toBe(400);
+    expect(json).toEqual(refused);
+    expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
+  });
+
+  // Counted, 30 of these would lock the address out of the real login below.
+  it("does not count a malformed attempt as a failed login", async () => {
+    for (let i = 0; i < 30; i++) await post({ login: 123, password: "x" });
+    const { res } = await post({
+      login: DEFAULT_ADMIN_USER,
+      password: DEFAULT_ADMIN_PASS,
+    });
+    expect(res.status).toBe(200);
+  });
+});

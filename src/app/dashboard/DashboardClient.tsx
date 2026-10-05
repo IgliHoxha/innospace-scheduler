@@ -137,6 +137,9 @@ export default function DashboardClient({
         if (!json.ok) return;
         const tp = pageCount(json.total, PAGE_SIZE);
         if (page > tp) {
+          // These rows are for a page now gone, but a write's fresh tallies still stand.
+          const { counts } = json;
+          if (counts) setData((prev) => ({ ...prev, counts }));
           setPage(tp);
           return;
         }

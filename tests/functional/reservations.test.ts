@@ -1030,3 +1030,49 @@ describe("POST /api/reservations - the Slack notice", () => {
     expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 });
+
+describe("a write whose body is not an object", () => {
+  const bodies = [
+    ["a literal null", "null"],
+    ["a list", "[1, 2]"],
+    ["a number", "5"],
+    ["a bare string", '"x"'],
+  ] as const;
+
+  it.each(bodies)(
+    "POST refuses %s as an empty form",
+    async (_name, rawBody) => {
+      const res = await route.POST(
+        makeRequest("/api/reservations", {
+          method: "POST",
+          rawBody,
+          headers: { "x-real-ip": "10.0.0.9" },
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect(await json(res)).toEqual({
+        ok: false,
+        error: "Please enter your full name.",
+        field: "fullName",
+      });
+    },
+  );
+
+  it.each(bodies)(
+    "DELETE refuses %s and removes nothing",
+    async (_name, rawBody) => {
+      const res = await route.DELETE(
+        makeRequest("/api/reservations", {
+          method: "DELETE",
+          rawBody,
+          token: adminToken(),
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect(await json(res)).toEqual({
+        ok: false,
+        error: "Expected { ids: string[] }.",
+      });
+    },
+  );
+});

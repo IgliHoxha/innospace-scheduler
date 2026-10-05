@@ -196,3 +196,25 @@ describe("the Slack notice on an admin action", () => {
     expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH /api/reservations/[id] - a body that is not an object", () => {
+  it.each([
+    ["a literal null", "null"],
+    ["a list", '["cancelled"]'],
+    ["a number", "5"],
+    ["a bare string", '"cancelled"'],
+  ])("400s %s and leaves the booking as it was", async (_name, rawBody) => {
+    const r = await seed();
+    const res = await route.PATCH(
+      makeRequest(`/api/reservations/${r.id}`, {
+        method: "PATCH",
+        rawBody,
+        token: adminToken(),
+      }),
+      params({ id: r.id }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "Invalid status." });
+    expect(db.getReservation(r.id)?.status).toBe("confirmed");
+  });
+});

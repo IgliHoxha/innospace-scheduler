@@ -1,11 +1,7 @@
 // Time rules; a reservation carries no TZ, so TZ must match the space.
-import {
-  approvalRequiredFor,
-  isBookableMinute,
-  noteRequiredFor,
-} from "./reservation-rules";
+import { isBookableMinute } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
-import { durationMinutes, shiftDate, todayYMD } from "./datetime";
+import { shiftDate, todayYMD } from "./datetime";
 
 /** How many days ahead, including today, can be reserved. */
 function reservationWindowDays(): number {
@@ -28,21 +24,6 @@ export function minReservationMinutes(): number {
 
 export function autoApproveMaxHours(): number {
   return Math.max(1, requireIntEnv("AUTO_APPROVE_MAX_HOURS"));
-}
-
-export function needsApproval(startsAt: string, endsAt: string): boolean {
-  return approvalRequiredFor(
-    durationMinutes(startsAt, endsAt),
-    autoApproveMaxHours(),
-  );
-}
-
-/** One step wider than approval: `>=` needs a note, `>` needs approval. */
-export function noteRequired(startsAt: string, endsAt: string): boolean {
-  return noteRequiredFor(
-    durationMinutes(startsAt, endsAt),
-    autoApproveMaxHours(),
-  );
 }
 
 export function ceilToStep(minutes: number): number {
