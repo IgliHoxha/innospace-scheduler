@@ -12,6 +12,16 @@
   --text: #000000;
   --muted: #8a7f8a;
   --border: #e5e7eb;
+  --page-max: 1200px;
+  --page-gutter: 20px;
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --success: #15803d;
+  --success-bg: #dcfce7;
+  --tl-free: #eafaf7;
+  --tl-booked: #fbdcdc;
+  --tl-mine: #d6f2ee;
+  --tl-pick: #38bdf8;
 }
 
 * {
@@ -56,10 +66,10 @@ button {
 /* Width and rhythm shared with innospace-bookings, so both read as one. */
 .container {
   width: 100%;
-  max-width: 1200px;
+  max-width: var(--page-max);
   margin: 0 auto;
   /* 40 at the foot: the last card is the reserve bar, so 72 reads as void. */
-  padding: 32px 20px 40px;
+  padding: 32px var(--page-gutter) 40px;
   flex: 1 0 auto;
 }
 
@@ -76,9 +86,9 @@ button {
 
 /* Matches .container, or the brand sits at a different margin to the page. */
 .topbar-inner {
-  max-width: 1200px;
+  max-width: var(--page-max);
   margin: 0 auto;
-  padding: 14px 20px;
+  padding: 14px var(--page-gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -153,7 +163,7 @@ button {
 }
 
 .btn.danger {
-  background: #b91c1c;
+  background: var(--danger);
 }
 
 .btn.danger:hover {
@@ -238,7 +248,7 @@ button {
   padding: 11px 14px;
   font-size: 14px;
   font-weight: 600;
-  color: #b91c1c;
+  color: var(--danger);
   cursor: pointer;
   font-family: inherit;
 }
@@ -291,12 +301,6 @@ button {
   color: var(--muted);
   font-weight: 600;
   margin: 20px 0 8px;
-}
-
-.field-label .hint {
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
 }
 
 .booth-grid {
@@ -416,7 +420,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 12px;
   /* The empty bar reads as free time; blocks are painted over it. */
-  background: linear-gradient(#f2fbf9, #eafaf7);
+  background: linear-gradient(#f2fbf9, var(--tl-free));
   overflow: hidden;
 }
 
@@ -459,7 +463,7 @@ button {
   overflow: hidden;
   /* Clip, where supported, cannot scroll: find-in-page cannot show line two. */
   overflow: clip;
-  background: #fbdcdc;
+  background: var(--tl-booked);
   color: #a32323;
   font: inherit;
   cursor: pointer;
@@ -480,7 +484,7 @@ button {
 
 /* Yours in the brand teal: which bookings are yours reads before the label does. */
 .daycal-block.mine {
-  background: #d6f2ee;
+  background: var(--tl-mine);
   color: #14776c;
 }
 
@@ -548,7 +552,7 @@ button {
   border-radius: 0;
   /* Light sky blue so the pick is unmistakable next to the teal "You" blocks. */
   background: rgba(56, 189, 248, 0.16);
-  border: 2px solid #38bdf8;
+  border: 2px solid var(--tl-pick);
   /* Chrome floors border-width to whole pixels, so use an inset ring. */
   box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45);
   pointer-events: none;
@@ -694,23 +698,23 @@ button {
 }
 
 .daycal-legend .sw.free {
-  background: #eafaf7;
+  background: var(--tl-free);
   border-color: var(--border);
 }
 
 .daycal-legend .sw.booked {
-  background: #fbdcdc;
+  background: var(--tl-booked);
   border-color: #f3c9c9;
 }
 
 .daycal-legend .sw.mine {
-  background: #d6f2ee;
+  background: var(--tl-mine);
   border-color: #8fcfc5;
 }
 
 .daycal-legend .sw.pick {
   background: rgba(56, 189, 248, 0.18);
-  border-color: #38bdf8;
+  border-color: var(--tl-pick);
 }
 
 .guest-card {
@@ -829,8 +833,8 @@ button {
 }
 
 .success {
-  color: #15803d;
-  background: #dcfce7;
+  color: var(--success);
+  background: var(--success-bg);
   border: 1px solid #bbf7d0;
   padding: 10px 14px;
   border-radius: 8px;
@@ -866,12 +870,8 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
-.email-sent.confirmed {
-  color: var(--brand);
-}
-
 .email-sent.cancelled {
-  color: #b91c1c;
+  color: var(--danger);
 }
 
 .email-text[readonly] {
@@ -1067,7 +1067,7 @@ button {
 
 .bulk-count {
   font-size: 13px;
-  color: var(--muted, #6b7280);
+  color: var(--muted);
 }
 
 .bulk-bar .btn {
@@ -1125,24 +1125,19 @@ tr:last-child td {
   text-transform: capitalize;
 }
 
-.badge.new {
-  background: #e0f2fe;
-  color: #0369a1;
-}
-
 .badge.pending {
   background: #fef3c7;
   color: #b45309;
 }
 
 .badge.confirmed {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .badge.cancelled {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .badge.deleted {
@@ -1189,21 +1184,21 @@ tr:last-child td {
 }
 
 .icon-btn.tick {
-  color: #15803d;
+  color: var(--success);
 }
 
 .icon-btn.tick:hover:not(:disabled) {
-  background: #dcfce7;
-  border-color: #15803d;
+  background: var(--success-bg);
+  border-color: var(--success);
 }
 
 .icon-btn.cross {
-  color: #b91c1c;
+  color: var(--danger);
 }
 
 .icon-btn.cross:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #b91c1c;
+  background: var(--danger-bg);
+  border-color: var(--danger);
 }
 
 /* Muted, not red: deleting is not the same act as cancelling, which owns .cross. */
@@ -1415,7 +1410,7 @@ tr:last-child td {
   border: 1px solid #fecaca;
   border-radius: 10px;
   background: #fef2f2;
-  color: #b91c1c;
+  color: var(--danger);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
@@ -1436,9 +1431,9 @@ tr:last-child td {
 
 /* Same 1200px as .container, or the footer sits inset from the page above. */
 .site-footer-inner {
-  max-width: 1200px;
+  max-width: var(--page-max);
   margin: 0 auto;
-  padding: 18px 20px;
+  padding: 18px var(--page-gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1470,11 +1465,6 @@ tr:last-child td {
   align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
-}
-
-.timerange-fields[data-disabled] {
-  opacity: 0.5;
-  pointer-events: none;
 }
 
 .tp-group {

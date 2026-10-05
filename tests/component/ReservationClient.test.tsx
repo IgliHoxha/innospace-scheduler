@@ -504,7 +504,7 @@ describe("switching booth or day", () => {
     server.taken = () => [{ start: "09:00", end: "10:00", label: "Booked" }];
     board.open();
     await waitFor(() => expect(form.pick()).toBe("10:00-11:00"));
-    expect(form.reserve().disabled).toBe(false);
+    await waitFor(() => expect(form.reserve().disabled).toBe(false));
     expect(server.gets.at(-1)).toMatchObject({ booth: "booth-2" });
   });
 
@@ -619,7 +619,7 @@ describe("the board itself", () => {
       server.boardFails = null;
       await user.click(screen.getByRole("button", { name: "Try again" }));
       await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
-      expect(form.reserve().disabled).toBe(false);
+      await waitFor(() => expect(form.reserve().disabled).toBe(false));
       cleanup();
     }
   });

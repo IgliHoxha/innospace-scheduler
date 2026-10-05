@@ -1,4 +1,4 @@
-// The board's query string, kept out of the component so it can be tested.
+// The board's query string and booth tallies, kept out of the component to be tested.
 
 // The edge's s-maxage plus stale-while-revalidate, in total.
 export const EDGE_STALE_MS = 60_000;
@@ -13,6 +13,11 @@ export function countsForDate(
   date: string,
 ): Record<string, number> | undefined {
   return board?.date === date ? board.counts : undefined;
+}
+
+export function reservationCountLabel(count: number): string {
+  const n = Math.max(0, count);
+  return n === 1 ? "1 reservation" : `${n} reservations`;
 }
 
 export function availabilityQuery(

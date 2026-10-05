@@ -70,6 +70,11 @@ export type RateStatus = {
 };
 
 const OK: RateStatus = { blocked: false, banned: false, retryAfterSeconds: 0 };
+const BANNED: RateStatus = {
+  blocked: true,
+  banned: true,
+  retryAfterSeconds: 0,
+};
 
 function prune(now: number) {
   if (now - lastPrunedAt < PRUNE_EVERY_MS) return;
@@ -97,11 +102,9 @@ function evictOldest(now: number): void {
   }
 }
 
-function peek(key: string): RateStatus {
-  const now = Date.now();
-  const b = buckets.get(key);
+function standing(b: Bucket | undefined, now: number): RateStatus {
   if (!b) return OK;
-  if (b.banned) return { blocked: true, banned: true, retryAfterSeconds: 0 };
+  if (b.banned) return BANNED;
   if (b.blockedUntil > now) {
     return {
       blocked: true,
@@ -110,6 +113,10 @@ function peek(key: string): RateStatus {
     };
   }
   return OK;
+}
+
+function peek(key: string): RateStatus {
+  return standing(buckets.get(key), Date.now());
 }
 
 function hit(key: string, policy: Policy): RateStatus {
@@ -124,20 +131,11 @@ function hit(key: string, policy: Policy): RateStatus {
     seen: now,
   };
   b.seen = now;
+  buckets.set(key, b);
 
-  if (b.banned) {
-    buckets.set(key, b);
-    return { blocked: true, banned: true, retryAfterSeconds: 0 };
-  }
   // Already serving a lockout - report remaining time without escalating.
-  if (b.blockedUntil > now) {
-    buckets.set(key, b);
-    return {
-      blocked: true,
-      banned: false,
-      retryAfterSeconds: Math.ceil((b.blockedUntil - now) / 1000),
-    };
-  }
+  const current = standing(b, now);
+  if (current.blocked) return current;
 
   b.fails += 1;
   if (b.fails >= policy.maxAttempts) {
@@ -147,17 +145,14 @@ function hit(key: string, policy: Policy): RateStatus {
     if (policy.maxLockouts !== null && b.lockouts > policy.maxLockouts) {
       b.banned = true;
       b.blockedUntil = Number.MAX_SAFE_INTEGER;
-      buckets.set(key, b);
-      return { blocked: true, banned: true, retryAfterSeconds: 0 };
+      return BANNED;
     }
 
     const seconds = policy.blockBaseSeconds * b.lockouts;
     b.blockedUntil = now + seconds * 1000;
-    buckets.set(key, b);
     return { blocked: true, banned: false, retryAfterSeconds: seconds };
   }
 
-  buckets.set(key, b);
   return OK;
 }
 

@@ -5,12 +5,19 @@ import { randomUUID } from "crypto";
 import {
   RESERVATION_STATUSES,
   ACTIVE_STATUSES,
+  type ActiveStatus,
+  type CountedReservationPage,
   type Reservation,
+  type ReservationCounts,
+  type ReservationFilter,
   type ReservationInput,
+  type ReservationPage,
   type ReservationStatus,
 } from "./types";
 import { requireEnv } from "./env-app";
 import { canonicalEmail } from "./guest";
+import { PAGE_SIZE } from "./pagination";
+import { USER_BUSY_MESSAGE } from "./reservation-rules";
 
 const COLS =
   "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note";
@@ -29,6 +36,18 @@ const TABLE_BODY = `(
 )`;
 
 type Row = Record<string, string | number | null>;
+type BookedRange = { startsAt: string; endsAt: string };
+
+const startOfDay = (date: string): string => `${date}T00:00`;
+const endOfDay = (date: string): string => `${date}T23:59`;
+const toRange = (r: Row): BookedRange => ({
+  startsAt: String(r.startsAt),
+  endsAt: String(r.endsAt),
+});
+const heldBy =
+  (mailbox: string) =>
+  (r: Row): boolean =>
+    canonicalEmail(String(r.email ?? "")) === mailbox;
 
 const ACTIVE_LIST = inList(ACTIVE_STATUSES);
 
@@ -40,7 +59,7 @@ export class SlotUnavailableError extends Error {
 }
 
 export class UserBusyError extends Error {
-  constructor(message = "You already have a reservation during that time.") {
+  constructor(message = USER_BUSY_MESSAGE) {
     super(message);
     this.name = "UserBusyError";
   }
@@ -122,24 +141,8 @@ function fromRow(r: Row): Reservation {
   };
 }
 
-export interface ReservationCounts {
-  total: number;
-  pending: number;
-  confirmed: number;
-  cancelled: number;
-  deleted: number;
-}
-
-export interface ReservationPage {
-  reservations: Reservation[];
-  total: number; // rows matching the current filter + search
-  page: number; // 1-based
-  pageSize: number;
-  counts?: ReservationCounts; // absent when withCounts is false
-}
-
 export interface ReservationQuery {
-  filter?: "all" | ReservationStatus;
+  filter?: ReservationFilter;
   search?: string;
   page?: number;
   pageSize?: number;
@@ -171,13 +174,16 @@ function reservationCounts(): ReservationCounts {
 /** Omitting `withCounts` types the tallies as present, hence the overload. */
 export function queryReservations(
   q?: Omit<ReservationQuery, "withCounts">,
-): ReservationPage & { counts: ReservationCounts };
+): CountedReservationPage;
 export function queryReservations(q: ReservationQuery): ReservationPage;
 
 export function queryReservations(q: ReservationQuery = {}): ReservationPage {
   const db = getDb();
   const page = Math.max(1, Math.trunc(q.page ?? 1));
-  const pageSize = Math.min(100, Math.max(1, Math.trunc(q.pageSize ?? 25)));
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Math.trunc(q.pageSize ?? PAGE_SIZE)),
+  );
 
   const where: string[] = [];
   const params: (string | number)[] = [];
@@ -226,21 +232,15 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
 }
 
 /** The date is a prefix of startsAt, so the index serves the day range. */
-export function reservedRanges(
-  boothId: string,
-  date: string,
-): { startsAt: string; endsAt: string }[] {
+export function reservedRanges(boothId: string, date: string): BookedRange[] {
   // Times only: this feeds the public board, so no name ever leaves the row.
   const rows = prep(
     `SELECT startsAt, endsAt
        FROM reservations
        WHERE boothId = ? AND startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
        ORDER BY startsAt`,
-  ).all(boothId, `${date}T00:00`, `${date}T23:59`) as Row[];
-  return rows.map((r) => ({
-    startsAt: String(r.startsAt),
-    endsAt: String(r.endsAt),
-  }));
+  ).all(boothId, startOfDay(date), endOfDay(date)) as Row[];
+  return rows.map(toRange);
 }
 
 /** A booth with no active reservation that day is absent from the map. */
@@ -250,35 +250,26 @@ export function reservationCountsByBooth(date: string): Map<string, number> {
        FROM reservations
        WHERE startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
        GROUP BY boothId`,
-  ).all(`${date}T00:00`, `${date}T23:59`) as Row[];
+  ).all(startOfDay(date), endOfDay(date)) as Row[];
   return new Map(rows.map((r) => [String(r.boothId), Number(r.n)]));
 }
 
 /** What this email holds that day, across booths, since a run can span them. */
-export function heldRangesForEmail(
-  email: string,
-  date: string,
-): { startsAt: string; endsAt: string }[] {
+export function heldRangesForEmail(email: string, date: string): BookedRange[] {
   // A day's rows are few, and SQL cannot strip Gmail's dots.
   const rows = prep(
     `SELECT email, startsAt, endsAt
        FROM reservations
        WHERE startsAt BETWEEN ? AND ? AND status IN (${ACTIVE_LIST})
        ORDER BY startsAt`,
-  ).all(`${date}T00:00`, `${date}T23:59`) as Row[];
-  const want = canonicalEmail(email);
-  return rows
-    .filter((r) => canonicalEmail(String(r.email ?? "")) === want)
-    .map((r) => ({
-      startsAt: String(r.startsAt),
-      endsAt: String(r.endsAt),
-    }));
+  ).all(startOfDay(date), endOfDay(date)) as Row[];
+  return rows.filter(heldBy(canonicalEmail(email))).map(toRange);
 }
 
 /** Check and insert share a transaction, so racers cannot both win. */
 export function createReservation(
   input: ReservationInput,
-  status: Extract<ReservationStatus, "confirmed" | "pending"> = "confirmed",
+  status: ActiveStatus = "confirmed",
 ): Reservation {
   const db = getDb();
   const now = new Date().toISOString();
@@ -292,7 +283,7 @@ export function createReservation(
 
   const tx = db.transaction((r: Reservation) => {
     // Half-open, so edges do not clash; the day bound skips older history.
-    const dayStart = `${r.startsAt!.slice(0, 10)}T00:00`;
+    const dayStart = startOfDay(r.startsAt!.slice(0, 10));
     const clash = prep(
       `SELECT 1 FROM reservations
          WHERE boothId = ? AND status IN (${ACTIVE_LIST})
@@ -308,9 +299,7 @@ export function createReservation(
            WHERE status IN (${ACTIVE_LIST})
              AND startsAt >= ? AND startsAt < ? AND endsAt > ?`,
       ).all(dayStart, r.endsAt, r.startsAt) as Row[];
-      const selfClash = overlapping.some(
-        (o) => canonicalEmail(String(o.email ?? "")) === want,
-      );
+      const selfClash = overlapping.some(heldBy(want));
       if (selfClash) throw new UserBusyError();
     }
     insert(r);

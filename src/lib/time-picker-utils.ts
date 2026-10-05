@@ -44,12 +44,12 @@ export function getValidArrowMinute(value: string, step: number) {
   return getValidArrowNumber(value, { min: 0, max: 59, step });
 }
 
-export function setHours(date: Date, value: string) {
+function setHours(date: Date, value: string) {
   date.setHours(parseInt(getValidHour(value), 10));
   return date;
 }
 
-export function setMinutes(date: Date, value: string) {
+function setMinutes(date: Date, value: string) {
   date.setMinutes(parseInt(getValidMinute(value), 10));
   return date;
 }
@@ -74,7 +74,7 @@ export function getArrowByType(
     : getValidArrowHour(value, step);
 }
 
-export function maxOf(type: TimePickerType): number {
+function maxOf(type: TimePickerType): number {
   return type === "minutes" ? 59 : 23;
 }
 

@@ -1,8 +1,10 @@
 // Posts bookings to Slack. Server-only: it reads a secret webhook URL.
 import { optionalEnv } from "./env-app";
-import type { EmailStatus } from "./templates";
-import { boothLabel, dateText, timeText } from "./templates";
-import type { BoothNamer } from "./templates";
+import {
+  reservationSummary,
+  type BoothNamer,
+  type EmailStatus,
+} from "./templates";
 import type { Reservation } from "./types";
 
 /** "skipped" is no webhook configured; only "failed" means Slack refused it. */
@@ -71,7 +73,7 @@ export function slackReservationText(
   boothName: BoothNamer,
 ): string {
   const who = r.fullName?.trim() || r.email || "someone";
-  return `${headline(event).lead}: ${boothLabel(r, boothName)} · ${dateText(r)} · ${timeText(r)} (${who})`;
+  return `${headline(event).lead}: ${reservationSummary(r, boothName)} (${who})`;
 }
 
 export function slackReservationMessage(
@@ -84,7 +86,7 @@ export function slackReservationMessage(
   // Unlabelled: labels double the height and say nothing a date does not.
   const lines = [
     `${icon} *${title}*`,
-    `${escapeSlack(boothLabel(r, boothName))} · ${escapeSlack(dateText(r))} · ${escapeSlack(timeText(r))}`,
+    escapeSlack(reservationSummary(r, boothName)),
     `${escapeSlack(r.fullName?.trim() || "-")} · ${escapeSlack(r.email || "-")}`,
   ];
   if (r.note?.trim()) lines.push(`_${escapeSlack(r.note.trim())}_`);

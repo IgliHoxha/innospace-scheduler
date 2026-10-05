@@ -1,11 +1,16 @@
 // The browser's mirror of the route's rules, in its order. Minutes throughout.
 import {
   approvalRequiredFor,
+  END_BEFORE_START_MESSAGE,
   findOverlap,
   isBookableMinute,
   meetsMinDuration,
   noteRequiredFor,
+  offGridMessage,
   runTotalMinutes,
+  TIME_PASSED_MESSAGE,
+  tooShortMessage,
+  USER_BUSY_MESSAGE,
 } from "./reservation-rules";
 
 /** Where a problem belongs; "note" at the note box, the rest by the button. */
@@ -137,21 +142,17 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
     !isBookableMinute(startMin, stepMinutes) ||
     !isBookableMinute(endMin, stepMinutes)
   )
-    return no(`Please choose times in ${stepMinutes}-minute steps.`);
-  if (endMin <= startMin)
-    return no("The end time must be after the start time.");
+    return no(offGridMessage(stepMinutes));
+  if (endMin <= startMin) return no(END_BEFORE_START_MESSAGE);
   if (!meetsMinDuration(duration, minReservationMinutes))
-    return no(
-      `Reservations must be at least ${minReservationMinutes} minutes long.`,
-    );
-  if (startMin < earliestMin) return no("That time has already passed.");
+    return no(tooShortMessage(minReservationMinutes));
+  if (startMin < earliestMin) return no(TIME_PASSED_MESSAGE);
 
   const clash = findOverlap(startMin, endMin, reserved);
   if (clash)
     return no(`That overlaps an existing reservation (${clash.label}).`);
   // The server rejects two booths at once; this browser knows its own.
-  if (findOverlap(startMin, endMin, held))
-    return no("You already have a reservation during that time.");
+  if (findOverlap(startMin, endMin, held)) return no(USER_BUSY_MESSAGE);
 
   if (mustNote && !note.trim())
     return no(noteRequiredMessage(partOfRun, autoApproveMaxHours), "note");

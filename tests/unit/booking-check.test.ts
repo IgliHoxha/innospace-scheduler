@@ -431,3 +431,24 @@ describe("checkBooking: the route's own order", () => {
     expect(r.field).toBeUndefined();
   });
 });
+
+// The route answers with these same sentences, so the form must not paraphrase.
+describe("checkBooking: the wording it shares with the server", () => {
+  it("gives the off-grid and too-short refusals in full", () => {
+    expect(check({ startMin: 10 * 60 + 7 }).problem).toBe(
+      "Please choose times in 5-minute steps.",
+    );
+    expect(check({ endMin: 10 * 60 + 10 }).problem).toBe(
+      "Reservations must be at least 15 minutes long.",
+    );
+  });
+
+  it("follows the step and the minimum it is configured with", () => {
+    expect(check({ stepMinutes: 15, startMin: 10 * 60 + 5 }).problem).toBe(
+      "Please choose times in 15-minute steps.",
+    );
+    expect(
+      check({ minReservationMinutes: 30, endMin: 10 * 60 + 15 }).problem,
+    ).toBe("Reservations must be at least 30 minutes long.");
+  });
+});

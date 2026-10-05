@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
+import { jsonError } from "./api-response";
 import { optionalEnv } from "./env-app";
 
 // An in-app origin gate, not CORS headers: those only ask a browser nicely.
@@ -53,5 +54,5 @@ export function isRequestOriginAllowed(headers: Headers): boolean {
 /** CSRF defence in depth behind the sameSite cookie: a ready 403, or null. */
 export function requireAllowedOrigin(headers: Headers): NextResponse | null {
   if (isRequestOriginAllowed(headers)) return null;
-  return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  return jsonError("Forbidden", 403);
 }

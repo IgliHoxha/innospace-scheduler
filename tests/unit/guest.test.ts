@@ -85,6 +85,21 @@ describe("validateGuest", () => {
     expect(bad({ ...ok, email: long }).field).toBe("email");
   });
 
+  // Each half sits inside its own cap, so only the whole-address cap can refuse it.
+  it("caps the whole address even when both halves fit", () => {
+    const domain = ["b", "c", "d", "e"].map((c) => c.repeat(60)).join(".");
+    const long = `${"a".repeat(60)}@${domain}.com`;
+    expect(long.length).toBeGreaterThan(MAX_EMAIL);
+    expect(validateGuest({ ...ok, email: long })).toEqual({
+      ok: false,
+      field: "email",
+      error: "That email address is too long.",
+    });
+    expect(guestProblems({ ...ok, email: long })).toEqual({
+      email: "That email address is too long.",
+    });
+  });
+
   it("reports the first problem only, in form order", () => {
     expect(bad({ fullName: "", email: "" }).field).toBe("fullName");
     expect(bad({ ...ok, email: "nope" }).field).toBe("email");

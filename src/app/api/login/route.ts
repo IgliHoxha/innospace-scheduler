@@ -7,6 +7,7 @@ import {
   type Session,
 } from "@/lib/auth";
 import { requireSession } from "@/lib/api-auth";
+import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { requireEnv } from "@/lib/env-app";
 import { MAX_EMAIL, MAX_PASSWORD } from "@/lib/types";
@@ -28,24 +29,25 @@ function formatWait(seconds: number): string {
 }
 
 function bannedResponse() {
-  return NextResponse.json(
-    {
-      ok: false,
-      error:
-        "Access blocked due to repeated failed logins. Contact the administrator.",
-    },
-    { status: 403 },
+  return jsonError(
+    "Access blocked due to repeated failed logins. Contact the administrator.",
+    403,
   );
 }
 
 function lockedResponse(retryAfterSeconds: number) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: `Too many failed attempts. Try again in ${formatWait(retryAfterSeconds)}.`,
-    },
-    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  return jsonError(
+    `Too many failed attempts. Try again in ${formatWait(retryAfterSeconds)}.`,
+    429,
+    { "Retry-After": String(retryAfterSeconds) },
   );
+}
+
+function failedLogin(ip: string, login: string): NextResponse {
+  const s = registerLoginFailure(ip, login);
+  if (s.banned) return bannedResponse();
+  if (s.blocked) return lockedResponse(s.retryAfterSeconds);
+  return jsonError("Incorrect login or password.", 401);
 }
 
 export async function POST(req: NextRequest) {
@@ -60,46 +62,24 @@ export async function POST(req: NextRequest) {
   };
 
   if (!login || !password) {
-    return NextResponse.json(
-      { ok: false, error: "Enter your login and password." },
-      { status: 400 },
-    );
+    return jsonError("Enter your login and password.", 400);
   }
 
   const gate = checkLoginBlocked(ip, login);
   if (gate.banned) return bannedResponse();
   if (gate.blocked) return lockedResponse(gate.retryAfterSeconds);
 
-  // Reject oversized input before it reaches scrypt, where it would burn CPU.
+  // Oversized input counts as a failed attempt and never reaches the compare.
   if (login.length > MAX_EMAIL || password.length > MAX_PASSWORD) {
-    const s = registerLoginFailure(ip, login);
-    if (s.banned) return bannedResponse();
-    if (s.blocked) return lockedResponse(s.retryAfterSeconds);
-    return NextResponse.json(
-      { ok: false, error: "Incorrect login or password." },
-      { status: 401 },
-    );
+    return failedLogin(ip, login);
   }
+  if (!checkAdminCredentials(login, password)) return failedLogin(ip, login);
 
-  let session: Session | null = null;
-  if (checkAdminCredentials(login, password)) {
-    session = {
-      role: "admin",
-      sub: "admin",
-      name: requireEnv("DASHBOARD_USERNAME"),
-    };
-  }
-
-  if (!session) {
-    const s = registerLoginFailure(ip, login);
-    if (s.banned) return bannedResponse();
-    if (s.blocked) return lockedResponse(s.retryAfterSeconds);
-    return NextResponse.json(
-      { ok: false, error: "Incorrect login or password." },
-      { status: 401 },
-    );
-  }
-
+  const session: Session = {
+    role: "admin",
+    sub: "admin",
+    name: requireEnv("DASHBOARD_USERNAME"),
+  };
   registerLoginSuccess(ip, login);
 
   const res = NextResponse.json({ ok: true, role: session.role });

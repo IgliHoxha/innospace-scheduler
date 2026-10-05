@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   approvalRequiredFor,
   dayEndMinute,
+  END_BEFORE_START_MESSAGE,
   findOverlap,
   isBookableMinute,
   meetsMinDuration,
   noteRequiredFor,
+  offGridMessage,
   runTotalMinutes,
+  TIME_PASSED_MESSAGE,
+  tooShortMessage,
+  USER_BUSY_MESSAGE,
 } from "@/lib/reservation-rules";
 
 describe("dayEndMinute", () => {
@@ -174,5 +179,45 @@ describe("runTotalMinutes", () => {
   it("counts held time once even if a row somehow appears twice", () => {
     // The second copy overlaps the run the first made, so it adds nothing.
     expect(runTotalMinutes(600, 660, held([540, 600], [540, 600]))).toBe(120);
+  });
+});
+
+// The form and the server both show these, so the wording is pinned in full.
+describe("the refusals the form and the server share", () => {
+  it("words the three fixed ones exactly", () => {
+    expect(END_BEFORE_START_MESSAGE).toBe(
+      "The end time must be after the start time.",
+    );
+    expect(TIME_PASSED_MESSAGE).toBe("That time has already passed.");
+    expect(USER_BUSY_MESSAGE).toBe(
+      "You already have a reservation during that time.",
+    );
+  });
+
+  it("names the step the times must sit on", () => {
+    expect(offGridMessage(5)).toBe("Please choose times in 5-minute steps.");
+    expect(offGridMessage(15)).toBe("Please choose times in 15-minute steps.");
+  });
+
+  it("names the shortest reservation allowed", () => {
+    expect(tooShortMessage(15)).toBe(
+      "Reservations must be at least 15 minutes long.",
+    );
+    expect(tooShortMessage(30)).toBe(
+      "Reservations must be at least 30 minutes long.",
+    );
+  });
+
+  it("keeps every dash a plain hyphen", () => {
+    const all = [
+      END_BEFORE_START_MESSAGE,
+      TIME_PASSED_MESSAGE,
+      USER_BUSY_MESSAGE,
+      offGridMessage(5),
+      tooShortMessage(15),
+    ];
+    for (const message of all) {
+      expect(message).not.toMatch(/[\u2013\u2014]/);
+    }
   });
 });

@@ -1,7 +1,7 @@
 import { verifyCancelToken } from "@/lib/auth";
 import { getReservation } from "@/lib/db";
 import { boothName } from "@/lib/booths";
-import { ACTIVE_STATUSES } from "@/lib/types";
+import { isActiveStatus } from "@/lib/types";
 import { dateText, timeText } from "@/lib/templates";
 import CancelClient from "./CancelClient";
 
@@ -18,9 +18,7 @@ export default async function CancelPage({
   const reservation = id ? getReservation(id) : null;
 
   const dead = !reservation;
-  const alreadyGone =
-    !!reservation &&
-    !ACTIVE_STATUSES.includes(reservation.status as "confirmed" | "pending");
+  const alreadyGone = !!reservation && !isActiveStatus(reservation.status);
 
   return (
     <div className="login-wrap">

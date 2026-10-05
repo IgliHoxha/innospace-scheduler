@@ -8,12 +8,10 @@ import {
   SlotUnavailableError,
   UserBusyError,
 } from "@/lib/db";
-import {
-  RESERVATION_STATUSES,
-  MAX_NOTE,
-  type ReservationStatus,
-} from "@/lib/types";
+import { isReservationStatus, MAX_NOTE } from "@/lib/types";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { requireAdmin } from "@/lib/api-auth";
+import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { validateGuest } from "@/lib/guest";
 import { verifyTurnstile } from "@/lib/turnstile";
@@ -46,9 +44,13 @@ import { postReservationToSlack } from "@/lib/slack";
 import {
   approvalRequiredFor,
   dayEndMinute,
+  END_BEFORE_START_MESSAGE,
   meetsMinDuration,
   noteRequiredFor,
+  offGridMessage,
   runTotalMinutes,
+  TIME_PASSED_MESSAGE,
+  tooShortMessage,
 } from "@/lib/reservation-rules";
 
 export const runtime = "nodejs";
@@ -63,13 +65,9 @@ export async function POST(req: NextRequest) {
   const ip = clientKey(req.headers);
   const gate = checkBookingBlocked(ip);
   if (gate.blocked) {
-    return NextResponse.json(
-      { ok: false, error: "Too many reservations from here. Try again later." },
-      {
-        status: 429,
-        headers: { "Retry-After": String(gate.retryAfterSeconds) },
-      },
-    );
+    return jsonError("Too many reservations from here. Try again later.", 429, {
+      "Retry-After": String(gate.retryAfterSeconds),
+    });
   }
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -90,16 +88,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!isBoothId(boothId)) {
-    return NextResponse.json(
-      { ok: false, error: "Please choose a booth." },
-      { status: 400 },
-    );
+    return jsonError("Please choose a booth.", 400);
   }
   if (!isReservableDate(date)) {
-    return NextResponse.json(
-      { ok: false, error: "That date can't be reserved." },
-      { status: 400 },
-    );
+    return jsonError("That date can't be reserved.", 400);
   }
 
   const startsAt = toDateTime(date, start);
@@ -114,19 +106,10 @@ export async function POST(req: NextRequest) {
     !isValidTimeOfDay(startMin) ||
     !isValidTimeOfDay(endMin)
   ) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `Please choose times in ${stepMinutes()}-minute steps.`,
-      },
-      { status: 400 },
-    );
+    return jsonError(offGridMessage(stepMinutes()), 400);
   }
   if (endMin <= startMin) {
-    return NextResponse.json(
-      { ok: false, error: "The end time must be after the start time." },
-      { status: 400 },
-    );
+    return jsonError(END_BEFORE_START_MESSAGE, 400);
   }
   if (
     !meetsMinDuration(
@@ -134,19 +117,10 @@ export async function POST(req: NextRequest) {
       minReservationMinutes(),
     )
   ) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `Reservations must be at least ${minReservationMinutes()} minutes long.`,
-      },
-      { status: 400 },
-    );
+    return jsonError(tooShortMessage(minReservationMinutes()), 400);
   }
   if (startsAt <= nowDateTime()) {
-    return NextResponse.json(
-      { ok: false, error: "That time has already passed." },
-      { status: 400 },
-    );
+    return jsonError(TIME_PASSED_MESSAGE, 400);
   }
   // The limits apply to a back-to-back run, or a split stay would dodge them.
   const heldOn = (day: string, offsetMin: number) =>
@@ -201,12 +175,9 @@ export async function POST(req: NextRequest) {
 
   // Last gate before a write, so a bad request never spends its token.
   if (!(await verifyTurnstile(body.turnstileToken, ip))) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "We couldn't verify that you're human. Please reload and retry.",
-      },
-      { status: 403 },
+    return jsonError(
+      "We couldn't verify that you're human. Please reload and retry.",
+      403,
     );
   }
 
@@ -235,19 +206,13 @@ export async function POST(req: NextRequest) {
     );
 
     // A booking counts once the confirmation is away; "skipped" is no refusal.
-    if (reservation.email) {
-      const outcome = await sendReservationEmail(reservation, status);
-      if (outcome === "failed") {
-        discardReservation(reservation.id);
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "We couldn't send the confirmation to that address, so nothing was reserved. Please check it and try again.",
-          },
-          { status: 502 },
-        );
-      }
+    const outcome = await sendReservationEmail(reservation, status);
+    if (outcome === "failed") {
+      discardReservation(reservation.id);
+      return jsonError(
+        "We couldn't send the confirmation to that address, so nothing was reserved. Please check it and try again.",
+        502,
+      );
     }
 
     // After the email, so the channel never announces a discarded booking.
@@ -269,20 +234,12 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     if (err instanceof SlotUnavailableError || err instanceof UserBusyError) {
-      return NextResponse.json(
-        { ok: false, error: err.message },
-        { status: 409 },
-      );
+      return jsonError(err.message, 409);
     }
     console.error("[reservations] POST failed:", err);
-    return NextResponse.json(
-      { ok: false, error: "Could not create the reservation." },
-      { status: 400 },
-    );
+    return jsonError("Could not create the reservation.", 400);
   }
 }
-
-const VALID_FILTERS: readonly string[] = ["all", ...RESERVATION_STATUSES];
 
 /** Admin-only: the dashboard list. Nobody else can read who booked what. */
 export async function GET(req: NextRequest) {
@@ -291,14 +248,13 @@ export async function GET(req: NextRequest) {
 
   const sp = req.nextUrl.searchParams;
   const filterParam = sp.get("status") ?? "all";
-  const filter = (VALID_FILTERS.includes(filterParam) ? filterParam : "all") as
-    "all" | ReservationStatus;
+  const filter = isReservationStatus(filterParam) ? filterParam : "all";
 
   const page = queryReservations({
     filter,
     search: sp.get("q") ?? "",
     page: Number(sp.get("page")) || 1,
-    pageSize: Number(sp.get("pageSize")) || 25,
+    pageSize: Number(sp.get("pageSize")) || PAGE_SIZE,
     // Opt out, so an unaware caller still gets the tallies it expects.
     withCounts: sp.get("counts") !== "0",
   });
@@ -316,10 +272,7 @@ export async function DELETE(req: NextRequest) {
 
   const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
   if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
-    return NextResponse.json(
-      { ok: false, error: "Expected { ids: string[] }." },
-      { status: 400 },
-    );
+    return jsonError("Expected { ids: string[] }.", 400);
   }
 
   const removed = deleteReservations(ids as string[]);

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Clock } from "lucide-react";
 import { TimePickerInput } from "@/components/ui/time-picker-input";
-import { pad2 } from "@/lib/utils";
+import { timeOfDate } from "@/lib/datetime";
 
 export interface TimeRange {
   /** "HH:MM" */
@@ -19,20 +19,16 @@ function toDate(hhmm: string) {
   return d;
 }
 
-const toHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-
 /** Only collects times; the form and the server enforce the rules. */
 export default function TimeRangePicker({
   value,
   onChange,
   defaultRange,
-  disabled,
 }: {
   value: TimeRange | null;
   onChange: (range: TimeRange) => void;
   /** The range the fields open on: a real free slot, never a clash. */
   defaultRange: TimeRange;
-  disabled?: boolean;
 }) {
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
@@ -53,14 +49,11 @@ export default function TimeRangePicker({
   const toH = React.useRef<HTMLInputElement>(null);
   const toM = React.useRef<HTMLInputElement>(null);
 
-  const setFrom = (d: Date) => onChangeRef.current({ from: toHHMM(d), to });
-  const setTo = (d: Date) => onChangeRef.current({ from, to: toHHMM(d) });
+  const setFrom = (d: Date) => onChangeRef.current({ from: timeOfDate(d), to });
+  const setTo = (d: Date) => onChangeRef.current({ from, to: timeOfDate(d) });
 
   return (
-    <div
-      className="tp-scope timerange-fields"
-      data-disabled={disabled || undefined}
-    >
+    <div className="tp-scope timerange-fields">
       <div className="tp-group">
         <span className="tp-label">Start</span>
         <div className="tp-inputs">
@@ -73,7 +66,6 @@ export default function TimeRangePicker({
             setDate={setFrom}
             ref={fromH}
             onRightFocus={() => fromM.current?.focus()}
-            disabled={disabled}
           />
           <span className="tp-colon">:</span>
           <TimePickerInput
@@ -86,7 +78,6 @@ export default function TimeRangePicker({
             ref={fromM}
             onLeftFocus={() => fromH.current?.focus()}
             onRightFocus={() => toH.current?.focus()}
-            disabled={disabled}
           />
         </div>
       </div>
@@ -106,7 +97,6 @@ export default function TimeRangePicker({
             ref={toH}
             onLeftFocus={() => fromM.current?.focus()}
             onRightFocus={() => toM.current?.focus()}
-            disabled={disabled}
           />
           <span className="tp-colon">:</span>
           <TimePickerInput
@@ -118,7 +108,6 @@ export default function TimeRangePicker({
             setDate={setTo}
             ref={toM}
             onLeftFocus={() => toH.current?.focus()}
-            disabled={disabled}
           />
         </div>
       </div>

@@ -1,11 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_EMAIL_BODY } from "@/lib/types";
-import type { Reservation, ReservationStatus, ContactInfo } from "@/lib/types";
-import { boothNameIn, type Booth } from "@/lib/booths";
-import type { ReservationCounts, ReservationPage } from "@/lib/db";
-import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
+import { isActiveStatus, MAX_EMAIL_BODY } from "@/lib/types";
+import type {
+  Booth,
+  ContactInfo,
+  CountedReservationPage,
+  Reservation,
+  ReservationFilter,
+  ReservationPage,
+  ReservationStatus,
+} from "@/lib/types";
+import {
+  PAGE_SIZE,
+  INITIAL_FILTER,
+  pageCount,
+  pageList,
+} from "@/lib/pagination";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -13,6 +24,7 @@ import { useTooltip } from "@/components/ui/tooltip";
 import { CheckIcon, CrossIcon, TrashIcon } from "@/components/ui/icons";
 import {
   boothLabel,
+  boothNameIn,
   emailBodyText,
   emailSubject,
   timeText,
@@ -21,16 +33,43 @@ import {
 } from "@/lib/templates";
 import { formatDMYShort, formatDateTime } from "@/lib/datetime";
 
-/** A page with known tallies: the server render asks, a refetch keeps them. */
-type LoadedPage = ReservationPage & { counts: ReservationCounts };
-
-const FILTERS: { key: "all" | ReservationStatus; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "pending", label: "Awaiting approval" },
-  { key: "confirmed", label: "Confirmed" },
-  { key: "cancelled", label: "Cancelled" },
-  { key: "deleted", label: "Deleted" },
+const FILTERS: {
+  key: ReservationFilter;
+  label: string;
+  stat: string;
+}[] = [
+  { key: "all", label: "All", stat: "Total" },
+  { key: "pending", label: "Awaiting approval", stat: "Awaiting" },
+  { key: "confirmed", label: "Confirmed", stat: "Confirmed" },
+  { key: "cancelled", label: "Cancelled", stat: "Cancelled" },
+  { key: "deleted", label: "Deleted", stat: "Deleted" },
 ];
+
+type PendingStatus = Exclude<ReservationStatus, "pending">;
+
+interface PendingAction {
+  id: string;
+  name: string;
+  email: string;
+  status: PendingStatus;
+  body: string;
+}
+
+const ACTION_COPY: Record<
+  PendingStatus,
+  { title: string; lead: string; verb: string }
+> = {
+  confirmed: {
+    title: "Approve reservation?",
+    lead: "Approve",
+    verb: "approve",
+  },
+  cancelled: { title: "Cancel reservation?", lead: "Cancel", verb: "cancel" },
+  deleted: { title: "Delete reservation?", lead: "Delete", verb: "delete" },
+};
+
+const cancelActionLabel = (status: ReservationStatus) =>
+  status === "pending" ? "Reject reservation" : "Cancel reservation";
 
 export default function DashboardClient({
   initialData,
@@ -38,7 +77,7 @@ export default function DashboardClient({
   contact,
   booths,
 }: {
-  initialData: LoadedPage;
+  initialData: CountedReservationPage;
   username: string;
   contact: ContactInfo;
   booths: Booth[];
@@ -47,10 +86,8 @@ export default function DashboardClient({
   const boothName = (id: string | undefined) => boothNameIn(booths, id);
 
   const { tooltip, tip } = useTooltip();
-  const [data, setData] = useState<LoadedPage>(initialData);
-  const [filter, setFilter] = useState<"all" | ReservationStatus>(
-    INITIAL_FILTER,
-  );
+  const [data, setData] = useState<CountedReservationPage>(initialData);
+  const [filter, setFilter] = useState<ReservationFilter>(INITIAL_FILTER);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -59,21 +96,25 @@ export default function DashboardClient({
   const [confirmPurge, setConfirmPurge] = useState(false);
   // Per-reservation edited cancellation email bodies (id -> body).
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [pending, setPending] = useState<{
-    id: string;
-    name: string;
-    email: string;
-    status: Exclude<ReservationStatus, "pending">;
-    body: string;
-  } | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
   const reservations = data.reservations;
   const counts = data.counts;
   const total = data.total;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = pageCount(total, PAGE_SIZE);
 
   function draftFor(r: Reservation): string {
     return drafts[r.id] ?? emailBodyText(r, "cancelled", contact, boothName);
+  }
+
+  function ask(r: Reservation, status: PendingStatus) {
+    setPending({
+      id: r.id,
+      name: r.fullName || "",
+      email: r.email || "",
+      status,
+      body: status === "cancelled" ? draftFor(r) : "",
+    });
   }
 
   const reqId = useRef(0);
@@ -94,7 +135,7 @@ export default function DashboardClient({
         const json = (await res.json()) as ReservationPage & { ok: boolean };
         if (id !== reqId.current) return;
         if (!json.ok) return;
-        const tp = Math.max(1, Math.ceil(json.total / PAGE_SIZE));
+        const tp = pageCount(json.total, PAGE_SIZE);
         if (page > tp) {
           setPage(tp);
           return;
@@ -128,7 +169,7 @@ export default function DashboardClient({
 
   async function setStatus(
     id: string,
-    status: ReservationStatus,
+    status: PendingStatus,
     emailBody?: string,
   ) {
     await fetch(`/api/reservations/${id}`, {
@@ -188,36 +229,15 @@ export default function DashboardClient({
           </p>
         </div>
         <div className="stats">
-          <Stat
-            num={counts.total}
-            label="Total"
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-          />
-          <Stat
-            num={counts.pending}
-            label="Awaiting"
-            active={filter === "pending"}
-            onClick={() => setFilter("pending")}
-          />
-          <Stat
-            num={counts.confirmed}
-            label="Confirmed"
-            active={filter === "confirmed"}
-            onClick={() => setFilter("confirmed")}
-          />
-          <Stat
-            num={counts.cancelled}
-            label="Cancelled"
-            active={filter === "cancelled"}
-            onClick={() => setFilter("cancelled")}
-          />
-          <Stat
-            num={counts.deleted}
-            label="Deleted"
-            active={filter === "deleted"}
-            onClick={() => setFilter("deleted")}
-          />
+          {FILTERS.map((f) => (
+            <Stat
+              key={f.key}
+              num={f.key === "all" ? counts.total : counts[f.key]}
+              label={f.stat}
+              active={filter === f.key}
+              onClick={() => setFilter(f.key)}
+            />
+          ))}
         </div>
 
         <div className="toolbar">
@@ -342,43 +362,17 @@ export default function DashboardClient({
                             className="icon-btn tick"
                             {...tooltip("Approve reservation")}
                             aria-label="Approve reservation"
-                            onClick={() =>
-                              setPending({
-                                id: r.id,
-                                name: r.fullName || "",
-                                email: r.email || "",
-                                status: "confirmed",
-                                body: "",
-                              })
-                            }
+                            onClick={() => ask(r, "confirmed")}
                           >
                             <CheckIcon />
                           </button>
                         )}
                         <button
                           className="icon-btn cross"
-                          {...tooltip(
-                            r.status === "pending"
-                              ? "Reject reservation"
-                              : "Cancel reservation",
-                          )}
-                          aria-label={
-                            r.status === "pending"
-                              ? "Reject reservation"
-                              : "Cancel reservation"
-                          }
-                          disabled={
-                            r.status !== "confirmed" && r.status !== "pending"
-                          }
-                          onClick={() =>
-                            setPending({
-                              id: r.id,
-                              name: r.fullName || "",
-                              email: r.email || "",
-                              status: "cancelled",
-                              body: draftFor(r),
-                            })
-                          }
+                          {...tooltip(cancelActionLabel(r.status))}
+                          aria-label={cancelActionLabel(r.status)}
+                          disabled={!isActiveStatus(r.status)}
+                          onClick={() => ask(r, "cancelled")}
                         >
                           <CrossIcon />
                         </button>
@@ -387,15 +381,7 @@ export default function DashboardClient({
                           {...tooltip("Delete reservation")}
                           aria-label="Delete reservation"
                           disabled={r.status === "deleted"}
-                          onClick={() =>
-                            setPending({
-                              id: r.id,
-                              name: r.fullName || "",
-                              email: r.email || "",
-                              status: "deleted",
-                              body: "",
-                            })
-                          }
+                          onClick={() => ask(r, "deleted")}
                         >
                           <TrashIcon />
                         </button>
@@ -440,13 +426,7 @@ export default function DashboardClient({
 
       {pending && (
         <ConfirmDialog
-          title={
-            pending.status === "confirmed"
-              ? "Approve reservation?"
-              : pending.status === "cancelled"
-                ? "Cancel reservation?"
-                : "Delete reservation?"
-          }
+          title={ACTION_COPY[pending.status].title}
           variant={pending.status === "confirmed" ? "primary" : "danger"}
           onClose={() => setPending(null)}
           onConfirm={() => {
@@ -457,24 +437,10 @@ export default function DashboardClient({
             );
             setPending(null);
           }}
-          confirmLabel={
-            <>
-              Yes,{" "}
-              {pending.status === "confirmed"
-                ? "approve"
-                : pending.status === "cancelled"
-                  ? "cancel"
-                  : "delete"}
-            </>
-          }
+          confirmLabel={<>Yes, {ACTION_COPY[pending.status].verb}</>}
         >
           <p>
-            {pending.status === "confirmed"
-              ? "Approve"
-              : pending.status === "cancelled"
-                ? "Cancel"
-                : "Delete"}{" "}
-            the reservation
+            {ACTION_COPY[pending.status].lead} the reservation
             {pending.name ? (
               <>
                 {" "}
@@ -484,13 +450,11 @@ export default function DashboardClient({
             ?
             {pending.status === "deleted"
               ? " It will be hidden from the list (no email is sent)."
-              : pending.status === "confirmed"
-                ? pending.email
+              : !pending.email
+                ? " (No email on file - nothing will be sent.)"
+                : pending.status === "confirmed"
                   ? ` A confirmation email will be sent to ${pending.email}.`
-                  : " (No email on file - nothing will be sent.)"
-                : pending.email
-                  ? ` The cancellation email (as shown in the Email column) will be sent to ${pending.email}.`
-                  : " (No email on file - nothing will be sent.)"}
+                  : ` The cancellation email (as shown in the Email column) will be sent to ${pending.email}.`}
           </p>
         </ConfirmDialog>
       )}
@@ -498,25 +462,6 @@ export default function DashboardClient({
       {tip}
     </>
   );
-}
-
-// Compact list of page numbers with ellipses, e.g. 1 ... 4 5 [6] 7 8 ... 20.
-function pageList(page: number, totalPages: number): (number | "…")[] {
-  const out: (number | "…")[] = [];
-  // Pages each side of the current one; `window` would shadow the global.
-  const siblings = 1;
-  for (let p = 1; p <= totalPages; p++) {
-    if (
-      p === 1 ||
-      p === totalPages ||
-      (p >= page - siblings && p <= page + siblings)
-    ) {
-      out.push(p);
-    } else if (out[out.length - 1] !== "…") {
-      out.push("…");
-    }
-  }
-  return out;
 }
 
 function Pagination({
@@ -592,8 +537,8 @@ function Stat({
 }: {
   num: number;
   label: string;
-  active?: boolean;
-  onClick?: () => void;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
@@ -637,31 +582,14 @@ function EmailPreview({
     return <span className="muted">-</span>;
   }
 
-  if (reservation.status === "cancelled") {
-    const value =
-      draft ?? emailBodyText(reservation, "cancelled", contact, boothName);
-    return (
-      <div className="email-preview">
-        <div className="email-sent cancelled">Cancellation sent</div>
-        <div className="email-subject">
-          Subject: {emailSubject("cancelled", contact, boothName, reservation)}
-        </div>
-        <textarea
-          className="email-text"
-          rows={7}
-          value={value}
-          readOnly
-          aria-label="cancellation email body (sent)"
-        />
-      </div>
-    );
-  }
-
+  const sent = reservation.status === "cancelled";
   const value =
     draft ?? emailBodyText(reservation, "cancelled", contact, boothName);
   return (
     <div className="email-preview">
-      <div className="email-sent cancelled">Cancellation email</div>
+      <div className="email-sent cancelled">
+        {sent ? "Cancellation sent" : "Cancellation email"}
+      </div>
       <div className="email-subject">
         Subject: {emailSubject("cancelled", contact, boothName, reservation)}
       </div>
@@ -669,10 +597,13 @@ function EmailPreview({
         className="email-text"
         rows={7}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        readOnly={sent}
+        onChange={sent ? undefined : (e) => onChange(e.target.value)}
         // The route rejects a longer body, so stop it here, not on send.
-        maxLength={MAX_EMAIL_BODY}
-        aria-label="cancellation email body"
+        maxLength={sent ? undefined : MAX_EMAIL_BODY}
+        aria-label={
+          sent ? "cancellation email body (sent)" : "cancellation email body"
+        }
       />
     </div>
   );

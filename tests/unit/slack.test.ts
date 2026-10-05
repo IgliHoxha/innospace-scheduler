@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { boothNameIn } from "@/lib/booths";
+import { boothNameIn } from "@/lib/templates";
 import type { Reservation } from "@/lib/types";
 
 type Slack = typeof import("@/lib/slack");
@@ -159,6 +159,17 @@ describe("the Slack message", () => {
     expect(t).toContain("Ada &lt;b&gt; &amp; Co");
     expect(t).toContain("&lt;https://evil.test|click me&gt;");
     expect(t).not.toContain("<https://evil.test");
+  });
+
+  // The booth name comes from config, where an ampersand is ordinary.
+  it("escapes the booth name in the summary line", () => {
+    const block = slack.slackReservationMessage(
+      RESERVATION,
+      "confirmed",
+      () => "R&D <lab>",
+    ).blocks[0] as { elements: { text: string }[] };
+    expect(block.elements[0].text).toContain("R&amp;D &lt;lab&gt; · ");
+    expect(block.elements[0].text).not.toContain("R&D <lab>");
   });
 
   // The heading carries a name the booker chose, so it needs escaping too.

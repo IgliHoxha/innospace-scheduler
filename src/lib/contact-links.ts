@@ -26,3 +26,13 @@ export function slotEnquiry(
 ): string {
   return `Hi, I'd like to ask about the ${boothName} booking on ${dateLabel}, ${from} - ${to}.`;
 }
+
+/** The mailto subject for the same slot. */
+export function slotEnquirySubject(
+  boothName: string,
+  dateLabel: string,
+  from: string,
+  to: string,
+): string {
+  return `Booking enquiry: ${boothName}, ${dateLabel} ${from} - ${to}`;
+}

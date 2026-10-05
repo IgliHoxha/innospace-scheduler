@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
+import {
+  mailtoLink,
+  slotEnquiry,
+  slotEnquirySubject,
+  whatsappLink,
+} from "@/lib/contact-links";
 
 describe("whatsappLink", () => {
   it("strips everything that is not a digit from the number", () => {
@@ -43,6 +48,28 @@ describe("slotEnquiry", () => {
   it("names the booth, the day and the exact slot", () => {
     expect(slotEnquiry("Booth 2", "Tue, 5 Aug", "09:00", "10:30")).toBe(
       "Hi, I'd like to ask about the Booth 2 booking on Tue, 5 Aug, 09:00 - 10:30.",
+    );
+  });
+});
+
+describe("slotEnquirySubject", () => {
+  it("names the booth, the day and the exact slot", () => {
+    expect(slotEnquirySubject("Booth 2", "Tue, 5 Aug", "09:00", "10:30")).toBe(
+      "Booking enquiry: Booth 2, Tue, 5 Aug 09:00 - 10:30",
+    );
+  });
+
+  it("takes whatever names it is handed, as they are", () => {
+    expect(slotEnquirySubject("booth", "that day", "02:00", "05:00")).toBe(
+      "Booking enquiry: booth, that day 02:00 - 05:00",
+    );
+    expect(slotEnquirySubject("", "", "", "")).toBe("Booking enquiry: ,   - ");
+  });
+
+  it("survives a mailto link, encoded like any other subject", () => {
+    const subject = slotEnquirySubject("A & B", "Tue, 5 Aug", "09:00", "10:30");
+    expect(mailtoLink("a@b.com", subject, "x")).toBe(
+      "mailto:a@b.com?subject=Booking%20enquiry%3A%20A%20%26%20B%2C%20Tue%2C%205%20Aug%2009%3A00%20-%2010%3A30&body=x",
     );
   });
 });

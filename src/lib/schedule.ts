@@ -5,10 +5,10 @@ import {
   noteRequiredFor,
 } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
-import { timeOf, durationMinutes, ymd } from "./datetime";
+import { durationMinutes, shiftDate, todayYMD } from "./datetime";
 
 /** How many days ahead, including today, can be reserved. */
-export function reservationWindowDays(): number {
+function reservationWindowDays(): number {
   return Math.max(0, requireIntEnv("RESERVATION_WINDOW_DAYS"));
 }
 
@@ -54,37 +54,11 @@ export function isValidTimeOfDay(minutes: number): boolean {
   return isBookableMinute(minutes, stepMinutes());
 }
 
-export function rangeLabel(startsAt: string, endsAt: string): string {
-  return `${timeOf(startsAt)} - ${timeOf(endsAt)}`;
-}
-
-export function formatDuration(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h && m) return `${h}h ${m}m`;
-  if (h) return `${h}h`;
-  return `${m}m`;
-}
-
-export function reservationCountLabel(count: number): string {
-  const n = Math.max(0, count);
-  return n === 1 ? "1 reservation" : `${n} reservations`;
-}
-
-export function durationLabel(startsAt: string, endsAt: string): string {
-  return formatDuration(durationMinutes(startsAt, endsAt));
-}
-
 export function reservableDates(): string[] {
-  const out: string[] = [];
-  const base = new Date();
-  base.setHours(12, 0, 0, 0); // noon avoids a DST off-by-one when adding days
-  for (let i = 0; i <= reservationWindowDays(); i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    out.push(ymd(d));
-  }
-  return out;
+  const today = todayYMD();
+  return Array.from({ length: reservationWindowDays() + 1 }, (_, i) =>
+    shiftDate(today, i),
+  );
 }
 
 export function isReservableDate(date: string | undefined): boolean {

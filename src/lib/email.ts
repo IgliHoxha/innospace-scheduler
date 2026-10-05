@@ -18,15 +18,21 @@ export { getContactFromEnv };
 const BRAND = COLORS.brand;
 const INK = COLORS.emailText;
 
+const ACCENT: Record<EmailStatus, string> = {
+  confirmed: BRAND,
+  pending: COLORS.statusPending,
+  cancelled: COLORS.statusCancelled,
+};
+
 function baseUrl(): string {
-  return requireEnv("APP_BASE_URL");
+  return requireEnv("APP_BASE_URL").replace(/\/$/, "");
 }
 
 // Only the mark is artwork; the wordmark is text, so dark mode can invert it.
 const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
-  return `${baseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
+  return `${baseUrl()}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
 // 329x308 artwork scaled to 32px tall; CSS-less clients need the attributes.
@@ -145,7 +151,7 @@ function cancelButton(r: Reservation): string {
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return "";
 
   const token = createCancelToken(r.id, expiresAt);
-  const link = `${baseUrl().replace(/\/$/, "")}/cancel?token=${encodeURIComponent(token)}`;
+  const link = `${baseUrl()}/cancel?token=${encodeURIComponent(token)}`;
   // Ruled off below the sign-off, as utility chrome rather than letter copy.
   return `
     <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
@@ -182,12 +188,7 @@ export async function sendReservationEmail(
       to: [reservation.email],
       subject: emailSubject(status, contact, boothName, reservation),
       html: shell({
-        accent:
-          status === "confirmed"
-            ? BRAND
-            : status === "pending"
-              ? COLORS.statusPending
-              : COLORS.statusCancelled,
+        accent: ACCENT[status],
         heading: emailHeading(status),
         bodyHtml:
           textToHtml(body) +

@@ -80,6 +80,18 @@ export function dragRange(
   return { from, to };
 }
 
+/** Every whole hour from the first inside the span to its end, inclusive. */
+export function hourMarkMinutes(
+  dayStartMin: number,
+  dayEndMin: number,
+): number[] {
+  const all: number[] = [];
+  for (let m = Math.ceil(dayStartMin / 60) * 60; m <= dayEndMin; m += 60) {
+    all.push(m);
+  }
+  return all;
+}
+
 /** Hour marks thinned evenly to fit the bar, always keeping the last. */
 export function tickMinutes(
   dayStartMin: number,
@@ -87,10 +99,7 @@ export function tickMinutes(
   barPx: number,
   labelPx: number,
 ): number[] {
-  const all: number[] = [];
-  for (let m = Math.ceil(dayStartMin / 60) * 60; m <= dayEndMin; m += 60) {
-    all.push(m);
-  }
+  const all = hourMarkMinutes(dayStartMin, dayEndMin);
   const hours = (dayEndMin - dayStartMin) / 60;
   // Negated comparisons, so a NaN measurement leaves here too.
   if (all.length < 3 || !(barPx > 0) || !(hours > 0) || !(labelPx > 0))
@@ -247,6 +256,23 @@ export function hourCells<T>(
     });
   }
   return cells;
+}
+
+/** The free run of the day this hour box sits in, floored at "now". */
+export function freeStretchFor<T>(
+  segments: readonly DaySegment<T>[],
+  cell: { from: number; to: number },
+  earliestMin: number,
+  lastEndMin: number,
+): { from: number; to: number } | null {
+  const s = segments.find(
+    (g) => !g.reserved && g.fromMin < cell.to && g.toMin > cell.from,
+  );
+  if (!s) return null;
+  return {
+    from: Math.max(s.fromMin, earliestMin),
+    to: Math.min(s.toMin, lastEndMin),
+  };
 }
 
 export function findFreeGaps(

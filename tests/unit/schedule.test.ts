@@ -4,53 +4,6 @@ import { todayYMD } from "@/lib/datetime";
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("durations", () => {
-  it("labels durations for humans", () => {
-    expect(schedule.durationLabel("2026-07-16T09:00", "2026-07-16T10:30")).toBe(
-      "1h 30m",
-    );
-    expect(schedule.durationLabel("2026-07-16T09:00", "2026-07-16T10:00")).toBe(
-      "1h",
-    );
-    expect(schedule.durationLabel("2026-07-16T09:00", "2026-07-16T09:45")).toBe(
-      "45m",
-    );
-  });
-
-  it("formatDuration formats a plain minute count", () => {
-    expect(schedule.formatDuration(90)).toBe("1h 30m");
-    expect(schedule.formatDuration(60)).toBe("1h");
-    expect(schedule.formatDuration(45)).toBe("45m");
-    expect(schedule.formatDuration(0)).toBe("0m");
-  });
-
-  it("renders the range label with the product en dash", () => {
-    expect(schedule.rangeLabel("2026-07-16T09:30", "2026-07-16T11:00")).toBe(
-      "09:30 - 11:00",
-    );
-  });
-});
-
-describe("reservationCountLabel", () => {
-  it("shows a zero rather than hiding an empty booth", () => {
-    expect(schedule.reservationCountLabel(0)).toBe("0 reservations");
-  });
-
-  it("keeps one singular", () => {
-    expect(schedule.reservationCountLabel(1)).toBe("1 reservation");
-  });
-
-  it("pluralises anything above one", () => {
-    expect(schedule.reservationCountLabel(2)).toBe("2 reservations");
-    expect(schedule.reservationCountLabel(37)).toBe("37 reservations");
-  });
-
-  // A count is never negative, but a bad one must not print "-1 reservations".
-  it("reads a negative count as zero", () => {
-    expect(schedule.reservationCountLabel(-1)).toBe("0 reservations");
-  });
-});
-
 describe("approval + note thresholds", () => {
   it("needs approval strictly over the auto-approve limit; note at or over it", () => {
     // default AUTO_APPROVE_MAX_HOURS = 2
@@ -157,5 +110,69 @@ describe("reservation window", () => {
     expect(schedule.isReservableDate("1999-01-01")).toBe(false);
     expect(schedule.isReservableDate(undefined)).toBe(false);
     expect(schedule.reservableDates()[0]).toBe(today);
+  });
+});
+
+describe("reservableDates", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("lists today plus the window, a day apart, across a month end", () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 6, 30, 23, 50) });
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "3");
+    expect(schedule.reservableDates()).toEqual([
+      "2026-07-30",
+      "2026-07-31",
+      "2026-08-01",
+      "2026-08-02",
+    ]);
+  });
+
+  it("rolls over a year end and a leap day", () => {
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "1");
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 11, 31, 0, 5) });
+    expect(schedule.reservableDates()).toEqual(["2026-12-31", "2027-01-01"]);
+    vi.setSystemTime(new Date(2028, 1, 28, 12, 0));
+    expect(schedule.reservableDates()).toEqual(["2028-02-28", "2028-02-29"]);
+  });
+
+  // A 23-hour or 25-hour day inside the window must not skip or repeat a date.
+  it("is not thrown by a clock change inside the window", () => {
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "2");
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 24, 0, 30) });
+    expect(schedule.reservableDates()).toEqual([
+      "2026-10-24",
+      "2026-10-25",
+      "2026-10-26",
+    ]);
+    vi.setSystemTime(new Date(2026, 2, 28, 23, 30));
+    expect(schedule.reservableDates()).toEqual([
+      "2026-03-28",
+      "2026-03-29",
+      "2026-03-30",
+    ]);
+  });
+
+  it("is today plus the baseline fourteen days", () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 6, 16, 9, 30) });
+    const dates = schedule.reservableDates();
+    expect(dates).toHaveLength(15);
+    expect(dates[0]).toBe(todayYMD());
+    expect([...dates].sort()).toEqual(dates);
+    expect(new Set(dates).size).toBe(15);
+  });
+
+  it("offers today alone when the window is zero or negative", () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 6, 16, 9, 30) });
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "0");
+    expect(schedule.reservableDates()).toEqual([todayYMD()]);
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "-4");
+    expect(schedule.reservableDates()).toEqual([todayYMD()]);
+  });
+
+  it("throws when RESERVATION_WINDOW_DAYS is unset or not an integer", () => {
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "");
+    expect(() => schedule.reservableDates()).toThrow();
+    vi.stubEnv("RESERVATION_WINDOW_DAYS", "soon");
+    expect(() => schedule.reservableDates()).toThrow();
   });
 });

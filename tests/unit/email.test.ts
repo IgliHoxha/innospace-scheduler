@@ -155,6 +155,23 @@ describe("cancel link", () => {
     expect(verifyCancelToken(tokenIn(await reservationHtml()))).toBe("rs_1");
   });
 
+  it("does not double the slash when APP_BASE_URL has a trailing one", async () => {
+    vi.stubEnv("APP_BASE_URL", "https://staging.example.com/");
+    expect(await reservationHtml()).toContain(
+      'href="https://staging.example.com/cancel?token=',
+    );
+  });
+
+  // Only one slash is the separator; the rest belong to the configured URL.
+  it("strips a single trailing slash, leaving any others in place", async () => {
+    vi.stubEnv("APP_BASE_URL", "https://staging.example.com//");
+    const html = await reservationHtml();
+    expect(html).toContain('href="https://staging.example.com//cancel?token=');
+    expect(html).toContain(
+      'src="https://staging.example.com//logo-mark.svg?v=6"',
+    );
+  });
+
   it("adds it to a pending request too: the slot is held, so it can be released", async () => {
     await email.sendReservationEmail(RESERVATION, "pending");
     expect(verifyCancelToken(tokenIn(htmlOf()))).toBe("rs_1");
@@ -553,6 +570,28 @@ describe("the accent rule under the header", () => {
     expect(htmlOf()).toContain(
       "height:2px;line-height:2px;font-size:0;background:#b91c1c",
     );
+  });
+
+  it("reads amber on a pending request", async () => {
+    await email.sendReservationEmail(RESERVATION, "pending");
+    expect(htmlOf()).toContain(
+      "height:2px;line-height:2px;font-size:0;background:#b45309",
+    );
+  });
+
+  it("colours the heading to match the rule, on every status", async () => {
+    for (const [status, colour, heading] of [
+      ["confirmed", "#25bdad", "Reservation confirmed"],
+      ["pending", "#b45309", "Reservation request received"],
+      ["cancelled", "#b91c1c", "Reservation cancelled"],
+    ] as const) {
+      send.mockClear();
+      await email.sendReservationEmail(RESERVATION, status);
+      expect(htmlOf()).toContain(`background:${colour}">&nbsp;</div>`);
+      expect(htmlOf()).toContain(
+        `<h1 style="margin:0 0 16px;color:${colour};font-size:22px">${heading}</h1>`,
+      );
+    }
   });
 
   // Two stacked lines read as one furred edge, and at 2px the grey shows.

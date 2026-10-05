@@ -43,10 +43,13 @@ function verifiedBody(token: string | undefined | null): string | null {
   if (dot <= 0) return null;
 
   const body = token.slice(0, dot);
-  const a = Buffer.from(token.slice(dot + 1));
-  const b = Buffer.from(sign(body));
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (!safeEqual(token.slice(dot + 1), sign(body))) return null;
   return body;
+}
+
+function seal(payload: object): string {
+  const body = b64url(JSON.stringify(payload));
+  return `${body}.${sign(body)}`;
 }
 
 export function createSessionToken(
@@ -57,8 +60,7 @@ export function createSessionToken(
     ...session,
     exp: Date.now() + ttlSeconds * 1000,
   };
-  const body = b64url(JSON.stringify(payload));
-  return `${body}.${sign(body)}`;
+  return seal(payload);
 }
 
 export function verifySessionToken(
@@ -101,8 +103,7 @@ export function createCancelToken(
     purpose: "cancel",
     exp: expiresAtMs,
   };
-  const body = b64url(JSON.stringify(payload));
-  return `${body}.${sign(body)}`;
+  return seal(payload);
 }
 
 export function verifyCancelToken(

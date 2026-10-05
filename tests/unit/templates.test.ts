@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as t from "@/lib/templates";
-import { boothNameIn } from "@/lib/booths";
+import { boothNameIn } from "@/lib/templates";
 import type { ContactInfo, Reservation } from "@/lib/types";
 
 const base: Reservation = {
@@ -256,7 +256,177 @@ describe("the email preheader", () => {
 
   it("uses only ASCII hyphens, like every other piece of product copy", () => {
     for (const status of ["confirmed", "pending", "cancelled"] as const) {
-      expect(pre(status)).not.toMatch(/[–—]/);
+      expect(pre(status)).not.toMatch(/[\u2013\u2014]/);
+    }
+  });
+});
+
+// The dashboard draft is seeded from this, so every line and blank counts.
+describe("the whole email body, line for line", () => {
+  const body = (status: t.EmailStatus, r: Reservation = base) =>
+    t.emailBodyText(r, status, contact, boothName);
+  const greeting = (status: t.EmailStatus, fullName: string | undefined) =>
+    body(status, { ...base, fullName }).split("\n")[0];
+
+  it("confirmed, with a note", () => {
+    expect(body("confirmed", { ...base, note: "Client call" })).toBe(
+      [
+        "Hi Ada,",
+        "",
+        "Your meeting booth is reserved. Here are the details:",
+        "",
+        "Booth: Booth 1",
+        "Date: Tuesday, 14 July 2026",
+        "Time: 09:30 - 11:00",
+        "Note: Client call",
+        "",
+        "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
+        "",
+        "Best regards,",
+        "Alex",
+        "",
+        "Phone: +000 1",
+        "Email: hi@test.co",
+      ].join("\n"),
+    );
+  });
+
+  it("confirmed, without a note", () => {
+    for (const note of [undefined, "", "   "]) {
+      expect(body("confirmed", { ...base, note })).toBe(
+        [
+          "Hi Ada,",
+          "",
+          "Your meeting booth is reserved. Here are the details:",
+          "",
+          "Booth: Booth 1",
+          "Date: Tuesday, 14 July 2026",
+          "Time: 09:30 - 11:00",
+          "",
+          "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
+          "",
+          "Best regards,",
+          "Alex",
+          "",
+          "Phone: +000 1",
+          "Email: hi@test.co",
+        ].join("\n"),
+      );
+    }
+  });
+
+  it("pending, with a note that is trimmed", () => {
+    expect(body("pending", { ...base, note: "  Team workshop  " })).toBe(
+      [
+        "Hi Ada,",
+        "",
+        "Thanks for your reservation request. Because it's longer than our instant-reservation limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
+        "",
+        "Booth: Booth 1",
+        "Date: Tuesday, 14 July 2026",
+        "Time: 09:30 - 11:00",
+        "Note: Team workshop",
+        "",
+        "We'll email you again as soon as it's approved or if we need to make a change. The slot is held for you in the meantime.",
+        "",
+        "Best regards,",
+        "Alex",
+        "",
+        "Phone: +000 1",
+        "Email: hi@test.co",
+      ].join("\n"),
+    );
+  });
+
+  it("pending, without a note", () => {
+    for (const note of [undefined, "", "   "]) {
+      expect(body("pending", { ...base, note })).toBe(
+        [
+          "Hi Ada,",
+          "",
+          "Thanks for your reservation request. Because it's longer than our instant-reservation limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
+          "",
+          "Booth: Booth 1",
+          "Date: Tuesday, 14 July 2026",
+          "Time: 09:30 - 11:00",
+          "",
+          "We'll email you again as soon as it's approved or if we need to make a change. The slot is held for you in the meantime.",
+          "",
+          "Best regards,",
+          "Alex",
+          "",
+          "Phone: +000 1",
+          "Email: hi@test.co",
+        ].join("\n"),
+      );
+    }
+  });
+
+  it("cancelled, which never prints the note", () => {
+    expect(body("cancelled", { ...base, note: "Client call" })).toBe(
+      [
+        "Hello Ada,",
+        "",
+        "Thank you for reserving a meeting booth at Test Org.",
+        "",
+        "We're sorry to let you know that your reservation for Booth 1 on Tuesday, 14 July 2026 (09:30 - 11:00) has been cancelled.",
+        "",
+        "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
+        "",
+        "Best regards,",
+        "Alex",
+        "",
+        "Phone: +000 1",
+        "Email: hi@test.co",
+      ].join("\n"),
+    );
+  });
+
+  it("cancelled, with no name to greet", () => {
+    expect(body("cancelled", { ...base, fullName: undefined })).toBe(
+      [
+        "Hello,",
+        "",
+        "Thank you for reserving a meeting booth at Test Org.",
+        "",
+        "We're sorry to let you know that your reservation for Booth 1 on Tuesday, 14 July 2026 (09:30 - 11:00) has been cancelled.",
+        "",
+        "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
+        "",
+        "Best regards,",
+        "Alex",
+        "",
+        "Phone: +000 1",
+        "Email: hi@test.co",
+      ].join("\n"),
+    );
+  });
+
+  it("prints placeholders, never undefined, when the times are missing", () => {
+    const bare = { ...base, startsAt: undefined, endsAt: undefined };
+    for (const status of ["confirmed", "pending"] as const) {
+      expect(body(status, bare).split("\n").slice(4, 8)).toEqual([
+        "Booth: Booth 1",
+        "Date: your requested date",
+        "Time: -",
+        "",
+      ]);
+    }
+  });
+
+  it("greets by the first word of a padded, many-part name", () => {
+    expect(greeting("confirmed", "  Grace Brewster Hopper ")).toBe("Hi Grace,");
+    expect(greeting("pending", "  Grace Brewster Hopper ")).toBe("Hi Grace,");
+    expect(greeting("cancelled", "  Grace Brewster Hopper ")).toBe(
+      "Hello Grace,",
+    );
+  });
+
+  it("treats a blank name like a missing one", () => {
+    for (const fullName of [undefined, "", "   "]) {
+      expect(greeting("confirmed", fullName)).toBe("Hi there,");
+      expect(greeting("pending", fullName)).toBe("Hi there,");
+      expect(greeting("cancelled", fullName)).toBe("Hello,");
     }
   });
 });

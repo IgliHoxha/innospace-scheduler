@@ -24,6 +24,36 @@ export interface MineEntry {
 export const slotKey = (boothId: string, startsAt: string) =>
   `${boothId}|${startsAt}`;
 
+/** A taken slot as the availability route sends it, times as "HH:MM". */
+export interface BoardSlot {
+  start: string;
+  end: string;
+  label: string;
+}
+
+/** A board slot once this browser has said whether it made the booking. */
+export interface ReservedSlot extends BoardSlot {
+  /** Booked from this browser; the board never learns who anyone else is. */
+  mine: boolean;
+  /** The proof needed to cancel; only on a booking this browser made. */
+  cancelToken?: string;
+}
+
+/** Marks the board's blocks that this browser remembers booking. */
+export function markMine(
+  reserved: readonly BoardSlot[],
+  owned: readonly MineEntry[],
+  boothId: string,
+  date: string,
+): ReservedSlot[] {
+  return reserved.map((b) => {
+    const held = owned.find(
+      (m) => m.k === slotKey(boothId, `${date}T${b.start}`),
+    );
+    return { ...b, mine: !!held, cancelToken: held?.t || undefined };
+  });
+}
+
 export function readMine(): MineEntry[] {
   try {
     const raw = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as unknown;

@@ -7,26 +7,18 @@ import {
   buildDaySegments,
   dragRange,
   fittingTicks,
+  freeStretchFor,
   hourCells,
+  hourMarkMinutes,
   pickTagPlacement,
   roomFor,
 } from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { dayEndMinute } from "@/lib/reservation-rules";
-import { mailtoLink, slotEnquiry, whatsappLink } from "@/lib/contact-links";
-import { MailIcon, TrashIcon, WhatsAppIcon } from "@/components/ui/icons";
+import type { ReservedSlot } from "@/lib/mine";
+import { TrashIcon } from "@/components/ui/icons";
 import { useTooltip } from "@/components/ui/tooltip";
-
-/** A reservation already taken for the booth+day, times as "HH:MM". */
-interface Reserved {
-  start: string;
-  end: string;
-  label: string;
-  /** Booked from this browser; the board never learns who anyone else is. */
-  mine: boolean;
-  /** The proof needed to cancel; only on a booking this browser made. */
-  cancelToken?: string;
-}
+import { AskDialog, CancelDialog } from "./DayTimelineDialogs";
 
 // A pick narrower than this (px) cannot hold its tag, so it floats.
 const TAG_FITS_PX = 96;
@@ -56,7 +48,7 @@ export default function DayTimeline({
   dateLabel = "that day",
 }: {
   earliest: string;
-  reserved: Reserved[];
+  reserved: ReservedSlot[];
   selection: { start: string; end: string } | null;
   /** Gets "HH:MM" bounds as the pick changes; omit for a read-only graph. */
   onPick?: (start: string, end: string) => void;
@@ -92,10 +84,7 @@ export default function DayTimeline({
     })),
   );
 
-  const hourMarks: number[] = [];
-  for (let h = Math.ceil(dayStartMin / 60) * 60; h <= dayEndMin; h += 60) {
-    hourMarks.push(h);
-  }
+  const hourMarks = hourMarkMinutes(dayStartMin, dayEndMin);
   const tickStyle = (t: number) => {
     if (t <= dayStartMin) return { left: 0 };
     if (t >= dayEndMin) return { right: 0 };
@@ -104,11 +93,18 @@ export default function DayTimeline({
 
   const selFrom = selection ? timeToMinutes(selection.start) : null;
   const selTo = selection ? timeToMinutes(selection.end) : null;
-  const hasPick =
+  const pick =
     selFrom != null &&
     selTo != null &&
     selTo > dayStartMin &&
-    selFrom < dayEndMin;
+    selFrom < dayEndMin
+      ? {
+          fromMin: selFrom,
+          toMin: selTo,
+          fromPct: pct(selFrom),
+          toPct: pctEnd(selTo),
+        }
+      : null;
 
   // Measure the bar so a narrow pick can move its time tag outside the block.
   const barRef = useRef<HTMLDivElement>(null);
@@ -191,19 +187,6 @@ export default function DayTimeline({
     return dayStartMin + ((clientX - r.left) / Math.max(1, r.width)) * span;
   };
 
-  /** The free run of the day this hour box sits in, floored at "now". */
-  const stretchFor = (i: number): { from: number; to: number } | null => {
-    const c = cells[i];
-    const s = segments.find(
-      (g) => !g.reserved && g.fromMin < c.to && g.toMin > c.from,
-    );
-    if (!s) return null;
-    return {
-      from: Math.max(s.fromMin, earliestMin),
-      to: Math.min(s.toMin, lastEndMin),
-    };
-  };
-
   const pickCell = (i: number) => {
     if (onPick && cells[i].free) {
       onPick(minutesToTime(cells[i].from), minutesToTime(cells[i].end));
@@ -237,27 +220,19 @@ export default function DayTimeline({
 
   const { tooltip, tip } = useTooltip();
 
+  // Read off this render's board, so a dialog goes when its booking does.
+  const bookedAt = (r: { from: number; to: number } | null) =>
+    (r &&
+      segments.find(
+        (s) => s.reserved && s.fromMin === r.from && s.toMin === r.to,
+      )) ||
+    null;
+
   // Keyed on the range, so the popover closes itself if the booking is gone.
   const [asking, setAsking] = useState<{ from: number; to: number } | null>(
     null,
   );
-  const askOn =
-    (asking &&
-      segments.find(
-        (s) => s.reserved && s.fromMin === asking.from && s.toMin === asking.to,
-      )) ||
-    null;
-  const askMessage = askOn
-    ? slotEnquiry(
-        boothName,
-        dateLabel,
-        minutesToTime(askOn.fromMin),
-        minutesToTime(askOn.toMin),
-      )
-    : "";
-  const askSubject = askOn
-    ? `Booking enquiry: ${boothName}, ${dateLabel} ${minutesToTime(askOn.fromMin)} - ${minutesToTime(askOn.toMin)}`
-    : "";
+  const askOn = bookedAt(asking);
 
   // Keyed on the range too, so a cancellation takes its dialog with it.
   const [cancelling, setCancelling] = useState<{
@@ -266,15 +241,7 @@ export default function DayTimeline({
   } | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState("");
-  const cancelOn =
-    (cancelling &&
-      segments.find(
-        (s) =>
-          s.reserved &&
-          s.fromMin === cancelling.from &&
-          s.toMin === cancelling.to,
-      )) ||
-    null;
+  const cancelOn = bookedAt(cancelling);
   const cancelToken = cancelOn?.reserved?.src.cancelToken ?? "";
 
   const closeCancel = () => {
@@ -327,7 +294,7 @@ export default function DayTimeline({
 
   /** Track the gesture on the window, so no movement slips through a render. */
   const beginDrag = (i: number, clientX: number) => {
-    const stretch = stretchFor(i);
+    const stretch = freeStretchFor(segments, cells[i], earliestMin, lastEndMin);
     if (!stretch) return;
     // The box pressed, not the pixel: a drag and a click start alike.
     const anchorMin = Math.max(cells[i].from, stretch.from);
@@ -364,13 +331,15 @@ export default function DayTimeline({
     above: boolean;
     className: string;
     style: React.CSSProperties;
+    from: string;
+    to: string;
   } | null = null;
-  if (hasPick) {
+  if (pick) {
     const place = pickTagPlacement({
       barPx,
       tagPx,
-      fromPct: pct(selFrom!),
-      toPct: pctEnd(selTo!),
+      fromPct: pick.fromPct,
+      toPct: pick.toPct,
       fitsPx: roomFor(tagTextPx, TAG_FITS_PX, 1, TAG_MARGIN_PX),
     });
     tag = {
@@ -385,6 +354,8 @@ export default function DayTimeline({
                 : "translate(-50%, -50%)",
             }
           : { left: place.leftPx },
+      from: minutesToTime(pick.fromMin),
+      to: minutesToTime(pick.toMin),
     };
   }
 
@@ -439,6 +410,7 @@ export default function DayTimeline({
             const src = s.reserved.src;
             const canCancel = !!src.cancelToken;
             const range = { from: s.fromMin, to: s.toMin };
+            const when = `${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)}`;
             // Segments are consecutive, so a booked next one means these touch.
             const seam = !!segments[i + 1]?.reserved;
             return (
@@ -452,10 +424,10 @@ export default function DayTimeline({
                 }}
                 {...tooltip(
                   canCancel
-                    ? `Your booking, ${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)} · click to cancel it`
+                    ? `Your booking, ${when} · click to cancel it`
                     : src.mine
-                      ? `Your booking, ${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)}${contact ? " · click to contact us about it" : ""}`
-                      : `${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)} · Booked${contact ? " - click to request information" : ""}`,
+                      ? `Your booking, ${when}${contact ? " · click to contact us about it" : ""}`
+                      : `${when} · Booked${contact ? " - click to request information" : ""}`,
                 )}
                 aria-haspopup={canCancel || contact ? "dialog" : undefined}
                 disabled={!canCancel && !contact}
@@ -475,15 +447,15 @@ export default function DayTimeline({
             );
           })}
 
-          {hasPick && (
+          {pick && (
             <div
               // At the bar's end the border follows the curve, or it is sliced.
-              className={`daycal-pick ${pct(selFrom!) === 0 ? "at-start" : ""} ${
-                pctEnd(selTo!) === 100 ? "at-end" : ""
+              className={`daycal-pick ${pick.fromPct === 0 ? "at-start" : ""} ${
+                pick.toPct === 100 ? "at-end" : ""
               }`}
               style={{
-                left: `${pct(selFrom!)}%`,
-                width: `${pctEnd(selTo!) - pct(selFrom!)}%`,
+                left: `${pick.fromPct}%`,
+                width: `${pick.toPct - pick.fromPct}%`,
               }}
             />
           )}
@@ -518,7 +490,7 @@ export default function DayTimeline({
         {tag && (
           <div ref={tagRef} className={tag.className} style={tag.style}>
             <span>
-              {minutesToTime(selFrom!)} - {minutesToTime(selTo!)}
+              {tag.from} - {tag.to}
             </span>
           </div>
         )}
@@ -558,106 +530,27 @@ export default function DayTimeline({
       {tip}
 
       {cancelOn && (
-        <div
-          className="modal-overlay"
-          onClick={() => !cancelBusy && closeCancel()}
-          role="presentation"
-        >
-          <div
-            className="modal ask-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Cancel this reservation"
-          >
-            <button
-              type="button"
-              className="modal-close"
-              onClick={closeCancel}
-              disabled={cancelBusy}
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <h2>Cancel this reservation?</h2>
-            <p className="modal-sub">
-              <strong>{boothName}</strong>
-              <br />
-              {dateLabel}
-              <br />
-              {minutesToTime(cancelOn.fromMin)} -{" "}
-              {minutesToTime(cancelOn.toMin)}
-            </p>
-            {cancelError && <p className="error">{cancelError}</p>}
-            <div className="ask-actions">
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={closeCancel}
-                disabled={cancelBusy}
-              >
-                Keep it
-              </button>
-              <button
-                type="button"
-                className="btn danger"
-                onClick={confirmCancel}
-                disabled={cancelBusy}
-              >
-                {cancelBusy ? "Cancelling…" : "Yes, cancel it"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CancelDialog
+          boothName={boothName}
+          dateLabel={dateLabel}
+          from={minutesToTime(cancelOn.fromMin)}
+          to={minutesToTime(cancelOn.toMin)}
+          busy={cancelBusy}
+          error={cancelError}
+          onClose={closeCancel}
+          onConfirm={confirmCancel}
+        />
       )}
 
       {askOn && contact && (
-        <div
-          className="modal-overlay"
-          onClick={() => setAsking(null)}
-          role="presentation"
-        >
-          <div
-            className="modal ask-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Get in touch about this booking"
-          >
-            <button
-              type="button"
-              className="modal-close"
-              onClick={() => setAsking(null)}
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <h2>Get in touch</h2>
-            <p className="modal-sub">
-              Choose how you&apos;d like to reach us about {boothName} on{" "}
-              {dateLabel}, {minutesToTime(askOn.fromMin)} -{" "}
-              {minutesToTime(askOn.toMin)}:
-            </p>
-            <div className="ask-actions">
-              <a
-                className="btn"
-                href={mailtoLink(contact.email, askSubject, askMessage)}
-                onClick={() => setAsking(null)}
-              >
-                <MailIcon /> Email
-              </a>
-              <a
-                className="btn whatsapp"
-                href={whatsappLink(contact.phone, askMessage)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setAsking(null)}
-              >
-                <WhatsAppIcon /> WhatsApp
-              </a>
-            </div>
-          </div>
-        </div>
+        <AskDialog
+          boothName={boothName}
+          dateLabel={dateLabel}
+          from={minutesToTime(askOn.fromMin)}
+          to={minutesToTime(askOn.toMin)}
+          contact={contact}
+          onClose={() => setAsking(null)}
+        />
       )}
     </div>
   );

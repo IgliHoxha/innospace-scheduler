@@ -75,3 +75,18 @@ export function findOverlap<T extends { start: number; end: number }>(
 ): T | null {
   return reserved.find((b) => b.start < endMin && b.end > startMin) ?? null;
 }
+
+// One wording for the refusals the form and the server both give.
+export const END_BEFORE_START_MESSAGE =
+  "The end time must be after the start time.";
+export const TIME_PASSED_MESSAGE = "That time has already passed.";
+export const USER_BUSY_MESSAGE =
+  "You already have a reservation during that time.";
+
+export function offGridMessage(stepMin: number): string {
+  return `Please choose times in ${stepMin}-minute steps.`;
+}
+
+export function tooShortMessage(minReservationMin: number): string {
+  return `Reservations must be at least ${minReservationMin} minutes long.`;
+}

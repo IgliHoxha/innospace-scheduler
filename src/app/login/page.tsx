@@ -26,7 +26,7 @@ export default function LoginPage() {
       router.replace("/dashboard", { scroll: false });
       router.refresh();
     } else {
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       setError(data.error || "Login failed.");
     }
   }

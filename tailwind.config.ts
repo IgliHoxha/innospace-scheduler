@@ -23,8 +23,8 @@ export const COLORS = {
 
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
-  // Off: the app is styled by hand in globals.css and a reset would strip that.
-  corePlugins: { preflight: false },
+  // Off: globals.css styles the app by hand, its own .container included.
+  corePlugins: { preflight: false, container: false },
   theme: {
     extend: {
       // App palette for the shadcn Input; hex so var(--border) can't collide.

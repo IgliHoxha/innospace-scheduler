@@ -503,3 +503,55 @@ describe("rows stored with fields left unset", () => {
     expect(page.total).toBe(1);
   });
 });
+
+// The route sends these messages as the 409 body, so the wording is copy.
+describe("the refusals createReservation throws", () => {
+  const refusal = (attempt: Promise<unknown>) =>
+    attempt.then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+
+  it("says the slot is gone when someone else holds it", async () => {
+    await reserve("10:00", "11:00");
+    const err = await refusal(
+      reserve("10:30", "11:30", { email: "bob@example.com" }),
+    );
+    expect(err).toBeInstanceOf(db.SlotUnavailableError);
+    expect(err?.name).toBe("SlotUnavailableError");
+    expect(err?.message).toBe("That time slot is no longer available.");
+  });
+
+  it("says the booker is busy when they hold another booth then", async () => {
+    await reserve("10:00", "11:00");
+    const err = await refusal(
+      reserve("10:30", "11:30", { boothId: "booth-2" }),
+    );
+    expect(err).toBeInstanceOf(db.UserBusyError);
+    expect(err?.name).toBe("UserBusyError");
+    expect(err?.message).toBe(
+      "You already have a reservation during that time.",
+    );
+  });
+
+  it("keeps a message it is handed over the default", () => {
+    expect(new db.UserBusyError("Custom.").message).toBe("Custom.");
+    expect(new db.SlotUnavailableError("Custom.").message).toBe("Custom.");
+  });
+});
+
+describe("queryReservations page size", () => {
+  it("lists 25 to a page when the caller names no size", () => {
+    expect(db.queryReservations().pageSize).toBe(25);
+    expect(db.queryReservations({ page: 2 }).pageSize).toBe(25);
+    expect(db.queryReservations({ withCounts: false }).pageSize).toBe(25);
+  });
+
+  it("keeps a named size inside 1 to 100, in whole rows", () => {
+    expect(db.queryReservations({ pageSize: 0 }).pageSize).toBe(1);
+    expect(db.queryReservations({ pageSize: -5 }).pageSize).toBe(1);
+    expect(db.queryReservations({ pageSize: 7.9 }).pageSize).toBe(7);
+    expect(db.queryReservations({ pageSize: 100 }).pageSize).toBe(100);
+    expect(db.queryReservations({ pageSize: 1000 }).pageSize).toBe(100);
+  });
+});

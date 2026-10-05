@@ -4,12 +4,9 @@ import { sendReservationEmail } from "@/lib/email";
 import { boothName } from "@/lib/booths";
 import { postReservationToSlack } from "@/lib/slack";
 import { requireAdmin } from "@/lib/api-auth";
+import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
-import {
-  RESERVATION_STATUSES,
-  MAX_EMAIL_BODY,
-  type ReservationStatus,
-} from "@/lib/types";
+import { isReservationStatus, MAX_EMAIL_BODY } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,21 +24,15 @@ export async function PATCH(
 
   const { id } = await params;
   const { status, emailBody } = (await req.json().catch(() => ({}))) as {
-    status?: ReservationStatus;
-    emailBody?: string;
+    status?: unknown;
+    emailBody?: unknown;
   };
 
-  if (!status || !RESERVATION_STATUSES.includes(status)) {
-    return NextResponse.json(
-      { ok: false, error: "Invalid status." },
-      { status: 400 },
-    );
+  if (!isReservationStatus(status)) {
+    return jsonError("Invalid status.", 400);
   }
   if (typeof emailBody === "string" && emailBody.length > MAX_EMAIL_BODY) {
-    return NextResponse.json(
-      { ok: false, error: "That email body is too long." },
-      { status: 400 },
-    );
+    return jsonError("That email body is too long.", 400);
   }
 
   // Only a pending row becomes an approval; sync reads cannot interleave.
@@ -49,10 +40,7 @@ export async function PATCH(
   // One atomic UPDATE ... RETURNING: a separate existence read would race.
   const reservation = updateReservationStatus(id, status);
   if (!reservation) {
-    return NextResponse.json(
-      { ok: false, error: "Not found." },
-      { status: 404 },
-    );
+    return jsonError("Not found.", 404);
   }
 
   // A failed email must not fail the status change.

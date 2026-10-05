@@ -1,7 +1,11 @@
 // Shared by the mailer and the dashboard preview, so the preview matches.
-import type { ContactInfo, Reservation, ReservationStatus } from "./types";
-import { rangeLabel } from "./schedule";
-import { dateOf, formatDateLong } from "./datetime";
+import type {
+  Booth,
+  ContactInfo,
+  Reservation,
+  ReservationStatus,
+} from "./types";
+import { dateOf, formatDateLong, rangeLabel } from "./datetime";
 
 export type EmailStatus = Extract<
   ReservationStatus,
@@ -10,6 +14,12 @@ export type EmailStatus = Extract<
 
 /** Injected: the env lookup would throw in a client bundle. */
 export type BoothNamer = (boothId: string | undefined) => string;
+
+/** Client-safe: the booth list is supplied, so there is no env read. */
+export function boothNameIn(booths: Booth[], id: string | undefined): string {
+  if (!id) return "Booth";
+  return booths.find((b) => b.id === id)?.name ?? id;
+}
 
 export function timeText(reservation: Reservation): string {
   if (!reservation.startsAt || !reservation.endsAt) return "-";
@@ -78,7 +88,16 @@ export function emailHeading(status: EmailStatus): string {
 }
 
 function firstName(r: Reservation): string {
-  return r.fullName?.trim() ? r.fullName.trim().split(" ")[0] : "there";
+  return r.fullName?.trim().split(" ")[0] ?? "";
+}
+
+function detailLines(r: Reservation, boothName: BoothNamer): string[] {
+  return [
+    `Booth: ${boothLabel(r, boothName)}`,
+    `Date: ${dateText(r)}`,
+    `Time: ${timeText(r)}`,
+    ...(r.note?.trim() ? [`Note: ${r.note.trim()}`] : []),
+  ];
 }
 
 // The one sign-off every email closes with; EMAIL_SIGNOFF_NAME carries the org.
@@ -97,23 +116,17 @@ function confirmedBody(
   contact: ContactInfo,
   boothName: BoothNamer,
 ): string {
-  const lines = [
-    `Hi ${firstName(r)},`,
+  return [
+    `Hi ${firstName(r) || "there"},`,
     "",
-    `Your meeting booth is reserved. Here are the details:`,
+    "Your meeting booth is reserved. Here are the details:",
     "",
-    `Booth: ${boothLabel(r, boothName)}`,
-    `Date: ${dateText(r)}`,
-    `Time: ${timeText(r)}`,
-  ];
-  if (r.note?.trim()) lines.push(`Note: ${r.note.trim()}`);
-  lines.push(
+    ...detailLines(r, boothName),
     "",
     "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
     "",
-  );
-  lines.push(...signOff(contact));
-  return lines.join("\n");
+    ...signOff(contact),
+  ].join("\n");
 }
 
 function cancelledBody(
@@ -121,7 +134,7 @@ function cancelledBody(
   contact: ContactInfo,
   boothName: BoothNamer,
 ): string {
-  const first = r.fullName?.trim() ? r.fullName.trim().split(" ")[0] : "";
+  const first = firstName(r);
   const greeting = first ? `Hello ${first},` : "Hello,";
   return [
     greeting,
@@ -144,14 +157,11 @@ function pendingBody(
   boothName: BoothNamer,
 ): string {
   return [
-    `Hi ${firstName(r)},`,
+    `Hi ${firstName(r) || "there"},`,
     "",
     "Thanks for your reservation request. Because it's longer than our instant-reservation limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
     "",
-    `Booth: ${boothLabel(r, boothName)}`,
-    `Date: ${dateText(r)}`,
-    `Time: ${timeText(r)}`,
-    ...(r.note?.trim() ? [`Note: ${r.note.trim()}`] : []),
+    ...detailLines(r, boothName),
     "",
     "We'll email you again as soon as it's approved or if we need to make a change. The slot is held for you in the meantime.",
     "",

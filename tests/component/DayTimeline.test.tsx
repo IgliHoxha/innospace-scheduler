@@ -265,6 +265,29 @@ describe("bookings on the bar", () => {
     expect(blocks()[1].className).toContain("can-cancel");
   });
 
+  it("says in its tooltip whose booking it is and what a click does", () => {
+    const legacy = { ...ours, start: "08:00", end: "09:30", cancelToken: "" };
+    const tipOf = (block: HTMLElement) => {
+      fireEvent.pointerEnter(block);
+      const text = document.querySelector('[role="tooltip"]')?.textContent;
+      fireEvent.pointerLeave(block);
+      return text;
+    };
+    mount({ reserved: [theirs, legacy, ours] });
+    expect(blocks().map(tipOf)).toEqual([
+      "02:00 - 05:00 \u00b7 Booked - click to request information",
+      "Your booking, 08:00 - 09:30 \u00b7 click to contact us about it",
+      "Your booking, 14:00 - 15:00 \u00b7 click to cancel it",
+    ]);
+    cleanup();
+    mount({ reserved: [theirs, legacy, ours], contact: undefined });
+    expect(blocks().map(tipOf)).toEqual([
+      "02:00 - 05:00 \u00b7 Booked",
+      "Your booking, 08:00 - 09:30",
+      "Your booking, 14:00 - 15:00 \u00b7 click to cancel it",
+    ]);
+  });
+
   it("offers to get in touch about somebody else's", async () => {
     mount({ reserved: [theirs] });
     await userEvent.click(blocks()[0]);
@@ -333,5 +356,133 @@ describe("bookings on the bar", () => {
     await userEvent.click(screen.getByRole("button", { name: "Keep it" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("addresses both enquiry links to the contact, naming the booth, day and slot", async () => {
+    mount({ reserved: [theirs] });
+    await userEvent.click(blocks()[0]);
+    const dialog = screen.getByRole("dialog", {
+      name: "Get in touch about this booking",
+    });
+    const message =
+      "Hi, I'd like to ask about the booth booking on that day, 02:00 - 05:00.";
+    const subject = "Booking enquiry: booth, that day 02:00 - 05:00";
+    const [email, whatsapp] = [...dialog.querySelectorAll("a")];
+    expect(email.getAttribute("href")).toBe(
+      `mailto:hello@test.test?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`,
+    );
+    expect(email.getAttribute("target")).toBeNull();
+    expect(whatsapp.getAttribute("href")).toBe(
+      `https://wa.me/35500000?text=${encodeURIComponent(message)}`,
+    );
+    expect(whatsapp.getAttribute("target")).toBe("_blank");
+    expect(whatsapp.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("words the enquiry around the booth and day it was given", async () => {
+    mount({
+      reserved: [theirs],
+      boothName: "Booth 2",
+      dateLabel: "Tue, 5 Aug",
+    });
+    await userEvent.click(blocks()[0]);
+    const dialog = screen.getByRole("dialog", {
+      name: "Get in touch about this booking",
+    });
+    expect(dialog.className).toBe("modal ask-modal");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.parentElement?.className).toBe("modal-overlay");
+    expect(dialog.parentElement?.getAttribute("role")).toBe("presentation");
+    expect(dialog.querySelector("h2")?.textContent).toBe("Get in touch");
+    expect(dialog.querySelector(".modal-sub")?.textContent).toBe(
+      "Choose how you'd like to reach us about Booth 2 on Tue, 5 Aug, 02:00 - 05:00:",
+    );
+    const links = [...dialog.querySelectorAll(".ask-actions > a")];
+    expect(links.map((a) => a.className)).toEqual(["btn", "btn whatsapp"]);
+    expect(links.map((a) => a.textContent)).toEqual([" Email", " WhatsApp"]);
+    expect(links[0].getAttribute("href")).toContain(
+      encodeURIComponent("Booking enquiry: Booth 2, Tue, 5 Aug 02:00 - 05:00"),
+    );
+  });
+
+  it("closes the enquiry from its close button or its backdrop, not from inside", async () => {
+    mount({ reserved: [theirs] });
+    await userEvent.click(blocks()[0]);
+    fireEvent.click(screen.getByRole("dialog"));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(blocks()[0]);
+    fireEvent.click(document.querySelector(".modal-overlay")!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("names the booth, the day and the slot in the cancel dialog", async () => {
+    mount({ reserved: [ours], boothName: "Booth 2", dateLabel: "Tue, 5 Aug" });
+    await userEvent.click(blocks()[0]);
+    const dialog = screen.getByRole("dialog", {
+      name: "Cancel this reservation",
+    });
+    expect(dialog.className).toBe("modal ask-modal");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.parentElement?.className).toBe("modal-overlay");
+    expect(dialog.querySelector("h2")?.textContent).toBe(
+      "Cancel this reservation?",
+    );
+    const sub = dialog.querySelector(".modal-sub")!;
+    expect(sub.querySelector("strong")?.textContent).toBe("Booth 2");
+    expect(sub.querySelectorAll("br")).toHaveLength(2);
+    expect(sub.textContent).toBe("Booth 2Tue, 5 Aug14:00 - 15:00");
+    const buttons = [...dialog.querySelectorAll("button")];
+    expect(buttons.map((b) => b.className)).toEqual([
+      "modal-close",
+      "btn ghost",
+      "btn danger",
+    ]);
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "\u00d7",
+      "Keep it",
+      "Yes, cancel it",
+    ]);
+    expect(buttons.every((b) => !b.disabled)).toBe(true);
+    expect(dialog.querySelector(".error")).toBeNull();
+    fireEvent.click(dialog);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(document.querySelector(".modal-overlay")!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("locks the cancel dialog while the request is in flight", async () => {
+    let answer: (res: unknown) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise((resolve) => (answer = resolve))),
+    );
+    mount({ reserved: [ours] });
+    await userEvent.click(blocks()[0]);
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Yes, cancel it" }),
+    );
+    const buttons = [...dialog.querySelectorAll("button")];
+    expect(buttons.map((b) => b.disabled)).toEqual([true, true, true]);
+    expect(buttons[2].textContent).toBe("Cancelling\u2026");
+    fireEvent.click(document.querySelector(".modal-overlay")!);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBe(dialog);
+
+    answer({
+      ok: false,
+      status: 400,
+      json: async () => ({ ok: false, error: "That link has expired." }),
+    });
+    expect(await screen.findByText("That link has expired.")).toBeTruthy();
+    expect(dialog.querySelector(".error")?.textContent).toBe(
+      "That link has expired.",
+    );
+    expect(
+      [...dialog.querySelectorAll("button")].map((b) => b.disabled),
+    ).toEqual([false, false, false]);
+    expect(screen.getByRole("button", { name: "Yes, cancel it" })).toBeTruthy();
   });
 });

@@ -11,6 +11,7 @@ import {
   checkAdminCredentials,
   createCancelToken,
   createSessionToken,
+  safeEqual,
   verifyCancelToken,
   verifySessionToken,
   type Session,
@@ -148,5 +149,103 @@ describe("a token whose body is not a payload", () => {
   it("rejects a cancel token carrying JSON null or junk", () => {
     expect(verifyCancelToken(signed("null"))).toBeNull();
     expect(verifyCancelToken(signed("{oops"))).toBeNull();
+  });
+});
+
+describe("the token wire format", () => {
+  const b64 = (json: string) => Buffer.from(json, "utf8").toString("base64url");
+  const mac = (body: string) =>
+    createHmac("sha256", process.env.AUTH_SECRET as string)
+      .update(body)
+      .digest("hex");
+  const signed = (json: string) => `${b64(json)}.${mac(b64(json))}`;
+
+  afterEach(() => vi.useRealTimers());
+
+  it("mints a session as base64url JSON, a dot, then the hex HMAC of that body", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const exp = Date.now() + 60_000;
+    expect(createSessionToken(withEmail, 60)).toBe(
+      signed(
+        `{"role":"admin","sub":"admin","name":"Ada","email":"ada@example.com","exp":${exp}}`,
+      ),
+    );
+  });
+
+  it("mints a cancel link the same way, with its own field order", () => {
+    const exp = inAnHour();
+    expect(createCancelToken("r42", exp)).toBe(
+      signed(`{"sub":"r42","purpose":"cancel","exp":${exp}}`),
+    );
+  });
+
+  it("rejects a signature that is short, long, empty, or the right length but wrong", () => {
+    const tokens = [
+      createSessionToken(adminSession),
+      createCancelToken("r42", inAnHour()),
+    ];
+    for (const tok of tokens) {
+      const [body, sig] = tok.split(".");
+      const wrong = (sig[0] === "0" ? "1" : "0") + sig.slice(1);
+      for (const bad of [sig.slice(1), `${sig}0`, "", wrong, `${sig}.x`]) {
+        expect(verifySessionToken(`${body}.${bad}`)).toBeNull();
+        expect(verifyCancelToken(`${body}.${bad}`)).toBeNull();
+      }
+    }
+  });
+
+  it("rejects a token with nothing before its first dot", () => {
+    const sig = mac("");
+    expect(verifySessionToken(`.${sig}`)).toBeNull();
+    expect(verifyCancelToken(`.${sig}`)).toBeNull();
+  });
+
+  it("rejects a signed payload whose fields cannot be read as strings", () => {
+    const exp = inAnHour();
+    const hostile = '{"toString":1}';
+    expect(
+      verifySessionToken(
+        signed(`{"role":"admin","exp":${exp},"sub":${hostile},"name":"x"}`),
+      ),
+    ).toBeNull();
+    expect(
+      verifyCancelToken(
+        signed(`{"purpose":"cancel","exp":${exp},"sub":${hostile}}`),
+      ),
+    ).toBeNull();
+  });
+
+  it("throws on a missing AUTH_SECRET rather than calling the token bad", () => {
+    const session = createSessionToken(adminSession);
+    const cancel = createCancelToken("r42", inAnHour());
+    vi.stubEnv("AUTH_SECRET", "");
+    expect(() => verifySessionToken(session)).toThrow(/AUTH_SECRET/);
+    expect(() => verifyCancelToken(cancel)).toThrow(/AUTH_SECRET/);
+    expect(() => createSessionToken(adminSession)).toThrow(/AUTH_SECRET/);
+    expect(() => createCancelToken("r42", inAnHour())).toThrow(/AUTH_SECRET/);
+    // No body means no signature to check, so the secret is never read.
+    expect(verifySessionToken("no-dot-here")).toBeNull();
+    expect(verifyCancelToken("no-dot-here")).toBeNull();
+  });
+});
+
+describe("safeEqual", () => {
+  it("is true only for the identical string", () => {
+    expect(safeEqual("abc", "abc")).toBe(true);
+    expect(safeEqual("", "")).toBe(true);
+    expect(safeEqual("abc", "abd")).toBe(false);
+  });
+
+  it("answers false, without throwing, when the lengths differ", () => {
+    expect(safeEqual("abc", "abcd")).toBe(false);
+    expect(safeEqual("abcd", "abc")).toBe(false);
+    expect(safeEqual("", "a")).toBe(false);
+  });
+
+  it("measures bytes, so one two-byte character is not one ASCII letter", () => {
+    expect(safeEqual("é", "é")).toBe(true);
+    expect(safeEqual("é", "e")).toBe(false);
+    expect(safeEqual("é", "ab")).toBe(false);
   });
 });

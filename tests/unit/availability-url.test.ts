@@ -4,6 +4,7 @@ import {
   availabilityQuery,
   countsForDate,
   edgeMayBeStale,
+  reservationCountLabel,
 } from "@/lib/availability-url";
 import nextConfig from "../../next.config.mjs";
 
@@ -35,6 +36,26 @@ describe("countsForDate", () => {
 
   it("withholds the counts of a board that does not say which day it is for", () => {
     expect(countsForDate({ counts }, "2026-07-16")).toBeUndefined();
+  });
+});
+
+describe("reservationCountLabel", () => {
+  it("shows a zero rather than hiding an empty booth", () => {
+    expect(reservationCountLabel(0)).toBe("0 reservations");
+  });
+
+  it("keeps one singular", () => {
+    expect(reservationCountLabel(1)).toBe("1 reservation");
+  });
+
+  it("pluralises anything above one", () => {
+    expect(reservationCountLabel(2)).toBe("2 reservations");
+    expect(reservationCountLabel(37)).toBe("37 reservations");
+  });
+
+  // A count is never negative, but a bad one must not print "-1 reservations".
+  it("reads a negative count as zero", () => {
+    expect(reservationCountLabel(-1)).toBe("0 reservations");
   });
 });
 

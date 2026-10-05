@@ -7,8 +7,13 @@ import TimeRangePicker from "./TimeRangePicker";
 import DayTimeline from "./DayTimeline";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
-import { type Booth } from "@/lib/booths";
-import { MAX_EMAIL, MAX_NAME, MAX_NOTE, type Reservation } from "@/lib/types";
+import {
+  MAX_EMAIL,
+  MAX_NAME,
+  MAX_NOTE,
+  type Booth,
+  type Reservation,
+} from "@/lib/types";
 import {
   canonicalEmail,
   guestProblems,
@@ -29,13 +34,17 @@ import {
   availabilityQuery,
   countsForDate,
   edgeMayBeStale,
+  reservationCountLabel,
 } from "@/lib/availability-url";
 import {
   heldRangesFor,
+  markMine,
   readMine,
   rememberMine,
   slotKey,
+  type BoardSlot,
   type MineEntry,
+  type ReservedSlot,
 } from "@/lib/mine";
 import {
   endForStart,
@@ -46,24 +55,17 @@ import {
   wantedStartMin,
 } from "@/lib/timeline";
 import { dayEndMinute } from "@/lib/reservation-rules";
-import { formatDateLong, minutesToTime, timeToMinutes } from "@/lib/datetime";
-import { formatDuration, reservationCountLabel } from "@/lib/schedule";
-
-/** A reservation already taken for the chosen booth+day, as "HH:MM" times. */
-interface Reserved {
-  start: string;
-  end: string;
-  label: string;
-  /** Booked from this browser, the only way a login-less screen can tell. */
-  mine: boolean;
-  /** The proof needed to cancel; only on a booking this browser made. */
-  cancelToken?: string;
-}
+import {
+  formatDateLong,
+  formatDuration,
+  minutesToTime,
+  timeToMinutes,
+} from "@/lib/datetime";
 
 interface Availability {
   /** The day this board answers for, so no count shows against another date. */
   date: string;
-  reserved: Reserved[];
+  reserved: ReservedSlot[];
   /** Active reservations per booth; absent on a copy cached before a deploy. */
   counts?: Record<string, number>;
   earliest: string;
@@ -229,7 +231,10 @@ export default function ReservationClient({
           // This browser's cache only: the CDN ignores it, hence the fresh URL.
           { cache: "no-store" },
         );
-        const json = (await res.json()) as { ok: boolean } & Availability;
+        const json = (await res.json()) as { ok: boolean } & Omit<
+          Availability,
+          "reserved"
+        > & { reserved: BoardSlot[] };
         if (id !== reqId.current) return;
         const owned = readMine();
         setMine(owned);
@@ -237,16 +242,7 @@ export default function ReservationClient({
           json.ok
             ? {
                 ...json,
-                reserved: json.reserved.map((b) => {
-                  const held = owned.find(
-                    (m) => m.k === slotKey(boothId, `${date}T${b.start}`),
-                  );
-                  return {
-                    ...b,
-                    mine: !!held,
-                    cancelToken: held?.t || undefined,
-                  };
-                }),
+                reserved: markMine(json.reserved, owned, boothId, date),
               }
             : null,
         );

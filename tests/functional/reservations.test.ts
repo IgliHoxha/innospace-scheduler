@@ -280,6 +280,38 @@ describe("POST /api/reservations - slot validation", () => {
   });
 });
 
+// The form shows the same sentences, so the route's wording is pinned whole.
+describe("POST /api/reservations - the exact refusal for each slot rule", () => {
+  const refusal = async (patch: Record<string, string>) => {
+    const res = await post({ ...ok, ...patch });
+    return [res.status, (await json(res)).error];
+  };
+  it("names the step, not the minimum length, for an off-grid time", async () => {
+    expect(await refusal({ start: "14:07" })).toEqual([
+      400,
+      "Please choose times in 5-minute steps.",
+    ]);
+  });
+  it("says the end must follow the start", async () => {
+    expect(await refusal({ end: "14:00" })).toEqual([
+      400,
+      "The end time must be after the start time.",
+    ]);
+  });
+  it("names the minimum length, not the step, for a short one", async () => {
+    expect(await refusal({ end: "14:10" })).toEqual([
+      400,
+      "Reservations must be at least 15 minutes long.",
+    ]);
+  });
+  it("says a passed time has passed", async () => {
+    expect(await refusal({ start: "09:00", end: "10:00" })).toEqual([
+      400,
+      "That time has already passed.",
+    ]);
+  });
+});
+
 describe("POST /api/reservations - any hour of the day", () => {
   const TOMORROW = "2026-07-17";
 
@@ -660,6 +692,22 @@ describe("GET /api/reservations", () => {
     );
     expect(all.total).toBe(2);
     expect(all.counts).toMatchObject({ total: 2 });
+  });
+});
+
+describe("GET /api/reservations - page size", () => {
+  const sizeOf = async (query: string) => {
+    const res = await route.GET(
+      makeRequest(`/api/reservations${query}`, { token: adminToken() }),
+    );
+    return ((await res.json()) as { pageSize: number }).pageSize;
+  };
+  it("defaults to the dashboard's page size and caps what a caller asks for", async () => {
+    expect(await sizeOf("")).toBe(25);
+    expect(await sizeOf("?pageSize=abc")).toBe(25);
+    expect(await sizeOf("?pageSize=0")).toBe(25);
+    expect(await sizeOf("?pageSize=7")).toBe(7);
+    expect(await sizeOf("?pageSize=1000")).toBe(100);
   });
 });
 

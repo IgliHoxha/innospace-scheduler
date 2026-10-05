@@ -1,6 +1,10 @@
 import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
-import { SIGNING } from "./helpers/fixtures";
+import {
+  DEFAULT_ADMIN_PASS,
+  DEFAULT_ADMIN_USER,
+  SIGNING,
+} from "./helpers/fixtures";
 
 // Required vars have no code default, so the suite supplies a baseline.
 const REQUIRED_BASELINE: Record<string, string> = {
@@ -10,8 +14,8 @@ const REQUIRED_BASELINE: Record<string, string> = {
   TIME_STEP_MINUTES: "5",
   MIN_RESERVATION_MINUTES: "15",
   AUTO_APPROVE_MAX_HOURS: "2",
-  DASHBOARD_USERNAME: "admin",
-  DASHBOARD_PASSWORD: "change-me",
+  DASHBOARD_USERNAME: DEFAULT_ADMIN_USER,
+  DASHBOARD_PASSWORD: DEFAULT_ADMIN_PASS,
   LOGIN_MAX_ATTEMPTS: "5",
   LOGIN_BLOCK_SECONDS: "60",
   LOGIN_MAX_LOCKOUTS: "10",
@@ -30,7 +34,15 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
 }
 
 // Optional flags stay off for determinism; loadDb() sets DATA_FILE per test.
-for (const key of ["RESEND_API_KEY", "ALLOWED_ORIGINS", "DATA_FILE"]) {
+for (const key of [
+  "RESEND_API_KEY",
+  "ALLOWED_ORIGINS",
+  "TURNSTILE_SITE_KEY",
+  "TURNSTILE_SECRET_KEY",
+  "SLACK_WEBHOOK_URL",
+  "TRUSTED_PROXY_SECRET",
+  "DATA_FILE",
+]) {
   delete process.env[key];
 }
 

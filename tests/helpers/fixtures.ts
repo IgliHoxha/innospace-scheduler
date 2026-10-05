@@ -5,7 +5,7 @@ export const CORRECT = "correct-horse-fixture";
 export const ADMIN_USER = "fixture-admin";
 export const ADMIN_PASS = "fixture-admin-pass";
 
-/** Must match the DASHBOARD_* baseline in tests/setup.ts. */
+/** The DASHBOARD_* baseline tests/setup.ts installs for every test. */
 export const DEFAULT_ADMIN_USER = "admin";
 export const DEFAULT_ADMIN_PASS = "change-me";
 

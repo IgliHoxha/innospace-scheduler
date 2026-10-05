@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { reservationCountsByBooth, reservedRanges } from "@/lib/db";
+import { jsonError } from "@/lib/api-response";
 import { getBooths, isBoothId } from "@/lib/booths";
-import { ceilToStep, isReservableDate, rangeLabel } from "@/lib/schedule";
+import { ceilToStep, isReservableDate } from "@/lib/schedule";
 import {
   timeOf,
   todayYMD,
   nowDateTime,
   minutesOfDay,
   minutesToTime,
+  rangeLabel,
 } from "@/lib/datetime";
 
 export const runtime = "nodejs";
@@ -20,16 +22,10 @@ export async function GET(req: NextRequest) {
   const date = sp.get("date") ?? "";
 
   if (!isBoothId(boothId)) {
-    return NextResponse.json(
-      { ok: false, error: "Unknown booth." },
-      { status: 400 },
-    );
+    return jsonError("Unknown booth.", 400);
   }
   if (!isReservableDate(date)) {
-    return NextResponse.json(
-      { ok: false, error: "Date is outside the reservation window." },
-      { status: 400 },
-    );
+    return jsonError("Date is outside the reservation window.", 400);
   }
 
   // Times only: the board says a slot is taken, never who by.

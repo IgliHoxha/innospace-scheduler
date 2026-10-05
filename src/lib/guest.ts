@@ -27,7 +27,7 @@ const MAX_DOMAIN = 255;
 const LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 /** Rejects only the structurally impossible, never the merely unusual. */
-export function emailProblem(value: string): string | null {
+function emailProblem(value: string): string | null {
   const email = value.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return "Please enter a valid email address.";
 
@@ -99,46 +99,29 @@ export function canonicalEmail(value: string): string {
 const clean = (v: unknown): string =>
   typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
 
+function nameProblem(fullName: string): string | null {
+  if (!fullName) return "Please enter your full name.";
+  // Both names: one word rarely identifies anyone in a shared space.
+  if (!fullName.includes(" ")) return "Please enter your first and last name.";
+  if (fullName.length > MAX_NAME)
+    return `Your name must be ${MAX_NAME} characters or fewer.`;
+  return null;
+}
+
+function guestEmailProblem(email: string): string | null {
+  if (!email) return "Please enter your email.";
+  if (email.length > MAX_EMAIL) return "That email address is too long.";
+  return emailProblem(email);
+}
+
 export function validateGuest(input: GuestInput): GuestResult {
   const fullName = clean(input.fullName);
   const email = clean(input.email).toLowerCase();
 
-  if (!fullName) {
-    return {
-      ok: false,
-      field: "fullName",
-      error: "Please enter your full name.",
-    };
-  }
-  // Both names: one word rarely identifies anyone in a shared space.
-  if (!fullName.includes(" ")) {
-    return {
-      ok: false,
-      field: "fullName",
-      error: "Please enter your first and last name.",
-    };
-  }
-  if (fullName.length > MAX_NAME) {
-    return {
-      ok: false,
-      field: "fullName",
-      error: `Your name must be ${MAX_NAME} characters or fewer.`,
-    };
-  }
-  if (!email) {
-    return { ok: false, field: "email", error: "Please enter your email." };
-  }
-  if (email.length > MAX_EMAIL) {
-    return {
-      ok: false,
-      field: "email",
-      error: "That email address is too long.",
-    };
-  }
-  const problem = emailProblem(email);
-  if (problem) {
-    return { ok: false, field: "email", error: problem };
-  }
+  const nameError = nameProblem(fullName);
+  if (nameError) return { ok: false, field: "fullName", error: nameError };
+  const emailError = guestEmailProblem(email);
+  if (emailError) return { ok: false, field: "email", error: emailError };
 
   return { ok: true, guest: { fullName, email } };
 }
@@ -147,15 +130,11 @@ export function validateGuest(input: GuestInput): GuestResult {
 export function guestProblems(
   input: GuestInput,
 ): Partial<Record<GuestField, string>> {
-  const first = validateGuest(input);
-  if (first.ok) return {};
-  const problems: Partial<Record<GuestField, string>> = {
-    [first.field]: first.error,
-  };
-  if (first.field === "fullName") {
-    // The name stopped the check, so judge the email beside one that passes.
-    const rest = validateGuest({ fullName: "First Last", email: input.email });
-    if (!rest.ok) problems[rest.field] = rest.error;
-  }
+  const nameError = nameProblem(clean(input.fullName));
+  const emailError = guestEmailProblem(clean(input.email).toLowerCase());
+
+  const problems: Partial<Record<GuestField, string>> = {};
+  if (nameError) problems.fullName = nameError;
+  if (emailError) problems.email = emailError;
   return problems;
 }

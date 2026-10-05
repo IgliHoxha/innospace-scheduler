@@ -7,7 +7,9 @@ import {
   endForStart,
   findFreeGaps,
   fittingTicks,
+  freeStretchFor,
   hourCells,
+  hourMarkMinutes,
   isDayOver,
   pickTagPlacement,
   roomFor,
@@ -341,6 +343,50 @@ describe("pickTagPlacement", () => {
   });
 });
 
+describe("hourMarkMinutes", () => {
+  it("marks every hour of a whole day, midnight to midnight", () => {
+    const marks = hourMarkMinutes(0, 1440);
+    expect(marks).toHaveLength(25);
+    expect(marks).toEqual(Array.from({ length: 25 }, (_, h) => h * 60));
+    expect(marks[24]).toBe(1440);
+  });
+
+  it("includes both ends of a window that sits on the hour", () => {
+    expect(hourMarkMinutes(540, 1140)).toEqual([
+      540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140,
+    ]);
+  });
+
+  it("starts on the first whole hour inside a part-hour window", () => {
+    expect(hourMarkMinutes(30, 150)).toEqual([60, 120]);
+    expect(hourMarkMinutes(570, 720)).toEqual([600, 660, 720]);
+  });
+
+  it("gives a zero-width window on the hour its one mark", () => {
+    expect(hourMarkMinutes(0, 0)).toEqual([0]);
+  });
+
+  it("gives nothing for a window that holds no whole hour", () => {
+    expect(hourMarkMinutes(10, 50)).toEqual([]);
+    expect(hourMarkMinutes(600, 540)).toEqual([]);
+  });
+
+  // tickMinutes hands this list straight to its caller, so it must be its own.
+  it("builds a new list on every call", () => {
+    const first = hourMarkMinutes(0, 1440);
+    const second = hourMarkMinutes(0, 1440);
+    expect(first).not.toBe(second);
+    first.pop();
+    expect(hourMarkMinutes(0, 1440)).toHaveLength(25);
+    expect(second).toHaveLength(25);
+  });
+
+  it("is the list tickMinutes thins, so the grid and the labels agree", () => {
+    expect(tickMinutes(0, 1440, 0, 48)).toEqual(hourMarkMinutes(0, 1440));
+    expect(tickMinutes(570, 1380, 0, 48)).toEqual(hourMarkMinutes(570, 1380));
+  });
+});
+
 describe("tickMinutes", () => {
   const START = 0;
   const END = 1440;
@@ -603,6 +649,85 @@ describe("hourCells", () => {
   });
 });
 
+describe("freeStretchFor", () => {
+  const LAST = 1435; // 23:55, the last step on a 5-minute grid
+  const stretch = (
+    reserved: { start: number; end: number }[],
+    cell: { from: number; to: number },
+    earliest = 0,
+    lastEnd = LAST,
+  ) =>
+    freeStretchFor(
+      buildDaySegments(0, 1440, reserved),
+      cell,
+      earliest,
+      lastEnd,
+    );
+
+  it("gives an empty day's box the whole day, to the last step", () => {
+    expect(stretch([], { from: 540, to: 600 })).toEqual({ from: 0, to: LAST });
+  });
+
+  it("gives a box between two bookings the gap between them", () => {
+    expect(stretch([r(480, 540), r(720, 780)], { from: 600, to: 660 })).toEqual(
+      { from: 540, to: 720 },
+    );
+  });
+
+  it("floors the stretch at the earliest reservable minute", () => {
+    expect(stretch([], { from: 540, to: 600 }, 550)).toEqual({
+      from: 550,
+      to: LAST,
+    });
+  });
+
+  it("caps the day's last stretch at the last step, not at midnight", () => {
+    expect(stretch([r(600, 660)], { from: 1380, to: 1440 })).toEqual({
+      from: 660,
+      to: LAST,
+    });
+    expect(stretch([], { from: 1380, to: 1440 }, 0, 1380)).toEqual({
+      from: 0,
+      to: 1380,
+    });
+  });
+
+  it("returns null for a box that is wholly booked", () => {
+    expect(stretch([r(540, 660)], { from: 540, to: 600 })).toBeNull();
+    expect(stretch([r(0, 1440)], { from: 0, to: 60 })).toBeNull();
+  });
+
+  // Ranges are half-open, so a booking on a box's edge is not in the box.
+  it("looks past a booking that only touches the box", () => {
+    expect(stretch([r(540, 600)], { from: 600, to: 660 })).toEqual({
+      from: 600,
+      to: LAST,
+    });
+    expect(stretch([r(540, 600)], { from: 480, to: 540 })).toEqual({
+      from: 0,
+      to: 540,
+    });
+  });
+
+  it("gives a part-booked box the free run that follows the booking", () => {
+    expect(stretch([r(540, 570)], { from: 540, to: 600 })).toEqual({
+      from: 570,
+      to: LAST,
+    });
+  });
+
+  it("takes the first free run when a booking sits in the middle of the box", () => {
+    expect(stretch([r(560, 580)], { from: 540, to: 600 })).toEqual({
+      from: 0,
+      to: 560,
+    });
+  });
+
+  it("returns null when there are no segments at all", () => {
+    expect(freeStretchFor([], { from: 540, to: 600 }, 0, LAST)).toBeNull();
+  });
+});
+
 describe("findFreeGaps", () => {
   const END = 1435;
 
@@ -802,20 +927,25 @@ describe("fittingTicks", () => {
     expect(hours(400)).toEqual([0, 24]);
   });
 
-  it("never lets two labels touch, at any bar width and any label width", () => {
-    for (let labelPx = 8; labelPx <= 420; labelPx += 3) {
-      for (let barPx = 40; barPx <= 2600; barPx += 11) {
-        const at = spans(fit(barPx, labelPx), barPx, labelPx);
-        for (let i = 1; i < at.length; i++) {
-          expect(at[i][0] - at[i - 1][1]).toBeGreaterThanOrEqual(GAP);
-        }
-        for (const [from, to] of at) {
-          expect(from).toBeGreaterThanOrEqual(0);
-          expect(to).toBeLessThanOrEqual(barPx);
+  // A brute-force sweep that can outrun the default timeout on a loaded machine.
+  it(
+    "never lets two labels touch, at any bar width and any label width",
+    { timeout: 30_000 },
+    () => {
+      for (let labelPx = 8; labelPx <= 420; labelPx += 3) {
+        for (let barPx = 40; barPx <= 2600; barPx += 11) {
+          const at = spans(fit(barPx, labelPx), barPx, labelPx);
+          for (let i = 1; i < at.length; i++) {
+            expect(at[i][0] - at[i - 1][1]).toBeGreaterThanOrEqual(GAP);
+          }
+          for (const [from, to] of at) {
+            expect(from).toBeGreaterThanOrEqual(0);
+            expect(to).toBeLessThanOrEqual(barPx);
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   it("keeps both ends while the two of them still fit", () => {
     expect(fit(207, 100)).toEqual([START, END]);

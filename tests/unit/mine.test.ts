@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   heldRangesFor,
+  markMine,
   readMine,
   rememberMine,
   slotKey,
@@ -216,5 +217,87 @@ describe("heldRangesFor", () => {
       { start: 540, end: 600 },
       { start: 600, end: 660 },
     ]);
+  });
+});
+
+describe("markMine", () => {
+  const slot = (start: string, end: string) => ({
+    start,
+    end,
+    label: `${start} - ${end}`,
+  });
+  const board = [slot("09:00", "10:00"), slot("14:00", "15:00")];
+
+  it("marks the block this browser booked and hands it its token", () => {
+    expect(markMine(board, [entry()], "booth-1", DAY)).toEqual([
+      { ...board[0], mine: false, cancelToken: undefined },
+      { ...board[1], mine: true, cancelToken: "tok" },
+    ]);
+  });
+
+  // A bare legacy key still says "You", but holds nothing to cancel with.
+  it("marks a legacy entry as mine with no token to cancel by", () => {
+    const [, block] = markMine(board, [entry({ t: "" })], "booth-1", DAY);
+    expect(block.mine).toBe(true);
+    expect(block.cancelToken).toBeUndefined();
+    expect("cancelToken" in block).toBe(true);
+  });
+
+  it("does not match an entry for another booth or another day", () => {
+    expect(markMine(board, [entry()], "booth-2", DAY).some((b) => b.mine)).toBe(
+      false,
+    );
+    expect(
+      markMine(board, [entry()], "booth-1", "2026-07-17").some((b) => b.mine),
+    ).toBe(false);
+  });
+
+  it("marks nothing when this browser remembers no booking", () => {
+    expect(markMine(board, [], "booth-1", DAY)).toEqual([
+      { ...board[0], mine: false, cancelToken: undefined },
+      { ...board[1], mine: false, cancelToken: undefined },
+    ]);
+    expect(markMine([], [entry()], "booth-1", DAY)).toEqual([]);
+  });
+
+  it("takes the first of two entries sharing a key", () => {
+    const owned = [entry({ t: "first" }), entry({ t: "second" })];
+    expect(markMine(board, owned, "booth-1", DAY)[1].cancelToken).toBe("first");
+    // An empty first token is not skipped for a later one that has it.
+    const legacyFirst = [entry({ t: "" }), entry({ t: "second" })];
+    expect(
+      markMine(board, legacyFirst, "booth-1", DAY)[1].cancelToken,
+    ).toBeUndefined();
+  });
+
+  it("keeps the slot's own fields first and any extra ones it carries", () => {
+    const wide = [{ ...slot("14:00", "15:00"), extra: 7 }];
+    const [block] = markMine(wide, [entry()], "booth-1", DAY);
+    expect(block).toEqual({
+      start: "14:00",
+      end: "15:00",
+      label: "14:00 - 15:00",
+      extra: 7,
+      mine: true,
+      cancelToken: "tok",
+    });
+    expect(Object.keys(block)).toEqual([
+      "start",
+      "end",
+      "label",
+      "extra",
+      "mine",
+      "cancelToken",
+    ]);
+  });
+
+  it("leaves the board and the remembered list as it found them", () => {
+    const owned = [entry()];
+    const before = JSON.stringify([board, owned]);
+    const marked = markMine(board, owned, "booth-1", DAY);
+    expect(JSON.stringify([board, owned])).toBe(before);
+    expect(marked).not.toBe(board);
+    expect(marked[1]).not.toBe(board[1]);
+    expect("mine" in board[1]).toBe(false);
   });
 });

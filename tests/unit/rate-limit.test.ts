@@ -385,3 +385,51 @@ describe("two buckets blocking at once", () => {
     vi.useRealTimers();
   });
 });
+
+describe("a bucket's standing, whether asked or hit", () => {
+  beforeEach(() => {
+    vi.stubEnv("LOGIN_IP_MAX_ATTEMPTS", "1");
+    vi.stubEnv("LOGIN_IP_BLOCK_SECONDS", "60");
+  });
+
+  it("rounds a part-second wait up, the same from a check as from a hit", () => {
+    expect(rl.registerBooking(IP).retryAfterSeconds).toBe(60);
+    vi.advanceTimersByTime(20_500);
+    const waiting = { blocked: true, banned: false, retryAfterSeconds: 40 };
+    expect(rl.checkBookingBlocked(IP)).toEqual(waiting);
+    expect(rl.registerBooking(IP)).toEqual(waiting);
+  });
+
+  it("frees the bucket at the exact millisecond the lockout ends", () => {
+    rl.registerBooking(IP);
+    vi.advanceTimersByTime(59_999);
+    expect(rl.checkBookingBlocked(IP).retryAfterSeconds).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(rl.checkBookingBlocked(IP)).toEqual({
+      blocked: false,
+      banned: false,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it("does not count a hit made during a lockout towards the next one", () => {
+    rl.registerBooking(IP);
+    vi.advanceTimersByTime(20_000);
+    rl.registerBooking(IP);
+    rl.registerBooking(IP);
+    vi.advanceTimersByTime(40_000);
+    // The second lockout, so 120s: counted hits would have made it the fourth.
+    expect(rl.registerBooking(IP).retryAfterSeconds).toBe(120);
+  });
+
+  it("reports a ban identically from a check and from a hit", () => {
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "100000");
+    vi.stubEnv("LOGIN_MAX_LOCKOUTS", "1");
+    const banned = { blocked: true, banned: true, retryAfterSeconds: 0 };
+    expect(rl.registerLoginFailure(IP, "a").banned).toBe(false);
+    vi.advanceTimersByTime(61_000);
+    expect(rl.registerLoginFailure(IP, "a")).toEqual(banned);
+    expect(rl.checkLoginBlocked(IP, "a")).toEqual(banned);
+    expect(rl.registerLoginFailure(IP, "a")).toEqual(banned);
+  });
+});
