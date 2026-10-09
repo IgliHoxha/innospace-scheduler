@@ -72,7 +72,8 @@ export function slackReservationText(
   event: SlackEvent,
   boothName: BoothNamer,
 ): string {
-  const who = r.fullName?.trim() || r.email || "someone";
+  // No email fallback: a channel reaches more people than the dashboard does.
+  const who = r.fullName?.trim() || "someone";
   return `${headline(event).lead}: ${reservationSummary(r, boothName)} (${who})`;
 }
 
@@ -87,7 +88,7 @@ export function slackReservationMessage(
   const lines = [
     `${icon} *${title}*`,
     escapeSlack(reservationSummary(r, boothName)),
-    `${escapeSlack(r.fullName?.trim() || "-")} · ${escapeSlack(r.email || "-")}`,
+    escapeSlack(r.fullName?.trim() || "-"),
   ];
   if (r.note?.trim()) lines.push(`_${escapeSlack(r.note.trim())}_`);
   return {

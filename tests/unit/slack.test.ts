@@ -106,7 +106,7 @@ describe("the Slack message", () => {
   it("still carries the booking's details on a cancellation, so the slot is identifiable", () => {
     const t = body(RESERVATION, "cancelled", "admin").elements[0].text;
     expect(t).toContain("Booth 1 · Thursday, 16 July 2026 · 09:30 - 11:00");
-    expect(t).toContain("Ada Lovelace · ada@example.com");
+    expect(t.split("\n")[2]).toBe("Ada Lovelace");
   });
 
   it("summarises a cancellation in one line too", () => {
@@ -123,10 +123,22 @@ describe("the Slack message", () => {
     expect(body(RESERVATION).elements[0].text).toContain("New reservation");
   });
 
-  it("carries booth, day, time, full name and email", () => {
+  it("carries booth, day, time and full name", () => {
     const t = body(RESERVATION).elements[0].text;
     expect(t).toContain("Booth 1 · Thursday, 16 July 2026 · 09:30 - 11:00");
-    expect(t).toContain("Ada Lovelace · ada@example.com");
+    expect(t.split("\n")[2]).toBe("Ada Lovelace");
+  });
+
+  // A channel reaches more people than the dashboard, so the address stays out.
+  it("never carries the email, whatever the event or whoever acted", () => {
+    const events: Event[] = ["confirmed", "pending", "approved", "cancelled"];
+    for (const event of events)
+      for (const by of [undefined, "guest", "admin"] as const)
+        expect(
+          JSON.stringify(
+            slack.slackReservationMessage(RESERVATION, event, boothName, by),
+          ),
+        ).not.toContain("ada@example.com");
   });
 
   // A channel is skimmed, so the event must fit a glance: heading, when, who.
@@ -180,13 +192,12 @@ describe("the Slack message", () => {
     ).toContain("cancelled by Ada &lt;b&gt; &amp; Co (guest)");
   });
 
-  it("falls back to the email, then to a placeholder, when the name is missing", () => {
-    expect(text({ ...RESERVATION, fullName: undefined })).toContain(
-      "(ada@example.com)",
-    );
-    expect(
-      text({ ...RESERVATION, fullName: undefined, email: undefined }),
-    ).toContain("(someone)");
+  it("falls back to a placeholder, never the email, when the name is missing", () => {
+    const unnamed = { ...RESERVATION, fullName: undefined };
+    expect(text(unnamed)).toContain("(someone)");
+    expect(text(unnamed)).not.toContain("ada@example.com");
+    expect(body(unnamed).elements[0].text.split("\n")[2]).toBe("-");
+    expect(text({ ...unnamed, fullName: "   " })).toContain("(someone)");
   });
 
   // A section renders full size; context is the only block Slack draws small.
@@ -230,6 +241,15 @@ describe("posting to Slack", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(bodyOf(fetchMock).text).toContain("New reservation: Booth 1");
+  });
+
+  it("keeps the email out of what actually goes over the wire", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", HOOK);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    await slack.postReservationToSlack(RESERVATION, "cancelled", boothName);
+    expect(fetchMock.mock.calls[0][1].body).not.toContain("ada@example.com");
+    expect(fetchMock.mock.calls[0][1].body).toContain("Ada Lovelace");
   });
 
   // A hung webhook would hold the booking's own response open behind it.

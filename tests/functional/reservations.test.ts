@@ -1031,6 +1031,42 @@ describe("POST /api/reservations - the Slack notice", () => {
   });
 });
 
+describe("POST /api/reservations - what reaches the Slack channel", () => {
+  const HOOK = "https://hooks.slack.com/services/T0/B0/secret";
+  const fetchMock = vi.fn();
+
+  // The real builder runs here, so this pins what actually leaves the server.
+  beforeEach(async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", HOOK);
+    fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    const real = await vi.importActual<Slack>("@/lib/slack");
+    vi.mocked(slack.postReservationToSlack).mockImplementation(
+      real.postReservationToSlack,
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("names the booker but never posts their email", async () => {
+    expect((await post(ok)).status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe(HOOK);
+    const sent = fetchMock.mock.calls[0][1].body as string;
+    expect(sent).toContain("Ada Lovelace");
+    expect(sent).not.toContain("ada@example.com");
+  });
+
+  it("keeps the email out of a pending request too", async () => {
+    await post({ ...ok, end: "17:00", note: "Workshop" });
+    const sent = fetchMock.mock.calls[0][1].body as string;
+    expect(sent).toContain("Awaiting approval");
+    expect(sent).not.toContain("ada@example.com");
+  });
+});
+
 describe("a write whose body is not an object", () => {
   const bodies = [
     ["a literal null", "null"],
