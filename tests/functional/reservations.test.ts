@@ -695,6 +695,108 @@ describe("GET /api/reservations", () => {
   });
 });
 
+describe("GET /api/reservations - order", () => {
+  // Each request arrives an hour after the one before, for a slot out of step with it.
+  const SLOTS: [name: string, start: string, status?: "pending"][] = [
+    ["First", "16:00"],
+    ["Second", "09:00", "pending"],
+    ["Third", "13:00"],
+    ["Fourth", "07:00", "pending"],
+    ["Fifth", "11:00"],
+  ];
+  beforeEach(() => {
+    for (const [hour, [fullName, start, status]] of SLOTS.entries()) {
+      vi.setSystemTime(new Date(Date.UTC(2026, 6, 1, hour)));
+      db.createReservation(
+        {
+          boothId: "booth-1",
+          startsAt: `${DAY}T${start}`,
+          endsAt: `${DAY}T${start.slice(0, 2)}:30`,
+          fullName,
+          email: `${fullName.toLowerCase()}@example.com`,
+        },
+        status ?? "confirmed",
+      );
+    }
+  });
+
+  const names = async (
+    query: string,
+    token: string | undefined = adminToken(),
+  ) => {
+    const res = await route.GET(
+      makeRequest(`/api/reservations${query}`, { token }),
+    );
+    const body = (await res.json()) as {
+      reservations?: { fullName: string }[];
+    };
+    return {
+      status: res.status,
+      names: body.reservations?.map((r) => r.fullName),
+    };
+  };
+  const newest = ["Fifth", "Fourth", "Third", "Second", "First"];
+
+  it("lists the newest request first, not the latest slot", async () => {
+    expect(await names("")).toEqual({ status: 200, names: newest });
+    expect((await names("?status=all")).names).toEqual(newest);
+  });
+
+  it("serves the view the dashboard opens on in that order", async () => {
+    const opening = "?status=all&q=&page=1&pageSize=25&counts=0";
+    expect((await names(opening)).names).toEqual(newest);
+  });
+
+  it("keeps that order inside a status tab", async () => {
+    expect((await names("?status=pending")).names).toEqual([
+      "Fourth",
+      "Second",
+    ]);
+    expect((await names("?status=confirmed")).names).toEqual([
+      "Fifth",
+      "Third",
+      "First",
+    ]);
+  });
+
+  it("keeps that order across pages and through a search", async () => {
+    expect((await names("?pageSize=2&page=1")).names).toEqual([
+      "Fifth",
+      "Fourth",
+    ]);
+    expect((await names("?pageSize=2&page=2")).names).toEqual([
+      "Third",
+      "Second",
+    ]);
+    expect((await names("?pageSize=2&page=3")).names).toEqual(["First"]);
+    expect((await names("?q=f")).names).toEqual(["Fifth", "Fourth", "First"]);
+  });
+
+  it("falls back to the same order for an unknown status", async () => {
+    expect((await names("?status=bogus")).names).toEqual(newest);
+  });
+
+  it("leaves a cancelled request where it was asked, and hides a deleted one", async () => {
+    const all = db.queryReservations().reservations;
+    const idOf = (name: string) => all.find((r) => r.fullName === name)!.id;
+    vi.setSystemTime(new Date(Date.UTC(2026, 6, 2)));
+    db.updateReservationStatus(idOf("First"), "cancelled");
+    db.updateReservationStatus(idOf("Third"), "deleted");
+
+    expect((await names("")).names).toEqual([
+      "Fifth",
+      "Fourth",
+      "Second",
+      "First",
+    ]);
+    expect((await names("?status=deleted")).names).toEqual(["Third"]);
+  });
+
+  it("401s without an admin session and lists nothing", async () => {
+    expect(await names("", "")).toEqual({ status: 401, names: undefined });
+  });
+});
+
 describe("GET /api/reservations - page size", () => {
   const sizeOf = async (query: string) => {
     const res = await route.GET(

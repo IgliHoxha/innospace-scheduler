@@ -68,9 +68,13 @@ export class UserBusyError extends Error {
 // No migrations: a column change means wiping the DB file.
 function initSchema(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
-  // Serves the dashboard's ORDER BY, so LIMIT stops early without a sort.
+  // Serves every lookup by day, which the public board runs on each visit.
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
+  );
+  // Serves the dashboard's ORDER BY, so LIMIT stops early without a sort.
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_reservations_newest ON reservations(createdAt, startsAt);`,
   );
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);`,
@@ -215,9 +219,10 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
       .get(...params) as { n: number }
   ).n;
 
+  // Newest request on top: "latest" means asked for last, not booked for latest.
   const rows = db
     .prepare(
-      `SELECT * FROM reservations ${whereSql} ORDER BY startsAt DESC, createdAt DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM reservations ${whereSql} ORDER BY createdAt DESC, startsAt DESC LIMIT ? OFFSET ?`,
     )
     .all(...params, pageSize, (page - 1) * pageSize) as Row[];
 

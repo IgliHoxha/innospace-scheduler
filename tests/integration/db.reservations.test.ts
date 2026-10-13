@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadDb } from "../helpers/app";
 
 type Db = Awaited<ReturnType<typeof loadDb>>;
@@ -170,6 +170,110 @@ describe("queryReservations", () => {
     db.updateReservationStatus(r.id, "deleted");
     expect(db.queryReservations().total).toBe(0);
     expect(db.queryReservations({ filter: "deleted" }).total).toBe(1);
+  });
+});
+
+describe("queryReservations order", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
+  afterEach(() => vi.useRealTimers());
+
+  // Each request arrives an hour after the one before it.
+  let hour = 0;
+  const ask = (
+    fullName: string,
+    start: string,
+    end: string,
+    over?: Parameters<typeof reserve>[2],
+  ) => {
+    vi.setSystemTime(new Date(Date.UTC(2026, 6, 1, hour++)));
+    return reserve(start, end, { fullName, ...over });
+  };
+  const names = (page: { reservations: { fullName?: string }[] }) =>
+    page.reservations.map((r) => r.fullName);
+
+  it("lists the newest request first, whatever time each one is for", async () => {
+    await ask("First", "16:00", "16:30");
+    await ask("Second", "09:00", "09:30");
+    await ask("Third", "12:00", "12:30");
+
+    expect(names(db.queryReservations())).toEqual(["Third", "Second", "First"]);
+    expect(names(db.queryReservations({ filter: "all" }))).toEqual([
+      "Third",
+      "Second",
+      "First",
+    ]);
+  });
+
+  it("orders by the moment of the request across days and booths", async () => {
+    await ask("Far", "10:00", "10:30", {
+      startsAt: "2026-12-24T10:00",
+      endsAt: "2026-12-24T10:30",
+    });
+    await ask("Near", "10:00", "10:30", { boothId: "booth-2" });
+    await ask("Middle", "10:00", "10:30", {
+      startsAt: "2026-09-01T10:00",
+      endsAt: "2026-09-01T10:30",
+    });
+
+    expect(names(db.queryReservations())).toEqual(["Middle", "Near", "Far"]);
+  });
+
+  it("keeps that order inside every status tab", async () => {
+    const made = [
+      await ask("First", "16:00", "16:30"),
+      await ask("Second", "09:00", "09:30"),
+      await ask("Third", "12:00", "12:30"),
+    ];
+    const newest = ["Third", "Second", "First"];
+    expect(names(db.queryReservations({ filter: "confirmed" }))).toEqual(
+      newest,
+    );
+    for (const status of ["pending", "cancelled", "deleted"] as const) {
+      for (const r of made) db.updateReservationStatus(r.id, status);
+      expect(names(db.queryReservations({ filter: status }))).toEqual(newest);
+    }
+  });
+
+  it("is not reshuffled by a status change, which only touches updatedAt", async () => {
+    const first = await ask("First", "16:00", "16:30");
+    await ask("Second", "09:00", "09:30");
+    await ask("Third", "12:00", "12:30");
+
+    vi.setSystemTime(new Date(Date.UTC(2026, 6, 2)));
+    db.updateReservationStatus(first.id, "cancelled");
+
+    expect(names(db.queryReservations())).toEqual(["Third", "Second", "First"]);
+  });
+
+  it("keeps that order through a search and across pages", async () => {
+    await ask("Ada One", "16:00", "16:30");
+    await ask("Bob", "09:00", "09:30", { email: "bob@example.com" });
+    await ask("Ada Two", "12:00", "12:30");
+    await ask("Ada Three", "08:00", "08:30");
+
+    expect(names(db.queryReservations({ search: "ada " }))).toEqual([
+      "Ada Three",
+      "Ada Two",
+      "Ada One",
+    ]);
+    const page = (n: number) =>
+      names(db.queryReservations({ pageSize: 2, page: n }));
+    expect(page(1)).toEqual(["Ada Three", "Ada Two"]);
+    expect(page(2)).toEqual(["Bob", "Ada One"]);
+    expect(page(3)).toEqual([]);
+  });
+
+  it("puts the later slot first when two requests share an instant", async () => {
+    vi.setSystemTime(new Date(Date.UTC(2026, 6, 3)));
+    await reserve("09:00", "09:30", { fullName: "Early slot" });
+    await reserve("15:00", "15:30", { fullName: "Late slot" });
+    await reserve("12:00", "12:30", { fullName: "Noon slot" });
+
+    expect(names(db.queryReservations())).toEqual([
+      "Late slot",
+      "Noon slot",
+      "Early slot",
+    ]);
   });
 });
 

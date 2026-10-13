@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getReservation, updateReservationStatus } from "@/lib/db";
-import { sendReservationEmail } from "@/lib/email";
-import { boothName } from "@/lib/booths";
-import { postReservationToSlack } from "@/lib/slack";
+import { changeReservationStatus } from "@/lib/reservation-actions";
 import { requireAdmin } from "@/lib/api-auth";
 import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
@@ -33,33 +30,15 @@ export async function PATCH(
     return jsonError("That email body is too long.", 400);
   }
 
-  // Only a pending row becomes an approval; sync reads cannot interleave.
-  const before = getReservation(id);
-  // One atomic UPDATE ... RETURNING: a separate existence read would race.
-  const reservation = updateReservationStatus(id, status);
-  if (!reservation) {
+  // Emails the booker and tells Slack; neither failing fails the change.
+  const changed = await changeReservationStatus(
+    id,
+    status,
+    typeof emailBody === "string" ? emailBody : undefined,
+  );
+  if (!changed) {
     return jsonError("Not found.", 404);
   }
 
-  // A failed email must not fail the status change.
-  if (status === "confirmed" || status === "cancelled") {
-    try {
-      await sendReservationEmail(
-        reservation,
-        status,
-        typeof emailBody === "string" ? emailBody : undefined,
-      );
-    } catch (err) {
-      console.error("[reservations] status email failed:", err);
-    }
-  }
-
-  // The booking was announced when made, so only a verdict on it is news.
-  if (status === "cancelled") {
-    await postReservationToSlack(reservation, "cancelled", boothName, "admin");
-  } else if (status === "confirmed" && before?.status === "pending") {
-    await postReservationToSlack(reservation, "approved", boothName);
-  }
-
-  return NextResponse.json({ ok: true, reservation });
+  return NextResponse.json({ ok: true, reservation: changed.reservation });
 }

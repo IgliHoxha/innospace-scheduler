@@ -137,6 +137,56 @@ restarts, which is fine for a single Fly machine.
 Secrets live only in `.env` (gitignored) locally and in `fly secrets` in
 production. They are never committed.
 
+## Telegram alert
+
+Optional. With `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, every new
+reservation is sent to that Telegram chat: full name, email, booth, date, time
+and the note when there is one, then a link to the dashboard. A reservation
+that needs approval is headed "Reservation awaiting approval". It is one plain
+call to the Bot API ([`src/lib/telegram.ts`](src/lib/telegram.ts)), with no
+library, and a failed alert never costs anyone their slot.
+
+1. In Telegram, message `@BotFather`, send `/newbot` and copy the token.
+2. Open the new bot and press **Start**: a bot cannot write to you before that.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy
+   `message.chat.id`. A private chat has the same id whichever bot you ask.
+4. `fly secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...`
+
+### Answering an alert
+
+With `TELEGRAM_WEBHOOK_SECRET` set as well, replying to an alert acts on that
+reservation, through the same code as the dashboard's buttons
+([`src/lib/reservation-actions.ts`](src/lib/reservation-actions.ts)):
+
+| Reply | Does | Booker email |
+| --- | --- | --- |
+| `yes` | Approves a reservation awaiting approval | Confirmation |
+| `no` | Cancels it (rejects one awaiting approval) | Cancellation |
+| `delete` | Moves it to the Deleted tab | None |
+
+The dashboard's limits apply: only a reservation awaiting approval can be
+approved, only one still holding its slot can be cancelled, and a reply that
+would change nothing is answered and left alone. The bot says what happened,
+including whether the email went out. The reply must be made **to the
+reservation's own message**, which is how the bot knows which one is meant.
+
+One-time setup, after the code is deployed:
+
+```bash
+SECRET=$(openssl rand -hex 32)
+fly secrets set TELEGRAM_WEBHOOK_SECRET=$SECRET
+
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://scheduler.innospacetirana.com/api/telegram/webhook" \
+  -d "secret_token=$SECRET" \
+  -d 'allowed_updates=["message"]'
+```
+
+Only the configured chat is listened to, and everyone in it can act with admin
+power, so keep it to admins. If replies get no answer,
+`curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"` shows the last
+error Telegram met; a `403` there usually means Cloudflare challenged it.
+
 ## Deploy (Fly.io)
 
 `fly.toml` targets the `innospace-scheduler` app in region `fra`, with a 1 GB

@@ -42,6 +42,7 @@ import {
 import { createCancelToken } from "@/lib/auth";
 import { sendReservationEmail } from "@/lib/email";
 import { postReservationToSlack } from "@/lib/slack";
+import { notifyNewReservation } from "@/lib/telegram";
 import {
   approvalRequiredFor,
   dayEndMinute,
@@ -218,6 +219,7 @@ export async function POST(req: NextRequest) {
 
     // After the email, so the channel never announces a discarded booking.
     await postReservationToSlack(reservation, status, boothName);
+    await notifyNewReservation(reservation, boothName);
 
     // The proof the email link carries, so this browser can cancel without it.
     const expiresAt = epochMsOf(reservation.endsAt ?? endsAt);

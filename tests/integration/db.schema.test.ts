@@ -21,6 +21,22 @@ function indexNames(file: string): string[] {
   return rows.map((r) => r.name);
 }
 
+function indexColumns(file: string, index: string): string[] {
+  const d = new Database(file);
+  const rows = d.pragma(`index_info(${index})`) as { name: string }[];
+  d.close();
+  return rows.map((r) => r.name);
+}
+
+function queryPlan(file: string, sql: string): string {
+  const d = new Database(file);
+  const rows = d.prepare(`EXPLAIN QUERY PLAN ${sql}`).all() as {
+    detail: string;
+  }[];
+  d.close();
+  return rows.map((r) => r.detail).join("\n");
+}
+
 function columnNames(file: string, table: string): string[] {
   const d = new Database(file);
   const rows = d.pragma(`table_info(${table})`) as { name: string }[];
@@ -47,9 +63,81 @@ describe("schema init", () => {
     expect(indexNames(file)).toEqual(
       expect.arrayContaining([
         "idx_reservations_order",
+        "idx_reservations_newest",
         "idx_reservations_slot",
       ]),
     );
+  });
+
+  it("indexes the request time first, which is what the dashboard sorts by", async () => {
+    const db = await loadDb();
+    const file = process.env.DATA_FILE as string;
+    db.queryReservations({});
+    expect(indexColumns(file, "idx_reservations_newest")).toEqual([
+      "createdAt",
+      "startsAt",
+    ]);
+    expect(indexColumns(file, "idx_reservations_order")).toEqual([
+      "startsAt",
+      "createdAt",
+    ]);
+  });
+
+  it("reads the dashboard's list off that index, with no sort step", async () => {
+    const db = await loadDb();
+    const file = process.env.DATA_FILE as string;
+    db.queryReservations({});
+    for (const where of ["status != 'deleted'", "status = 'pending'"]) {
+      const plan = queryPlan(
+        file,
+        `SELECT * FROM reservations WHERE ${where} ORDER BY createdAt DESC, startsAt DESC LIMIT 25 OFFSET 0`,
+      );
+      expect(plan).toContain("idx_reservations_newest");
+      expect(plan).not.toContain("TEMP B-TREE");
+    }
+  });
+
+  it("still serves a day's lookups from the slot-time index", async () => {
+    const db = await loadDb();
+    const file = process.env.DATA_FILE as string;
+    db.queryReservations({});
+    const plan = queryPlan(
+      file,
+      "SELECT email FROM reservations WHERE startsAt BETWEEN '2026-07-16T00:00' AND '2026-07-16T23:59' ORDER BY startsAt",
+    );
+    expect(plan).toContain("idx_reservations_order");
+    expect(plan).not.toContain("TEMP B-TREE");
+  });
+
+  it("adds the new index to a database made before it existed, keeping the rows", async () => {
+    resetApp();
+    const file = process.env.DATA_FILE as string;
+
+    // The schema as it was: the table and the two older indexes only.
+    const old = new Database(file);
+    old.exec(`
+      CREATE TABLE reservations (
+        id TEXT PRIMARY KEY, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+        status TEXT NOT NULL, fullName TEXT, email TEXT, boothId TEXT NOT NULL,
+        startsAt TEXT NOT NULL, endsAt TEXT NOT NULL, note TEXT
+      );
+      CREATE INDEX idx_reservations_order ON reservations(startsAt, createdAt);
+      CREATE INDEX idx_reservations_slot ON reservations(boothId, startsAt, status);
+      INSERT INTO reservations VALUES
+        ('a', '2026-07-01T08:00:00.000Z', '2026-07-01T08:00:00.000Z', 'confirmed', 'Asked first', 'a@example.com', 'booth-1', '2026-07-20T16:00', '2026-07-20T17:00', NULL),
+        ('b', '2026-07-02T08:00:00.000Z', '2026-07-02T08:00:00.000Z', 'confirmed', 'Asked last', 'b@example.com', 'booth-1', '2026-07-10T09:00', '2026-07-10T10:00', NULL);
+    `);
+    old.close();
+    expect(indexNames(file)).not.toContain("idx_reservations_newest");
+
+    const db = await import("@/lib/db");
+    const page = db.queryReservations({});
+
+    expect(indexNames(file)).toContain("idx_reservations_newest");
+    expect(page.reservations.map((r) => r.fullName)).toEqual([
+      "Asked last",
+      "Asked first",
+    ]);
   });
 
   // Booking is login-less, so there is nobody to store.

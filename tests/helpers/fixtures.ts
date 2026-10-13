@@ -14,3 +14,8 @@ export const PLAINTEXT = "hash-me-fixture";
 /** Dummy HMAC signing secrets (AUTH_SECRET); the two must differ. */
 export const SIGNING = "fixture-signing-a";
 export const SIGNING_ALT = "fixture-signing-b";
+
+/** Dummy Telegram bot token, the chat it alerts and its webhook's secret. */
+export const BOT_TOKEN = "fixture-bot-token";
+export const BOT_CHAT = "-1001234";
+export const WEBHOOK_SECRET = "fixture-webhook-secret";
