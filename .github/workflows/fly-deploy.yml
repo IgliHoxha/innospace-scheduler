@@ -5,25 +5,91 @@ on:
   push:
     branches:
       - master
+  pull_request:
   workflow_dispatch: # allow manual deploys from the Actions tab
+
+permissions:
+  contents: read
+
+# Master runs queue in push order and are never cut off mid-release; a newer push to a PR replaces the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Tagging the image with its commit is how the next run knows what is live.
+  IMAGE_LABEL: sha-${{ github.sha }}
+
 jobs:
-  deploy:
-    name: Deploy app
+  check:
+    name: Lint, types and tests
     runs-on: ubuntu-latest
-    concurrency: deploy-group # optional: ensure only one action runs at a time
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-        # fly.toml is gitignored (config lives in `fly secrets`); the committed
-        # fly.toml.example carries the non-secret app config CI deploys with.
-      - run: flyctl deploy --remote-only --ha=false --config fly.toml.example
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run typecheck:tests
+      - run: npm run test
+
+  # Runs beside the checks, not after them, so the gate adds no time to a deploy.
+  build:
+    name: Build image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release: ${{ steps.live.outputs.release }}
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the diff below needs the commit that is live
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+      # Compared with what is live, not with the previous push, so a failed or superseded run is never skipped over.
+      - name: Has anything that ships changed?
+        id: live
+        run: |
+          live=$(flyctl image show --config fly.toml.example --json | jq -r '.[0].Tag // empty' | sed -n 's/^sha-//p')
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] &&
+            git diff --quiet "$live" HEAD -- . ':!tests' ':!docs' ':!.github' ':!*.md' ':!vitest.config.ts'; then
+            echo "::notice::Nothing in the image changed since $live, so there is nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+      # fly.toml is gitignored, so CI uses the committed template.
+      - name: Build and push
+        if: steps.live.outputs.release == 'true'
+        run: flyctl deploy --build-only --push --remote-only --image-label "$IMAGE_LABEL" --config fly.toml.example
+
+  deploy:
+    name: Release
+    needs: [check, build]
+    if: needs.build.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+      - run: flyctl deploy --image "registry.fly.io/innospace-scheduler:$IMAGE_LABEL" --ha=false --config fly.toml.example
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      # Cloudflare caches the booking shell at the edge, so a deploy that does not
-      # purge leaves visitors on the previous build. Purges that one URL rather
-      # than the whole zone: innospacetirana.com is shared with the marketing
-      # site, and purge_everything would make it pay a cold start on our deploys.
+      # Straight to the origin: through Cloudflare the edge would answer with its copy of the old build.
+      - name: Smoke test the new release
+        run: |
+          curl --fail -sS -o /dev/null --retry 5 --retry-delay 3 --retry-all-errors --max-time 30 \
+            -w 'origin answered %{http_code} in %{time_total}s\n' https://innospace-scheduler.fly.dev/
+
+      # One URL, not the zone: innospacetirana.com is shared with the marketing site.
       - name: Purge Cloudflare cache
         env:
           CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}

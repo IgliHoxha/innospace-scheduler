@@ -5,6 +5,11 @@ const nextConfig = {
   output: "standalone",
   // Kept external so the native .node binary loads from node_modules.
   serverExternalPackages: ["better-sqlite3"],
+  // Every image is a plain <img>, so the optimizer is off and its native libvips stays out of the image.
+  images: { unoptimized: true },
+  outputFileTracingExcludes: {
+    "*": ["node_modules/@img/**", "node_modules/sharp/**"],
+  },
 
   // Edge caching stops crawlers waking the Fly machine; browsers revalidate.
   async headers() {

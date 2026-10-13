@@ -4,10 +4,21 @@ node_modules
 .gitignore
 data
 *.md
-.env
-.env*.local
 .DS_Store
 npm-debug.log*
+*.tsbuildinfo
 Dockerfile
 .dockerignore
 docker-compose.yml
+
+# Every .env variant holds real secrets: runtime config comes from the platform.
+.env*
+
+# Never part of the image, so a change to these must not rebuild it.
+tests
+coverage
+docs
+.github
+vitest.config.ts
+Makefile
+fly.toml*

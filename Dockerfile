@@ -6,7 +6,8 @@ WORKDIR /app
 # Build tools to compile the native better-sqlite3 module on musl/alpine.
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
-RUN npm ci
+# The npm cache outlives this layer, so a lockfile change refetches only what moved.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # ---- Build ----
 FROM node:22-alpine AS builder
@@ -14,7 +15,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# Next keeps its compiler cache here, so a rebuild recompiles only what changed.
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 # ---- Runtime ----
 FROM node:22-alpine AS runner
@@ -34,12 +36,9 @@ RUN mkdir -p /app/data && chown -R node:node /app
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
-# Ensure the native sqlite module (with its compiled .node binary) is present.
-COPY --from=builder --chown=node:node /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder --chown=node:node /app/node_modules/bindings ./node_modules/bindings
-COPY --from=builder --chown=node:node /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
-COPY --chown=node:node docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+# The standalone trace carries the native sqlite binary: fail the build if it ever stops loading.
+RUN node -e "new (require('better-sqlite3'))(':memory:').close()"
+COPY --chown=node:node --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Starts as root so the entrypoint can chown a freshly mounted volume, then it
 # drops to the unprivileged "node" user before running the server.
