@@ -3,7 +3,7 @@ import { optionalEnv, requireEnv } from "./env-app";
 import type { Reservation } from "./types";
 import { boothLabel, dateText, timeText, type BoothNamer } from "./templates";
 
-/** "skipped" is no bot configured; only "failed" means Telegram refused it. */
+/** "skipped" is no bot configured or nothing to approve; only "failed" means Telegram refused it. */
 export type TelegramOutcome = "sent" | "skipped" | "failed";
 
 const API_URL = "https://api.telegram.org";
@@ -20,18 +20,10 @@ export function repliesEnabled(): boolean {
   return !!optionalEnv("TELEGRAM_WEBHOOK_SECRET");
 }
 
-// A confirmed booking has nothing to approve, so "yes" is not offered on it.
-function replyWords(r: Reservation): { hint: string; placeholder: string } {
-  return r.status === "pending"
-    ? {
-        hint: "Reply yes to approve, no to reject, or delete to delete it.",
-        placeholder: "yes, no or delete",
-      }
-    : {
-        hint: "Reply no to cancel, or delete to delete it.",
-        placeholder: "no or delete",
-      };
-}
+// Every alert is for a booking awaiting approval, so all three words apply to it.
+const ALERT_HINT =
+  "Reply yes to approve, no to reject, or delete to delete it.";
+const ALERT_PLACEHOLDER = "yes, no or delete";
 
 /** Plain text, no parse_mode: a guest's stray "_" or "<" would get it refused. */
 export function newReservationText(
@@ -48,15 +40,13 @@ export function newReservationText(
     ["Notes", r.note?.trim() ?? ""],
   ];
   return [
-    r.status === "pending"
-      ? "Reservation awaiting approval"
-      : "New reservation",
+    "Reservation awaiting approval",
     "",
     ...details
       .filter(([, value]) => value)
       .map(([label, value]) => `${label}: ${value}`),
     "",
-    ...(repliesEnabled() ? [replyWords(r).hint, ""] : []),
+    ...(repliesEnabled() ? [ALERT_HINT, ""] : []),
     // Last, past all guest text: a reply finds its reservation by this id.
     `${requireEnv("APP_BASE_URL").replace(/\/$/, "")}/dashboard#${r.id}`,
   ].join("\n");
@@ -112,13 +102,15 @@ export async function notifyNewReservation(
   r: Reservation,
   boothName: BoothNamer,
 ): Promise<TelegramOutcome> {
+  // An auto-confirmed booking needs nothing from the admin, so only one awaiting approval is sent.
+  if (r.status !== "pending") return "skipped";
   return send(() => ({
     text: newReservationText(r, boothName),
     // Opens the reply box on this alert, so a typed word is a reply to it.
     ...(repliesEnabled() && {
       reply_markup: {
         force_reply: true,
-        input_field_placeholder: replyWords(r).placeholder,
+        input_field_placeholder: ALERT_PLACEHOLDER,
       },
     }),
   }));

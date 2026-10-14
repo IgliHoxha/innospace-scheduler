@@ -140,9 +140,10 @@ production. They are never committed.
 ## Telegram alert
 
 Optional. With `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, every new
-reservation is sent to that Telegram chat: full name, email, booth, date, time
-and the note when there is one, then a link to the dashboard. A reservation
-that needs approval is headed "Reservation awaiting approval". It is one plain
+reservation that needs approval (longer than `AUTO_APPROVE_MAX_HOURS`) is sent
+to that Telegram chat, headed "Reservation awaiting approval": full name, email,
+booth, date, time and the note, then a link to the dashboard. A booking that is
+confirmed on its own is not sent, since there is nothing to answer. It is one plain
 call to the Bot API ([`src/lib/telegram.ts`](src/lib/telegram.ts)), with no
 library, and a failed alert never costs anyone their slot.
 

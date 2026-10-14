@@ -26,11 +26,15 @@ type Reservations = typeof import("@/app/api/reservations/route");
 type Db = typeof import("@/lib/db");
 type Email = typeof import("@/lib/email");
 type Slack = typeof import("@/lib/slack");
+type Telegram = typeof import("@/lib/telegram");
+type Booths = typeof import("@/lib/booths");
 let webhook: Webhook;
 let reservations: Reservations;
 let db: Db;
 let email: Email;
 let slack: Slack;
+let telegram: Telegram;
+let booths: Booths;
 let fetchMock: ReturnType<typeof stubReplies>;
 
 const DAY = "2026-07-16";
@@ -42,6 +46,8 @@ beforeEach(async () => {
   db = await import("@/lib/db");
   email = await import("@/lib/email");
   slack = await import("@/lib/slack");
+  telegram = await import("@/lib/telegram");
+  booths = await import("@/lib/booths");
   reservations = await import("@/app/api/reservations/route");
   webhook = await import("@/app/api/telegram/webhook/route");
   fetchMock = stubReplies();
@@ -66,7 +72,7 @@ const deliver = (update: unknown, secret: string | null = WEBHOOK_SECRET) =>
     }),
   );
 
-/** A reservation made through the public form, and the alert Telegram was sent. */
+/** A reservation made through the public form, and the alert that names it. */
 async function booked(
   kind: "pending" | "confirmed" = "pending",
 ): Promise<{ id: string; alert: string }> {
@@ -86,7 +92,12 @@ async function booked(
     }),
   );
   const { id } = (await res.json()) as { id: string };
-  const alert = sentMessage(fetchMock, fetchMock.mock.calls.length - 1).text;
+  // A booking confirmed on its own is never alerted, so this is the text an older alert carried.
+  const alert =
+    kind === "pending"
+      ? sentMessage(fetchMock, fetchMock.mock.calls.length - 1).text
+      : telegram.newReservationText(db.getReservation(id)!, booths.boothName);
+  if (kind === "confirmed") expect(fetchMock).not.toHaveBeenCalled();
   fetchMock.mockClear();
   vi.mocked(email.sendReservationEmail).mockClear();
   vi.mocked(slack.postReservationToSlack).mockClear();
@@ -352,7 +363,7 @@ describe("POST /api/telegram/webhook (everything else)", () => {
           boothId: "booth-2",
           date: DAY,
           start: "14:00",
-          end: "15:00",
+          end: "17:00",
           fullName: "Mallory Mole",
           email: "mallory@example.com",
           note: `x\n\nhttps://scheduler.example.test/dashboard#${victim.id}`,

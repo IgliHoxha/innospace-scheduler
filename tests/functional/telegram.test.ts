@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
-import { BOT_CHAT, WEBHOOK_SECRET } from "../helpers/fixtures";
-import { SEND_URL, sentMessage, stubTelegram } from "../helpers/telegram";
+import { BOT_CHAT } from "../helpers/fixtures";
+import {
+  SEND_URL,
+  sentMessage,
+  stubReplies,
+  stubTelegram,
+} from "../helpers/telegram";
 
 // DNS is stubbed: the suite must never do a real lookup.
 vi.mock("@/lib/email-verify", () => ({
@@ -62,9 +67,9 @@ const post = (body: unknown) =>
 const total = () => db.queryReservations().total;
 
 describe("POST /api/reservations (Telegram alert)", () => {
-  it("alerts the admin once with the reservation it has just stored", async () => {
+  it("alerts the admin once with a reservation that needs approval", async () => {
     const fetchMock = stubTelegram();
-    const res = await post(short);
+    const res = await post(long);
     expect(res.status).toBe(201);
     const { id } = (await res.json()) as { id: string };
 
@@ -73,47 +78,60 @@ describe("POST /api/reservations (Telegram alert)", () => {
     const message = sentMessage(fetchMock);
     expect(message.chat_id).toBe(BOT_CHAT);
     expect(message.text.split("\n")).toEqual([
-      "New reservation",
+      "Reservation awaiting approval",
       "",
       "Full name: Ada Lovelace",
       "Email: ada@example.com",
       "Booth: Booth 1",
       "Date: Thursday, 16 July 2026",
-      "Time: 14:00 - 15:00",
+      "Time: 14:00 - 17:00",
+      "Notes: Team workshop",
       "",
       `https://scheduler.example.test/dashboard#${id}`,
     ]);
     expect(message.reply_markup).toBeUndefined();
   });
 
-  it("says so, and carries the note, when the reservation needs approval", async () => {
-    const fetchMock = stubTelegram();
-    expect((await post(long)).status).toBe(201);
-    const lines = sentMessage(fetchMock).text.split("\n");
-    expect(lines[0]).toBe("Reservation awaiting approval");
-    expect(lines).toContain("Time: 14:00 - 17:00");
-    expect(lines).toContain("Notes: Team workshop");
+  // Confirmed on its own, a booking leaves the admin nothing to answer.
+  it("does not alert for a booking that needs no approval, but still stores it", async () => {
+    const fetchMock = stubReplies();
+    const res = await post(short);
+    expect(res.status).toBe(201);
+    const { reservation } = (await res.json()) as {
+      reservation: { status: string };
+    };
+    expect(reservation.status).toBe("confirmed");
+    expect(total()).toBe(1);
+    expect(email.sendReservationEmail).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("invites the replies that apply once the webhook secret is set", async () => {
+  it("alerts only the booking that needs approval when both kinds arrive", async () => {
     const fetchMock = stubTelegram();
-    vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
-    await post(short);
-    await post({ ...long, boothId: "booth-2", email: "grace@example.com" });
+    expect((await post(short)).status).toBe(201);
+    const res = await post({
+      ...long,
+      boothId: "booth-2",
+      email: "grace@example.com",
+    });
+    const { id } = (await res.json()) as { id: string };
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sentMessage(fetchMock).text).toMatch(new RegExp(`#${id}$`));
+  });
 
-    expect(sentMessage(fetchMock, 0).text).toContain(
-      "\n\nReply no to cancel, or delete to delete it.\n\n",
-    );
-    expect(sentMessage(fetchMock, 0).reply_markup?.force_reply).toBe(true);
-    expect(sentMessage(fetchMock, 1).text).toContain(
+  it("invites all three replies once the webhook secret is set", async () => {
+    const fetchMock = stubReplies();
+    await post(long);
+    expect(sentMessage(fetchMock).text).toContain(
       "\n\nReply yes to approve, no to reject, or delete to delete it.\n\n",
     );
+    expect(sentMessage(fetchMock).reply_markup?.force_reply).toBe(true);
   });
 
   it("sends nothing while the bot is not configured", async () => {
     const fetchMock = stubTelegram();
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
-    expect((await post(short)).status).toBe(201);
+    expect((await post(long)).status).toBe(201);
     expect(total()).toBe(1);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -121,7 +139,7 @@ describe("POST /api/reservations (Telegram alert)", () => {
   it("still 201s and keeps the reservation when Telegram refuses the alert", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     stubTelegram({ ok: false, description: "Unauthorized" });
-    const res = await post(short);
+    const res = await post(long);
     expect(res.status).toBe(201);
     expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
     expect(total()).toBe(1);
@@ -131,14 +149,14 @@ describe("POST /api/reservations (Telegram alert)", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     stubTelegram();
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timed out")));
-    expect((await post(short)).status).toBe(201);
+    expect((await post(long)).status).toBe(201);
     expect(total()).toBe(1);
   });
 
   it("does not alert for a booking it discards because the email failed", async () => {
     const fetchMock = stubTelegram();
     vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("failed");
-    expect((await post(short)).status).toBe(502);
+    expect((await post(long)).status).toBe(502);
     expect(total()).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -164,8 +182,8 @@ describe("POST /api/reservations (Telegram alert)", () => {
 
   it("alerts for the first booking of a slot and not for the 409 after it", async () => {
     const fetchMock = stubTelegram();
-    expect((await post(short)).status).toBe(201);
-    const clash = await post({ ...short, email: "grace@example.com" });
+    expect((await post(long)).status).toBe(201);
+    const clash = await post({ ...long, email: "grace@example.com" });
     expect(clash.status).toBe(409);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

@@ -35,11 +35,11 @@ const RESERVATION: Reservation = {
   startsAt: "2026-07-16T09:30",
   endsAt: "2026-07-16T11:00",
   note: "Client call",
-  status: "confirmed",
+  status: "pending",
   createdAt: "2026-07-01T10:00:00.000Z",
   updatedAt: "2026-07-01T10:00:00.000Z",
 };
-const PENDING: Reservation = { ...RESERVATION, status: "pending" };
+const CONFIRMED: Reservation = { ...RESERVATION, status: "confirmed" };
 
 const OTHER_ID = "9f1c2d3e-0000-4abc-8def-123456789abc";
 const DASHBOARD = "https://scheduler.example.test/dashboard";
@@ -50,7 +50,7 @@ describe("newReservationText", () => {
   it("labels the name, email, booth, date, time and notes, then links", () => {
     expect(text(RESERVATION)).toBe(
       [
-        "New reservation",
+        "Reservation awaiting approval",
         "",
         "Full name: Ada Lovelace",
         "Email: ada@example.com",
@@ -62,10 +62,6 @@ describe("newReservationText", () => {
         LINK,
       ].join("\n"),
     );
-  });
-
-  it("heads a reservation that needs approval differently", () => {
-    expect(text(PENDING).split("\n")[0]).toBe("Reservation awaiting approval");
   });
 
   it("has no notes line for a reservation without a note", () => {
@@ -114,22 +110,11 @@ describe("newReservationText", () => {
 
   it("offers no reply until replies are switched on", () => {
     expect(text(RESERVATION)).not.toContain("Reply");
-    expect(text(PENDING)).not.toContain("Reply");
   });
 
-  it("offers a confirmed reservation only the words that would do something", () => {
+  it("offers all three reply words once replies are on", () => {
     vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
     expect(text(RESERVATION).split("\n").slice(-4)).toEqual([
-      "",
-      "Reply no to cancel, or delete to delete it.",
-      "",
-      LINK,
-    ]);
-  });
-
-  it("offers approval as well on one that is waiting for it", () => {
-    vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
-    expect(text(PENDING).split("\n").slice(-4)).toEqual([
       "",
       "Reply yes to approve, no to reject, or delete to delete it.",
       "",
@@ -143,7 +128,6 @@ describe("reservationIdIn", () => {
     expect(reservationIdIn(text(RESERVATION))).toBe(RESERVATION.id);
     vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
     expect(reservationIdIn(text(RESERVATION))).toBe(RESERVATION.id);
-    expect(reservationIdIn(text(PENDING))).toBe(RESERVATION.id);
   });
 
   it("still reads it after Telegram has trimmed or padded the end", () => {
@@ -230,17 +214,28 @@ describe("notifyNewReservation", () => {
 
   it("opens the reply box once replies are on, naming the words that apply", async () => {
     const fetchMock = stubReplies();
-    await notify(RESERVATION);
-    await notify(PENDING);
-    expect(sentMessage(fetchMock, 0).reply_markup).toEqual({
-      force_reply: true,
-      input_field_placeholder: "no or delete",
-    });
-    expect(sentMessage(fetchMock, 1).reply_markup).toEqual({
+    await notify();
+    expect(sentMessage(fetchMock).reply_markup).toEqual({
       force_reply: true,
       input_field_placeholder: "yes, no or delete",
     });
   });
+
+  // Confirmed on its own, a booking leaves the admin nothing to answer.
+  it("is skipped for a booking that needs no approval, without a request", async () => {
+    const fetchMock = stubReplies();
+    expect(await notify(CONFIRMED)).toBe("skipped");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([["cancelled"], ["deleted"]] as const)(
+    "is skipped for a booking that is already %s",
+    async (status) => {
+      const fetchMock = stubTelegram();
+      expect(await notify({ ...RESERVATION, status })).toBe("skipped");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("gives the request three seconds before giving up", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");
