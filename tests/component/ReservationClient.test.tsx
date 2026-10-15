@@ -873,6 +873,11 @@ describe("a guest offered Google sign-in", () => {
     await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
     const link = screen.getByRole("link", { name: "Sign in with Google" });
     expect(link.getAttribute("href")).toBe("/api/auth/google");
+    // Google's mark sits in the button, decorative, so the name stays the words.
+    const mark = link.querySelector("svg.google-mark");
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(mark?.querySelectorAll("path")).toHaveLength(4);
+    expect(link.textContent?.trim()).toBe("Sign in with Google");
     expect(form.name()).toBeTruthy();
     expect(form.email()).toBeTruthy();
     expect(document.getElementById("repeatWeeks")).toBeNull();

@@ -780,6 +780,11 @@ button {
   box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
 }
 
+/* The mark keeps its own colours: the ghost button must not tint it. */
+.google-btn .google-mark {
+  flex: none;
+}
+
 /* The optional sign-in, offered beneath the guest fields, never demanded. */
 .sign-in-offer {
   display: flex;
