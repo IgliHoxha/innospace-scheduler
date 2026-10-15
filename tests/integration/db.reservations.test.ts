@@ -644,6 +644,161 @@ describe("the refusals createReservation throws", () => {
   });
 });
 
+describe("createReservationSeries", () => {
+  const weeks = (
+    n: number,
+    over: Partial<Parameters<Db["createReservation"]>[0]> = {},
+  ) =>
+    Array.from({ length: n }, (_, i) => ({
+      input: {
+        boothId: "booth-1",
+        startsAt: `2026-07-${16 + 7 * i}T10:00`,
+        endsAt: `2026-07-${16 + 7 * i}T11:00`,
+        email: "ada@example.com",
+        fullName: "Ada",
+        ...over,
+      },
+      status: "confirmed" as const,
+    }));
+
+  it("stores every date under one shared series id, in order", () => {
+    const made = db.createReservationSeries(weeks(3));
+    expect(made).toHaveLength(3);
+    const ids = new Set(made.map((r) => r.seriesId));
+    expect(ids.size).toBe(1);
+    expect([...ids][0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(
+      db.seriesReservations(made[0].seriesId!).map((r) => r.startsAt),
+    ).toEqual(["2026-07-16T10:00", "2026-07-23T10:00", "2026-07-30T10:00"]);
+    expect(db.getReservation(made[2].id)?.seriesId).toBe(made[0].seriesId);
+  });
+
+  it("gives a single booking no series id", () => {
+    const [one] = db.createReservationSeries(weeks(1));
+    expect(one.seriesId).toBeUndefined();
+    expect(db.getReservation(one.id)?.seriesId).toBeUndefined();
+    db.updateReservationStatus(one.id, "cancelled");
+    expect(db.createReservation(weeks(1)[0].input).seriesId).toBeUndefined();
+  });
+
+  it("stores nothing when a later date clashes, and names that date", () => {
+    db.createReservation({
+      boothId: "booth-1",
+      startsAt: "2026-07-30T10:30",
+      endsAt: "2026-07-30T11:30",
+      email: "bob@example.com",
+      fullName: "Bob",
+    });
+    let err: Error | null = null;
+    try {
+      db.createReservationSeries(weeks(3));
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeInstanceOf(db.SlotUnavailableError);
+    expect(err?.message).toBe(
+      "Thursday, 30 July 2026: That time slot is no longer available.",
+    );
+    // All or nothing: the two free weeks were rolled back with the clash.
+    expect(db.queryReservations({ filter: "all" }).total).toBe(1);
+  });
+
+  it("names the date when the booker is busy that week, and keeps the class", () => {
+    db.createReservation({
+      boothId: "booth-2",
+      startsAt: "2026-07-23T10:00",
+      endsAt: "2026-07-23T11:00",
+      email: "ada@example.com",
+      fullName: "Ada",
+    });
+    expect(() => db.createReservationSeries(weeks(2))).toThrow(
+      db.UserBusyError,
+    );
+    expect(() => db.createReservationSeries(weeks(2))).toThrow(
+      "Thursday, 23 July 2026: You already have a reservation during that time.",
+    );
+    expect(db.queryReservations({ filter: "all" }).total).toBe(1);
+  });
+
+  it("keeps the plain message for a single booking that clashes", () => {
+    db.createReservation(weeks(1)[0].input);
+    expect(() => db.createReservationSeries(weeks(1))).toThrow(
+      "That time slot is no longer available.",
+    );
+  });
+
+  it("takes a status per date", () => {
+    const entries = weeks(2);
+    entries[1] = { ...entries[1], status: "pending" as never };
+    const made = db.createReservationSeries(entries);
+    expect(made.map((r) => r.status)).toEqual(["confirmed", "pending"]);
+  });
+});
+
+describe("cancelSeriesFrom", () => {
+  const series = () =>
+    db.createReservationSeries(
+      [16, 23, 30].map((d) => ({
+        input: {
+          boothId: "booth-1",
+          startsAt: `2026-07-${d}T10:00`,
+          endsAt: `2026-07-${d}T11:00`,
+          email: "ada@example.com",
+          fullName: "Ada",
+        },
+        status: "confirmed" as const,
+      })),
+    );
+
+  it("cancels the dates from the given moment on and returns them in order", () => {
+    const made = series();
+    const gone = db.cancelSeriesFrom(made[0].seriesId!, "2026-07-20T00:00");
+    expect(gone.map((r) => r.startsAt)).toEqual([
+      "2026-07-23T10:00",
+      "2026-07-30T10:00",
+    ]);
+    expect(gone.every((r) => r.status === "cancelled")).toBe(true);
+    expect(db.getReservation(made[0].id)?.status).toBe("confirmed");
+    expect(db.getReservation(made[1].id)?.status).toBe("cancelled");
+  });
+
+  it("leaves a date already under way alone", () => {
+    const made = series();
+    const gone = db.cancelSeriesFrom(made[0].seriesId!, "2026-07-16T10:30");
+    expect(gone.map((r) => r.startsAt)).toEqual([
+      "2026-07-23T10:00",
+      "2026-07-30T10:00",
+    ]);
+  });
+
+  it("skips dates already cancelled, so a second click cancels nothing", () => {
+    const made = series();
+    db.cancelSeriesFrom(made[0].seriesId!, "2026-07-01T00:00");
+    expect(db.cancelSeriesFrom(made[0].seriesId!, "2026-07-01T00:00")).toEqual(
+      [],
+    );
+  });
+
+  it("touches no other series", () => {
+    const a = series();
+    const b = db.createReservationSeries(
+      [17, 24].map((d) => ({
+        input: {
+          boothId: "booth-2",
+          startsAt: `2026-07-${d}T10:00`,
+          endsAt: `2026-07-${d}T11:00`,
+          email: "bob@example.com",
+          fullName: "Bob",
+        },
+        status: "confirmed" as const,
+      })),
+    );
+    db.cancelSeriesFrom(a[0].seriesId!, "2026-07-01T00:00");
+    expect(db.getReservation(b[0].id)?.status).toBe("confirmed");
+    expect(db.seriesReservations("nope")).toEqual([]);
+  });
+});
+
 describe("queryReservations page size", () => {
   it("lists 25 to a page when the caller names no size", () => {
     expect(db.queryReservations().pageSize).toBe(25);

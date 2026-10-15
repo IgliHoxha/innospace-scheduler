@@ -140,6 +140,62 @@ describe("schema init", () => {
     ]);
   });
 
+  it("adds the series column and its index to a database made before them, keeping the rows", async () => {
+    resetApp();
+    const file = process.env.DATA_FILE as string;
+
+    // The schema as it was: no seriesId column, no series index.
+    const old = new Database(file);
+    old.exec(`
+      CREATE TABLE reservations (
+        id TEXT PRIMARY KEY, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+        status TEXT NOT NULL, fullName TEXT, email TEXT, boothId TEXT NOT NULL,
+        startsAt TEXT NOT NULL, endsAt TEXT NOT NULL, note TEXT
+      );
+      INSERT INTO reservations VALUES
+        ('a', '2026-07-01T08:00:00.000Z', '2026-07-01T08:00:00.000Z', 'confirmed', 'Kept', 'a@example.com', 'booth-1', '2026-07-20T16:00', '2026-07-20T17:00', NULL);
+    `);
+    old.close();
+    expect(columnNames(file, "reservations")).not.toContain("seriesId");
+
+    const db = await import("@/lib/db");
+    const page = db.queryReservations({});
+
+    expect(columnNames(file, "reservations")).toContain("seriesId");
+    expect(indexNames(file)).toContain("idx_reservations_series");
+    expect(indexColumns(file, "idx_reservations_series")).toEqual([
+      "seriesId",
+      "startsAt",
+    ]);
+    expect(page.reservations.map((r) => r.fullName)).toEqual(["Kept"]);
+    expect(page.reservations[0].seriesId).toBeUndefined();
+
+    // The old row and a new series live side by side.
+    const made = db.createReservationSeries(
+      [21, 28].map((d) => ({
+        input: {
+          ...seed,
+          startsAt: `2026-07-${d}T14:00`,
+          endsAt: `2026-07-${d}T15:00`,
+        },
+        status: "confirmed" as const,
+      })),
+    );
+    expect(db.seriesReservations(made[0].seriesId!)).toHaveLength(2);
+  });
+
+  it("walks a series off its own index", async () => {
+    const db = await loadDb();
+    const file = process.env.DATA_FILE as string;
+    db.queryReservations({});
+    const plan = queryPlan(
+      file,
+      "SELECT * FROM reservations WHERE seriesId = 's1' ORDER BY startsAt",
+    );
+    expect(plan).toContain("idx_reservations_series");
+    expect(plan).not.toContain("TEMP B-TREE");
+  });
+
   // Booking is login-less, so there is nobody to store.
   it("creates no users table", async () => {
     const db = await loadDb();
