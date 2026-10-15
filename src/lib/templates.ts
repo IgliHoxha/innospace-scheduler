@@ -6,6 +6,7 @@ import type {
   ReservationStatus,
 } from "./types";
 import { dateOf, formatDateLong, rangeLabel } from "./datetime";
+import { seriesHeading } from "./recurrence";
 
 export type EmailStatus = Extract<
   ReservationStatus,
@@ -50,17 +51,32 @@ export function reservationSummary(
   return `${boothLabel(reservation, boothName)} · ${dateText(reservation)} · ${timeText(reservation)}`;
 }
 
+/** Two or more dates of one weekly repeat; a single booking passes none. */
+export type Series = readonly Reservation[];
+
+const isSeries = (series?: Series): series is Series =>
+  !!series && series.length > 1;
+
+/** "Thursday, 16 July 2026" per date, in the order they were booked. */
+export function seriesDates(series: Series): string[] {
+  return series.map(dateText);
+}
+
 export function emailSubject(
   status: EmailStatus,
   contact: ContactInfo,
   boothName: BoothNamer,
   r?: Reservation,
+  series?: Series,
 ): string {
   const booth = r ? boothLabel(r, boothName) : "meeting booth";
+  const weekly = isSeries(series) ? " weekly" : "";
   if (status === "cancelled")
     return `Update on your ${booth} reservation at ${contact.org}`;
   if (status === "pending")
-    return `We received your ${booth} reservation request at ${contact.org}`;
+    return `We received your ${booth}${weekly} reservation request at ${contact.org}`;
+  if (isSeries(series))
+    return `Your ${booth} weekly reservation is confirmed (${series.length} dates)`;
   const date = r ? dateText(r) : "";
   return `Your ${booth} reservation is confirmed${date ? ` for ${date}` : ""}`;
 }
@@ -71,8 +87,12 @@ export function emailPreheader(
   status: EmailStatus,
   contact: ContactInfo,
   boothName: BoothNamer,
+  series?: Series,
 ): string {
-  const where = `${reservationSummary(r, boothName)} at ${contact.org}.`;
+  const when = isSeries(series)
+    ? `every week from ${dateText(r)}`
+    : dateText(r);
+  const where = `${boothLabel(r, boothName)} · ${when} · ${timeText(r)} at ${contact.org}.`;
   // Long enough to fill the snippet alone, or a client scrapes the body.
   if (status === "cancelled")
     return `Cancelled: ${where} That slot is free again, and you can reserve another one whenever suits you.`;
@@ -91,11 +111,21 @@ function firstName(r: Reservation): string {
   return r.fullName?.trim().split(" ")[0] ?? "";
 }
 
-function detailLines(r: Reservation, boothName: BoothNamer): string[] {
+function detailLines(
+  r: Reservation,
+  boothName: BoothNamer,
+  series?: Series,
+): string[] {
+  const when = isSeries(series)
+    ? [
+        `Time: ${timeText(r)}`,
+        `Dates: ${seriesHeading(series.map((s) => dateOfReservation(s) ?? ""))}`,
+        ...seriesDates(series).map((d) => `- ${d}`),
+      ]
+    : [`Date: ${dateText(r)}`, `Time: ${timeText(r)}`];
   return [
     `Booth: ${boothLabel(r, boothName)}`,
-    `Date: ${dateText(r)}`,
-    `Time: ${timeText(r)}`,
+    ...when,
     ...(r.note?.trim() ? [`Note: ${r.note.trim()}`] : []),
   ];
 }
@@ -115,15 +145,20 @@ function confirmedBody(
   r: Reservation,
   contact: ContactInfo,
   boothName: BoothNamer,
+  series?: Series,
 ): string {
   return [
     `Hi ${firstName(r) || "there"},`,
     "",
-    "Your meeting booth is reserved. Here are the details:",
+    isSeries(series)
+      ? "Your meeting booth is reserved every week. Here are the details:"
+      : "Your meeting booth is reserved. Here are the details:",
     "",
-    ...detailLines(r, boothName),
+    ...detailLines(r, boothName, series),
     "",
-    "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
+    isSeries(series)
+      ? "If your plans change, the link at the bottom of this email cancels every date still ahead, or just reply to it."
+      : "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
     "",
     ...signOff(contact),
   ].join("\n");
@@ -155,15 +190,18 @@ function pendingBody(
   r: Reservation,
   contact: ContactInfo,
   boothName: BoothNamer,
+  series?: Series,
 ): string {
   return [
     `Hi ${firstName(r) || "there"},`,
     "",
     "Thanks for your reservation request. Because it's longer than our instant-reservation limit, it needs a quick review by our team before it's confirmed. Here's what you requested:",
     "",
-    ...detailLines(r, boothName),
+    ...detailLines(r, boothName, series),
     "",
-    "We'll email you again as soon as it's approved or if we need to make a change. The slot is held for you in the meantime.",
+    isSeries(series)
+      ? "We'll email you again as each date is approved or if we need to make a change. The slots are held for you in the meantime."
+      : "We'll email you again as soon as it's approved or if we need to make a change. The slot is held for you in the meantime.",
     "",
     ...signOff(contact),
   ].join("\n");
@@ -175,8 +213,10 @@ export function emailBodyText(
   status: EmailStatus,
   contact: ContactInfo,
   boothName: BoothNamer,
+  series?: Series,
 ): string {
-  if (status === "confirmed") return confirmedBody(r, contact, boothName);
-  if (status === "pending") return pendingBody(r, contact, boothName);
+  if (status === "confirmed")
+    return confirmedBody(r, contact, boothName, series);
+  if (status === "pending") return pendingBody(r, contact, boothName, series);
   return cancelledBody(r, contact, boothName);
 }

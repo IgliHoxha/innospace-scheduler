@@ -45,6 +45,8 @@ for (const key of [
   "TELEGRAM_CHAT_ID",
   "TELEGRAM_WEBHOOK_SECRET",
   "TRUSTED_PROXY_SECRET",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
   "DATA_FILE",
 ]) {
   delete process.env[key];

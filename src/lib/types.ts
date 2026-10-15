@@ -67,6 +67,8 @@ export interface ReservationInput {
   /** Local end datetime, exclusive (e.g. "2026-07-16T11:00"). */
   endsAt?: string;
   note?: string;
+  /** Shared by every date of one weekly repeat; absent on a single booking. */
+  seriesId?: string;
 }
 
 export interface Reservation extends ReservationInput {

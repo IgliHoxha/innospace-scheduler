@@ -6,11 +6,21 @@ export const SESSION_COOKIE = "innospace_scheduler_session";
 // The token carries its own expiry, so a longer cookie max-age gains nothing.
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-export type Role = "admin";
+// A booker signs in to save typing, so their session outlives the admin's.
+export const MEMBER_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+export const ROLES = ["admin", "member"] as const;
+
+/** "admin" is the dashboard login; "member" is a booker signed in with Google. */
+export type Role = (typeof ROLES)[number];
+
+export function isRole(v: unknown): v is Role {
+  return typeof v === "string" && (ROLES as readonly string[]).includes(v);
+}
 
 export interface Session {
   role: Role;
-  /** Always "admin": kept so the token shape stays self-describing. */
+  /** "admin" for the one admin; Google's stable account id for a member. */
   sub: string;
   name: string;
   email?: string;
@@ -73,7 +83,7 @@ export function verifySessionToken(
     const payload = JSON.parse(unb64url(body)) as TokenPayload;
     if (!payload || typeof payload.exp !== "number") return null;
     if (payload.exp <= Date.now()) return null;
-    if (payload.role !== "admin") return null;
+    if (!isRole(payload.role)) return null;
     return {
       role: payload.role,
       sub: String(payload.sub),
@@ -87,10 +97,35 @@ export function verifySessionToken(
 
 // The session HMAC scheme, purpose-scoped, so neither replays as the other.
 
+type CancelPurpose = "cancel" | "cancel-series";
+
 interface CancelPayload {
-  sub: string; // the reservation id
-  purpose: "cancel";
+  sub: string; // the reservation id, or the series id
+  purpose: CancelPurpose;
   exp: number;
+}
+
+function sealCancel(sub: string, purpose: CancelPurpose, exp: number): string {
+  const payload: CancelPayload = { sub, purpose, exp };
+  return seal(payload);
+}
+
+function verifyCancel(
+  token: string | undefined | null,
+  purpose: CancelPurpose,
+): string | null {
+  const body = verifiedBody(token);
+  if (!body) return null;
+
+  try {
+    const payload = JSON.parse(unb64url(body)) as CancelPayload;
+    if (payload?.purpose !== purpose) return null;
+    if (typeof payload.exp !== "number" || payload.exp <= Date.now())
+      return null;
+    return String(payload.sub);
+  } catch {
+    return null;
+  }
 }
 
 /** Expires with the slot: a passed booking cannot be cancelled. */
@@ -98,29 +133,27 @@ export function createCancelToken(
   reservationId: string,
   expiresAtMs: number,
 ): string {
-  const payload: CancelPayload = {
-    sub: reservationId,
-    purpose: "cancel",
-    exp: expiresAtMs,
-  };
-  return seal(payload);
+  return sealCancel(reservationId, "cancel", expiresAtMs);
 }
 
 export function verifyCancelToken(
   token: string | undefined | null,
 ): string | null {
-  const body = verifiedBody(token);
-  if (!body) return null;
+  return verifyCancel(token, "cancel");
+}
 
-  try {
-    const payload = JSON.parse(unb64url(body)) as CancelPayload;
-    if (payload?.purpose !== "cancel") return null;
-    if (typeof payload.exp !== "number" || payload.exp <= Date.now())
-      return null;
-    return String(payload.sub);
-  } catch {
-    return null;
-  }
+/** Names a weekly series; expires when its last date ends. */
+export function createSeriesCancelToken(
+  seriesId: string,
+  expiresAtMs: number,
+): string {
+  return sealCancel(seriesId, "cancel-series", expiresAtMs);
+}
+
+export function verifySeriesCancelToken(
+  token: string | undefined | null,
+): string | null {
+  return verifyCancel(token, "cancel-series");
 }
 
 /** Constant-time compare; length goes first, and length is not secret. */

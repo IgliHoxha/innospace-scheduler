@@ -14,3 +14,13 @@ export function requireAdmin(req: NextRequest): Session | NextResponse {
   const session = sessionFrom(req);
   return session?.role === "admin" ? session : jsonError("Unauthorized", 401);
 }
+
+/** A signed-in booker, with the email Google verified; anyone else is a guest. */
+export type Member = Session & { role: "member"; email: string };
+
+export function memberFrom(req: NextRequest): Member | null {
+  const session = sessionFrom(req);
+  return session?.role === "member" && session.email
+    ? (session as Member)
+    : null;
+}

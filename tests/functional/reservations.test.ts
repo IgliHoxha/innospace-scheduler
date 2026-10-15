@@ -1061,7 +1061,7 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
 
 describe("POST /api/reservations - an unexpected failure is not a 500", () => {
   it("400s with a safe message, leaking no SQL or stack", async () => {
-    vi.spyOn(db, "createReservation").mockImplementationOnce(() => {
+    vi.spyOn(db, "createReservationSeries").mockImplementationOnce(() => {
       throw new Error("SQLITE_CORRUPT: database disk image is malformed");
     });
     const res = await post(ok, "boom-ip");

@@ -51,12 +51,21 @@ export interface Attempt {
   end: string;
   /** The canonical email, since the run counted is that person's. */
   booker: string;
+  /** How many weekly dates were asked for; a single booking is 1. */
+  repeatWeeks?: number;
 }
 
 /** Keys a verdict to exactly the attempt that was judged. */
 export function attemptKey(a: Attempt): string {
   // Encoded as a list, so no value can run into its neighbour.
-  return JSON.stringify([a.boothId, a.date, a.start, a.end, a.booker]);
+  return JSON.stringify([
+    a.boothId,
+    a.date,
+    a.start,
+    a.end,
+    a.booker,
+    a.repeatWeeks ?? 1,
+  ]);
 }
 
 /** Server messages by attempt key, so the form need not ask twice. */

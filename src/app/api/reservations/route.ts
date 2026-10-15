@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  createReservation,
+  createReservationSeries,
   discardReservation,
   heldRangesForEmail,
   queryReservations,
@@ -8,9 +8,15 @@ import {
   SlotUnavailableError,
   UserBusyError,
 } from "@/lib/db";
-import { isReservationStatus, MAX_NOTE } from "@/lib/types";
+import {
+  isReservationStatus,
+  MAX_NAME,
+  MAX_NOTE,
+  type ActiveStatus,
+  type Reservation,
+} from "@/lib/types";
 import { PAGE_SIZE } from "@/lib/pagination";
-import { requireAdmin } from "@/lib/api-auth";
+import { memberFrom, requireAdmin } from "@/lib/api-auth";
 import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
@@ -39,8 +45,14 @@ import {
   nowDateTime,
   epochMsOf,
 } from "@/lib/datetime";
-import { createCancelToken } from "@/lib/auth";
+import { createCancelToken, createSeriesCancelToken } from "@/lib/auth";
 import { sendReservationEmail } from "@/lib/email";
+import {
+  parseRepeatWeeks,
+  REPEAT_SIGN_IN_MESSAGE,
+  repeatWeeksMessage,
+  weeklyDates,
+} from "@/lib/recurrence";
 import { postReservationToSlack } from "@/lib/slack";
 import { notifyNewReservation } from "@/lib/telegram";
 import {
@@ -58,7 +70,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Public: no account, so the body carries the identity. */
+/** Signed in or not: a guest's body carries the identity, a member's session does. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -80,18 +92,35 @@ export async function POST(req: NextRequest) {
   const note =
     typeof body.note === "string" ? body.note.trim() || undefined : undefined;
 
-  // The same validator the form runs, so the messages match exactly.
-  const guest = validateGuest(body);
-  if (!guest.ok) {
-    return NextResponse.json(
-      { ok: false, error: guest.error, field: guest.field },
-      { status: 400 },
-    );
+  // Google already verified a member, so the body cannot rename them.
+  const member = memberFrom(req);
+  let identity: { fullName: string; email: string };
+  if (member) {
+    identity = {
+      fullName: member.name.trim().slice(0, MAX_NAME) || member.email,
+      email: member.email.toLowerCase(),
+    };
+  } else {
+    // The same validator the form runs, so the messages match exactly.
+    const guest = validateGuest(body);
+    if (!guest.ok) {
+      return NextResponse.json(
+        { ok: false, error: guest.error, field: guest.field },
+        { status: 400 },
+      );
+    }
+    identity = guest.guest;
   }
+
+  const repeatWeeks = parseRepeatWeeks(body.repeatWeeks);
+  if (repeatWeeks === null) return jsonError(repeatWeeksMessage(), 400);
+  // A repeat needs someone to come back to, which a guest session is not.
+  if (repeatWeeks > 1 && !member) return jsonError(REPEAT_SIGN_IN_MESSAGE, 401);
 
   if (!isBoothId(boothId)) {
     return jsonError("Please choose a booth.", 400);
   }
+  // The window gates the first date; the repeats are the point of a series.
   if (!isReservableDate(date)) {
     return jsonError("That date can't be reserved.", 400);
   }
@@ -126,25 +155,26 @@ export async function POST(req: NextRequest) {
   }
   // The limits apply to a back-to-back run, or a split stay would dodge them.
   const heldOn = (day: string, offsetMin: number) =>
-    heldRangesForEmail(guest.guest.email, day).map((h) => ({
+    heldRangesForEmail(identity.email, day).map((h) => ({
       start: minutesOfDay(h.startsAt) + offsetMin,
       end: minutesOfDay(h.endsAt) + offsetMin,
     }));
   // Shifted by the last bookable minute, not 24h, so the dead step is no gap.
   const dayReach = dayEndMinute(stepMinutes());
   // No closing time, so a run can cross midnight and both neighbours count.
-  const held = [
-    ...heldOn(shiftDate(date, -1), -dayReach),
-    ...heldOn(date, 0),
-    ...heldOn(shiftDate(date, 1), dayReach),
-  ];
-  // One sitting spans the shortest bookable gap: nobody could take it.
-  const runMinutes = runTotalMinutes(
-    startMin,
-    endMin,
-    held,
-    minReservationMinutes(),
-  );
+  const runOn = (day: string) => {
+    const held = [
+      ...heldOn(shiftDate(day, -1), -dayReach),
+      ...heldOn(day, 0),
+      ...heldOn(shiftDate(day, 1), dayReach),
+    ];
+    // One sitting spans the shortest bookable gap: nobody could take it.
+    return runTotalMinutes(startMin, endMin, held, minReservationMinutes());
+  };
+  // Each date is judged on its own day, since a run is what sits around it.
+  const dates = weeklyDates(date, repeatWeeks);
+  const runs = dates.map(runOn);
+  const runMinutes = Math.max(...runs);
   const partOfRun = runMinutes > endMin - startMin;
 
   if (noteRequiredFor(runMinutes, autoApproveMaxHours()) && !note) {
@@ -171,7 +201,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const status = approvalRequiredFor(runMinutes, autoApproveMaxHours())
+  // Judged per date: one date next to an earlier booking can need approval alone.
+  const statusFor = (run: number): ActiveStatus =>
+    approvalRequiredFor(run, autoApproveMaxHours()) ? "pending" : "confirmed";
+  const statuses = runs.map(statusFor);
+  // The email speaks for the whole series, so one held date makes it pending.
+  const status: ActiveStatus = statuses.includes("pending")
     ? "pending"
     : "confirmed";
 
@@ -183,34 +218,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Before the insert, so a dead address holds nothing.
-  const deliverable = await checkEmailDeliverable(guest.guest.email);
-  if (!deliverable.ok) {
-    return NextResponse.json(
-      { ok: false, field: "email", error: deliverable.error },
-      { status: 400 },
-    );
+  // Before the insert, so a dead address holds nothing; Google's is verified.
+  if (!member) {
+    const deliverable = await checkEmailDeliverable(identity.email);
+    if (!deliverable.ok) {
+      return NextResponse.json(
+        { ok: false, field: "email", error: deliverable.error },
+        { status: 400 },
+      );
+    }
   }
 
   // Count it once the request is good, so a typo'd form doesn't burn the quota.
   registerBooking(ip);
 
   try {
-    const reservation = createReservation(
-      {
-        boothId,
-        startsAt,
-        endsAt,
-        note,
-        ...guest.guest,
-      },
-      status,
+    const reservations = createReservationSeries(
+      dates.map((day, i) => ({
+        input: {
+          boothId,
+          startsAt: toDateTime(day, start),
+          endsAt: toDateTime(day, end),
+          note,
+          ...identity,
+        },
+        status: statuses[i],
+      })),
     );
+    const reservation = reservations[0];
 
     // A booking counts once the confirmation is away; "skipped" is no refusal.
-    const outcome = await sendReservationEmail(reservation, status);
+    const outcome = await sendReservationEmail(
+      reservation,
+      status,
+      undefined,
+      reservations,
+    );
     if (outcome === "failed") {
-      discardReservation(reservation.id);
+      reservations.forEach((r) => discardReservation(r.id));
       return jsonError(
         "We couldn't send the confirmation to that address, so nothing was reserved. Please check it and try again.",
         502,
@@ -218,20 +263,35 @@ export async function POST(req: NextRequest) {
     }
 
     // After the email, so the channel never announces a discarded booking.
-    await postReservationToSlack(reservation, status, boothName);
-    await notifyNewReservation(reservation, boothName);
+    for (const r of reservations) {
+      await postReservationToSlack(r, r.status as ActiveStatus, boothName);
+      await notifyNewReservation(r, boothName);
+    }
 
     // The proof the email link carries, so this browser can cancel without it.
-    const expiresAt = epochMsOf(reservation.endsAt ?? endsAt);
+    const tokenFor = (r: Reservation): string | undefined => {
+      const expiresAt = epochMsOf(r.endsAt ?? endsAt);
+      return Number.isFinite(expiresAt)
+        ? createCancelToken(r.id, expiresAt)
+        : undefined;
+    };
+    const last = reservations[reservations.length - 1];
+    const seriesEnd = epochMsOf(last.endsAt ?? endsAt);
     return NextResponse.json(
       {
         ok: true,
         id: reservation.id,
         reservation,
+        reservations: reservations.map((r) => ({
+          ...r,
+          cancelToken: tokenFor(r),
+        })),
         booth: boothName(boothId),
-        cancelToken: Number.isFinite(expiresAt)
-          ? createCancelToken(reservation.id, expiresAt)
-          : undefined,
+        cancelToken: tokenFor(reservation),
+        seriesCancelToken:
+          reservation.seriesId && Number.isFinite(seriesEnd)
+            ? createSeriesCancelToken(reservation.seriesId, seriesEnd)
+            : undefined,
       },
       { status: 201 },
     );

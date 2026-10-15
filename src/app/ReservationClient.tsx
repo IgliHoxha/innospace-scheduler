@@ -55,12 +55,28 @@ import {
   wantedStartMin,
 } from "@/lib/timeline";
 import { dayEndMinute } from "@/lib/reservation-rules";
+import { repeatLabel } from "@/lib/recurrence";
 import {
   formatDateLong,
   formatDuration,
   minutesToTime,
   timeToMinutes,
 } from "@/lib/datetime";
+
+/** The booker Google vouched for; the form shows them instead of asking. */
+export interface Member {
+  name: string;
+  email: string;
+}
+
+const SIGN_IN_FAILED_MESSAGE =
+  "Google sign-in didn't complete. You can still book as a guest below.";
+
+/** Hard-navigates so no client state survives sign-out. */
+async function signOut(): Promise<void> {
+  await fetch("/api/login", { method: "DELETE" });
+  window.location.reload();
+}
 
 interface Availability {
   /** The day this board answers for, so no count shows against another date. */
@@ -118,6 +134,10 @@ export default function ReservationClient({
   stepMinutes,
   contact,
   turnstileSiteKey,
+  member = null,
+  googleSignIn = false,
+  signInFailed = false,
+  maxRepeatWeeks = 1,
 }: {
   booths: Booth[];
   dates: DateOption[];
@@ -130,6 +150,14 @@ export default function ReservationClient({
   contact: { phone: string; email: string };
   /** Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
+  /** Signed in with Google; null books as a guest. */
+  member?: Member | null;
+  /** Whether the Google sign-in is configured, so a guest can be offered it. */
+  googleSignIn?: boolean;
+  /** Google sent the person back without a session. */
+  signInFailed?: boolean;
+  /** The longest weekly repeat a member may ask for. */
+  maxRepeatWeeks?: number;
 }) {
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
@@ -148,9 +176,15 @@ export default function ReservationClient({
   const [askedFor, setAskedFor] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mine, setMine] = useState<MineEntry[]>([]);
+  // Outlives the board resets, since it answers a redirect, not a pick.
+  const [signInNotice, setSignInNotice] = useState(
+    signInFailed ? SIGN_IN_FAILED_MESSAGE : "",
+  );
+  // Members only: a guest has no session for the later dates to come back to.
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState(member?.name ?? "");
+  const [email, setEmail] = useState(member?.email ?? "");
   // Shown as a red field only, so every failing field is held.
   const [guestErrors, setGuestErrors] = useState<
     Partial<Record<GuestField, string>>
@@ -292,7 +326,11 @@ export default function ReservationClient({
   const duration = startMin != null && endMin != null ? endMin - startMin : 0;
 
   // The run belongs to whoever is booking, so it waits for a valid email.
-  const booker = isValidEmail(email.trim()) ? canonicalEmail(email) : "";
+  const booker = member
+    ? canonicalEmail(member.email)
+    : isValidEmail(email.trim())
+      ? canonicalEmail(email)
+      : "";
 
   // That person's other bookings that day, so the run rule can warn early.
   const myHeld = useMemo(
@@ -356,7 +394,14 @@ export default function ReservationClient({
   const problem = isBlocking(check) ? check.problem : "";
 
   // What the server judged, so its verdict expires once any of it changes.
-  const attempt = attemptKey({ boothId, date, start, end, booker });
+  const attempt = attemptKey({
+    boothId,
+    date,
+    start,
+    end,
+    booker,
+    repeatWeeks,
+  });
   const refusal = verdictFor(refused, attempt);
   // Outlives typing in the note box, which does not change the attempt.
   const demanded = verdictFor(noteDemands, attempt);
@@ -390,9 +435,15 @@ export default function ReservationClient({
 
   async function reserve() {
     if (!canReserve) return;
+    setSignInNotice("");
 
     // The route's own validator, so the client cannot submit a rejection.
-    const guest = validateGuest({ fullName, email });
+    const guest = member
+      ? {
+          ok: true as const,
+          guest: { fullName: member.name, email: member.email },
+        }
+      : validateGuest({ fullName, email });
     if (!guest.ok) {
       // Rendered before the focus, so the reason is there when the field is read.
       flushSync(() => setGuestErrors(guestProblems({ fullName, email })));
@@ -430,7 +481,9 @@ export default function ReservationClient({
           end,
           note,
           turnstileToken,
-          ...guest.guest,
+          // A member's identity comes from their session, never the body.
+          ...(member ? {} : guest.guest),
+          ...(repeatWeeks > 1 ? { repeatWeeks } : {}),
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -438,35 +491,42 @@ export default function ReservationClient({
         error?: string;
         field?: GuestField | "note";
         reservation?: Reservation;
+        reservations?: (Reservation & { cancelToken?: string })[];
         cancelToken?: string;
       };
       const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
-      const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}`;
+      const weekly = repeatWeeks > 1 ? `, ${repeatLabel(repeatWeeks)}` : "";
+      const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}${weekly}`;
       if (res.ok && json.ok) {
         // An earlier verdict described a world now gone; the picker re-seeds.
         setRefused(NO_VERDICTS);
         setNoteDemands(NO_VERDICTS);
         setAskedFor(null);
         wroteAt.current = Date.now();
+        const held = repeatWeeks > 1 ? "The slots are" : "The slot is";
         setSuccess(
           json.reservation?.status === "pending"
-            ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. The slot is held for you meanwhile.`
+            ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. ${held} held for you meanwhile.`
             : `Reserved ${when}. We've emailed ${guest.guest.email} a confirmation, with a link to cancel if your plans change.`,
         );
         setNote("");
+        setRepeatWeeks(1);
         // Recorded before the reload, so the block comes back labelled "You".
-        const made = json.reservation;
-        if (made?.startsAt && made.endsAt) {
-          setMine(
-            rememberMine({
-              k: slotKey(boothId, made.startsAt),
-              s: made.startsAt,
-              e: made.endsAt,
-              m: guest.guest.email,
-              t: json.cancelToken ?? "",
-            }),
-          );
+        const made = json.reservations ?? [
+          { ...json.reservation, cancelToken: json.cancelToken },
+        ];
+        let owned = mine;
+        for (const r of made) {
+          if (!r?.startsAt || !r.endsAt) continue;
+          owned = rememberMine({
+            k: slotKey(boothId, r.startsAt),
+            s: r.startsAt,
+            e: r.endsAt,
+            m: guest.guest.email,
+            t: r.cancelToken ?? "",
+          });
         }
+        setMine(owned);
         await reload.current({ fresh: true });
       } else {
         const message = json.error || "Could not reserve that time.";
@@ -664,59 +724,119 @@ export default function ReservationClient({
 
         <div className="field-label">Your details</div>
         <div className="card guest-card">
-          <div className="guest-row">
-            <label className="guest-field">
-              <span>
-                Full name <b aria-hidden="true">*</b>
+          {member ? (
+            <>
+              <div className="signed-in" data-testid="signed-in">
+                <div>
+                  <strong>{member.name}</strong>
+                  <span className="muted">{member.email}</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={signOut}
+                >
+                  Sign out
+                </button>
+              </div>
+              {maxRepeatWeeks > 1 && (
+                <div className="guest-row" style={{ marginTop: 12 }}>
+                  <label className="guest-field">
+                    <span>Repeat</span>
+                    <select
+                      id="repeatWeeks"
+                      name="repeatWeeks"
+                      value={repeatWeeks}
+                      onChange={(e) => {
+                        setRepeatWeeks(Number(e.target.value));
+                        setError("");
+                      }}
+                    >
+                      {Array.from(
+                        { length: maxRepeatWeeks },
+                        (_, i) => i + 1,
+                      ).map((n) => (
+                        <option key={n} value={n}>
+                          {n === 1
+                            ? "Just this once"
+                            : `Every week for ${n} weeks`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="guest-row">
+                <label className="guest-field">
+                  <span>
+                    Full name <b aria-hidden="true">*</b>
+                  </span>
+                  <input
+                    id="fullName"
+                    name="fullName"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="First and last name"
+                    maxLength={MAX_NAME}
+                    required
+                    aria-invalid={!!fieldError("fullName")}
+                    aria-describedby={
+                      fieldError("fullName") ? "fullName-error" : undefined
+                    }
+                    className={fieldError("fullName") ? "invalid" : ""}
+                    value={fullName}
+                    onChange={(e) =>
+                      onGuestEdit("fullName", setFullName)(e.target.value)
+                    }
+                  />
+                </label>
+                <label className="guest-field">
+                  <span>
+                    Email <b aria-hidden="true">*</b>
+                  </span>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    maxLength={MAX_EMAIL}
+                    required
+                    aria-invalid={!!fieldError("email")}
+                    aria-describedby={
+                      fieldError("email") ? "email-error" : undefined
+                    }
+                    className={fieldError("email") ? "invalid" : ""}
+                    value={email}
+                    onChange={(e) =>
+                      onGuestEdit("email", setEmail)(e.target.value)
+                    }
+                  />
+                </label>
+              </div>
+              {/* A red field is the only visible cue; its reason is read on focus. */}
+              <span id="fullName-error" className="sr-only">
+                {fieldError("fullName")}
               </span>
-              <input
-                id="fullName"
-                name="fullName"
-                type="text"
-                autoComplete="name"
-                placeholder="First and last name"
-                maxLength={MAX_NAME}
-                required
-                aria-invalid={!!fieldError("fullName")}
-                aria-describedby={
-                  fieldError("fullName") ? "fullName-error" : undefined
-                }
-                className={fieldError("fullName") ? "invalid" : ""}
-                value={fullName}
-                onChange={(e) =>
-                  onGuestEdit("fullName", setFullName)(e.target.value)
-                }
-              />
-            </label>
-            <label className="guest-field">
-              <span>
-                Email <b aria-hidden="true">*</b>
+              <span id="email-error" className="sr-only">
+                {fieldError("email")}
               </span>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                maxLength={MAX_EMAIL}
-                required
-                aria-invalid={!!fieldError("email")}
-                aria-describedby={
-                  fieldError("email") ? "email-error" : undefined
-                }
-                className={fieldError("email") ? "invalid" : ""}
-                value={email}
-                onChange={(e) => onGuestEdit("email", setEmail)(e.target.value)}
-              />
-            </label>
-          </div>
-          {/* A red field is the only visible cue; its reason is read on focus. */}
-          <span id="fullName-error" className="sr-only">
-            {fieldError("fullName")}
-          </span>
-          <span id="email-error" className="sr-only">
-            {fieldError("email")}
-          </span>
+              {googleSignIn && (
+                <div className="sign-in-offer">
+                  <a className="btn ghost sm" href="/api/auth/google">
+                    Sign in with Google
+                  </a>
+                  <span>
+                    Optional: skips the typing and lets you repeat a booking
+                    weekly.
+                  </span>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {noteError && (
@@ -759,6 +879,7 @@ export default function ReservationClient({
           </>
         )}
 
+        {signInNotice && <p className="error">{signInNotice}</p>}
         {problem && <p className="error">{problem}</p>}
         {(refusal || error) && <p className="error">{refusal || error}</p>}
         {success && <p className="success">{success}</p>}
@@ -769,6 +890,9 @@ export default function ReservationClient({
               <>
                 <strong>{selectedBooth?.name}</strong> ·{" "}
                 {dates.find((d) => d.value === date)?.label} · {start} - {end}
+                {repeatWeeks > 1 && (
+                  <span className="hint"> · {repeatLabel(repeatWeeks)}</span>
+                )}
                 {willNeedApproval && (
                   <span className="hint"> · needs admin approval</span>
                 )}

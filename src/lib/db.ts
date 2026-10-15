@@ -18,9 +18,10 @@ import { requireEnv } from "./env-app";
 import { canonicalEmail } from "./guest";
 import { PAGE_SIZE } from "./pagination";
 import { USER_BUSY_MESSAGE } from "./reservation-rules";
+import { formatDateLong } from "./datetime";
 
 const COLS =
-  "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note";
+  "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note,seriesId";
 
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 const TABLE_BODY = `(
@@ -32,7 +33,8 @@ const TABLE_BODY = `(
   boothId TEXT NOT NULL,
   startsAt TEXT NOT NULL,
   endsAt TEXT NOT NULL,
-  note TEXT
+  note TEXT,
+  seriesId TEXT
 )`;
 
 type Row = Record<string, string | number | null>;
@@ -65,9 +67,17 @@ export class UserBusyError extends Error {
   }
 }
 
+// A nullable column can be added in place; anything else still means a wipe.
+function ensureColumn(db: Database.Database, name: string, decl: string) {
+  const cols = db.pragma("table_info(reservations)") as { name: string }[];
+  if (cols.some((c) => c.name === name)) return;
+  db.exec(`ALTER TABLE reservations ADD COLUMN ${name} ${decl};`);
+}
+
 // No migrations: a column change means wiping the DB file.
 function initSchema(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS reservations ${TABLE_BODY};`);
+  ensureColumn(db, "seriesId", "TEXT");
   // Serves every lookup by day, which the public board runs on each visit.
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(startsAt, createdAt);`,
@@ -78,6 +88,10 @@ function initSchema(db: Database.Database): void {
   );
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_reservations_slot ON reservations(boothId, startsAt, status);`,
+  );
+  // Serves "cancel all remaining dates", which walks one series at a time.
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_reservations_series ON reservations(seriesId, startsAt);`,
   );
 }
 
@@ -110,7 +124,7 @@ function prep(sql: string): Database.Statement {
 
 function insert(r: Reservation) {
   prep(
-    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@boothId,@startsAt,@endsAt,@note)`,
+    `INSERT INTO reservations (${COLS}) VALUES (@id,@createdAt,@updatedAt,@status,@fullName,@email,@boothId,@startsAt,@endsAt,@note,@seriesId)`,
   ).run(toRow(r));
 }
 
@@ -126,6 +140,7 @@ function toRow(r: Reservation): Row {
     startsAt: r.startsAt ?? "",
     endsAt: r.endsAt ?? "",
     note: r.note ?? null,
+    seriesId: r.seriesId ?? null,
   };
 }
 
@@ -142,6 +157,7 @@ function fromRow(r: Row): Reservation {
     startsAt: s(r.startsAt),
     endsAt: s(r.endsAt),
     note: s(r.note),
+    seriesId: s(r.seriesId),
   };
 }
 
@@ -271,47 +287,102 @@ export function heldRangesForEmail(email: string, date: string): BookedRange[] {
   return rows.filter(heldBy(canonicalEmail(email))).map(toRange);
 }
 
+// Must run inside a transaction, so the check and the insert cannot be split.
+function insertIfFree(r: Reservation): void {
+  // Half-open, so edges do not clash; the day bound skips older history.
+  const dayStart = startOfDay(r.startsAt!.slice(0, 10));
+  const clash = prep(
+    `SELECT 1 FROM reservations
+       WHERE boothId = ? AND status IN (${ACTIVE_LIST})
+         AND startsAt >= ? AND startsAt < ? AND endsAt > ?
+       LIMIT 1`,
+  ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
+  if (clash) throw new SlotUnavailableError();
+  // One person cannot hold two booths at once, keyed on their mailbox.
+  if (r.email) {
+    const want = canonicalEmail(r.email);
+    const overlapping = prep(
+      `SELECT email FROM reservations
+         WHERE status IN (${ACTIVE_LIST})
+           AND startsAt >= ? AND startsAt < ? AND endsAt > ?`,
+    ).all(dayStart, r.endsAt, r.startsAt) as Row[];
+    const selfClash = overlapping.some(heldBy(want));
+    if (selfClash) throw new UserBusyError();
+  }
+  insert(r);
+}
+
 /** Check and insert share a transaction, so racers cannot both win. */
 export function createReservation(
   input: ReservationInput,
   status: ActiveStatus = "confirmed",
 ): Reservation {
+  return createReservationSeries([{ input, status }])[0];
+}
+
+// The same class again, so the route's instanceof checks still hold.
+function namingDate(err: Error, startsAt: string): Error {
+  const message = `${formatDateLong(startsAt.slice(0, 10))}: ${err.message}`;
+  return err instanceof SlotUnavailableError
+    ? new SlotUnavailableError(message)
+    : new UserBusyError(message);
+}
+
+/** All dates or none: a clash on any one rolls the whole series back. */
+export function createReservationSeries(
+  entries: readonly { input: ReservationInput; status: ActiveStatus }[],
+): Reservation[] {
   const db = getDb();
   const now = new Date().toISOString();
-  const reservation: Reservation = {
+  const seriesId = entries.length > 1 ? randomUUID() : undefined;
+  const reservations: Reservation[] = entries.map(({ input, status }) => ({
     ...input,
     id: randomUUID(),
     createdAt: now,
     updatedAt: now,
     status,
-  };
+    seriesId,
+  }));
 
-  const tx = db.transaction((r: Reservation) => {
-    // Half-open, so edges do not clash; the day bound skips older history.
-    const dayStart = startOfDay(r.startsAt!.slice(0, 10));
-    const clash = prep(
-      `SELECT 1 FROM reservations
-         WHERE boothId = ? AND status IN (${ACTIVE_LIST})
-           AND startsAt >= ? AND startsAt < ? AND endsAt > ?
-         LIMIT 1`,
-    ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
-    if (clash) throw new SlotUnavailableError();
-    // One person cannot hold two booths at once, keyed on their mailbox.
-    if (r.email) {
-      const want = canonicalEmail(r.email);
-      const overlapping = prep(
-        `SELECT email FROM reservations
-           WHERE status IN (${ACTIVE_LIST})
-             AND startsAt >= ? AND startsAt < ? AND endsAt > ?`,
-      ).all(dayStart, r.endsAt, r.startsAt) as Row[];
-      const selfClash = overlapping.some(heldBy(want));
-      if (selfClash) throw new UserBusyError();
+  const tx = db.transaction((rows: Reservation[]) => {
+    for (const r of rows) {
+      try {
+        insertIfFree(r);
+      } catch (err) {
+        const refusal =
+          err instanceof SlotUnavailableError || err instanceof UserBusyError;
+        // A single booking names no date: the person is looking at it.
+        if (refusal && seriesId) throw namingDate(err, r.startsAt!);
+        throw err;
+      }
     }
-    insert(r);
   });
 
-  tx(reservation);
-  return reservation;
+  tx(reservations);
+  return reservations;
+}
+
+/** Every date of one series, first to last, whatever its status. */
+export function seriesReservations(seriesId: string): Reservation[] {
+  const rows = prep(
+    "SELECT * FROM reservations WHERE seriesId = ? ORDER BY startsAt",
+  ).all(seriesId) as Row[];
+  return rows.map(fromRow);
+}
+
+/** Cancels the dates still ahead; a date already started is left as it is. */
+export function cancelSeriesFrom(
+  seriesId: string,
+  fromDateTime: string,
+): Reservation[] {
+  const rows = prep(
+    `UPDATE reservations SET status = 'cancelled', updatedAt = ?
+       WHERE seriesId = ? AND status IN (${ACTIVE_LIST}) AND startsAt >= ?
+       RETURNING *`,
+  ).all(new Date().toISOString(), seriesId, fromDateTime) as Row[];
+  return rows
+    .map(fromRow)
+    .sort((a, b) => a.startsAt!.localeCompare(b.startsAt!));
 }
 
 /** Hard delete, only for a booking whose confirmation email failed. */

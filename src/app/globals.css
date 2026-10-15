@@ -755,6 +755,49 @@ button {
   box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
 }
 
+/* The repeat picker sits beside the inputs, so it wears their box. */
+.guest-field select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--card);
+}
+
+.guest-field select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
+}
+
+/* Who is booking, read-only, with the way out beside it. */
+.signed-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  font-size: 14px;
+}
+
+.signed-in .muted {
+  display: block;
+  font-size: 12px;
+}
+
+/* The optional sign-in, offered beneath the guest fields, never demanded. */
+.sign-in-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .guest-field input.invalid {
   border-color: #dc2626;
   background: #fef2f2;

@@ -46,6 +46,15 @@ export function token(session: Session): string {
   return createSessionToken(session);
 }
 
+/** A booker signed in with Google, as the callback route would mint one. */
+export function memberToken(
+  name = "Ada Lovelace",
+  email = "ada@example.com",
+  sub = "google-sub-1",
+): string {
+  return createSessionToken({ role: "member", sub, name, email });
+}
+
 export function makeRequest(
   url: string,
   opts: {

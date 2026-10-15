@@ -13,7 +13,8 @@ export default async function DashboardPage() {
   const session = verifySessionToken(
     (await cookies()).get(SESSION_COOKIE)?.value,
   );
-  if (!session) redirect("/login");
+  // A booker's Google session is a session too, but not this one.
+  if (session?.role !== "admin") redirect("/login");
 
   const initialData = queryReservations({
     filter: INITIAL_FILTER,

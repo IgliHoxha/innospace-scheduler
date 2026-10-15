@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import { COLORS } from "../../tailwind.config";
-import { createCancelToken } from "./auth";
+import { createCancelToken, createSeriesCancelToken } from "./auth";
 import { boothName } from "./booths";
 import { epochMsOf } from "./datetime";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
@@ -11,6 +11,7 @@ import {
   emailPreheader,
   emailSubject,
   type EmailStatus,
+  type Series,
 } from "./templates";
 
 const BRAND = COLORS.brand;
@@ -147,20 +148,42 @@ function shell(opts: {
   </div>`;
 }
 
+// Ruled off below the sign-off, as utility chrome rather than letter copy.
+function cancelBlock(token: string, label: string, note: string): string {
+  const link = `${baseUrl()}/cancel?token=${encodeURIComponent(token)}`;
+  return `
+    <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
+      <a href="${escapeHtml(link)}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">${label}</a>
+      <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">${note}</p>
+    </div>`;
+}
+
 // The only proof of ownership: one reservation, expiring when that slot ends.
 function cancelButton(r: Reservation): string {
   if (!r.id || !r.endsAt) return "";
   const expiresAt = epochMsOf(r.endsAt);
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return "";
 
-  const token = createCancelToken(r.id, expiresAt);
-  const link = `${baseUrl()}/cancel?token=${encodeURIComponent(token)}`;
-  // Ruled off below the sign-off, as utility chrome rather than letter copy.
-  return `
-    <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
-      <a href="${escapeHtml(link)}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Cancel this reservation</a>
-      <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">Only you have this link, and it stops working once the reservation has passed.</p>
-    </div>`;
+  return cancelBlock(
+    createCancelToken(r.id, expiresAt),
+    "Cancel this reservation",
+    "Only you have this link, and it stops working once the reservation has passed.",
+  );
+}
+
+// Names the series, so one link releases every date still ahead.
+function seriesCancelButton(series: Series): string {
+  const last = series[series.length - 1];
+  const seriesId = last.seriesId;
+  if (!seriesId || !last.endsAt) return "";
+  const expiresAt = epochMsOf(last.endsAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return "";
+
+  return cancelBlock(
+    createSeriesCancelToken(seriesId, expiresAt),
+    "Cancel all remaining dates",
+    "Only you have this link. It cancels every date that has not started yet, and stops working after the last one.",
+  );
 }
 
 /** "skipped" is nothing attempted; only "failed" means a refused send. */
@@ -170,6 +193,8 @@ export async function sendReservationEmail(
   reservation: Reservation,
   status: EmailStatus,
   customBody?: string,
+  /** Every date of a weekly repeat: one email covers them all. */
+  series?: Series,
 ): Promise<EmailOutcome> {
   const resend = client();
   if (!resend) return "skipped";
@@ -179,9 +204,16 @@ export async function sendReservationEmail(
   }
 
   const contact = getContactFromEnv();
+  const weekly = !!series && series.length > 1 ? series : undefined;
   const body = (
-    customBody ?? emailBodyText(reservation, status, contact, boothName)
+    customBody ?? emailBodyText(reservation, status, contact, boothName, weekly)
   ).trim();
+  const cancel =
+    status === "cancelled"
+      ? ""
+      : weekly
+        ? seriesCancelButton(weekly)
+        : cancelButton(reservation);
 
   // The SDK reports refusals in the resolved value, so inspect the result.
   let result: { error?: unknown } | undefined;
@@ -190,17 +222,21 @@ export async function sendReservationEmail(
       from: from(),
       to: [reservation.email],
       replyTo: replyTo(),
-      subject: emailSubject(status, contact, boothName, reservation),
+      subject: emailSubject(status, contact, boothName, reservation, weekly),
       html: shell({
         accent: ACCENT[status],
         heading: emailHeading(status),
-        bodyHtml:
-          textToHtml(body) +
-          (status === "cancelled" ? "" : cancelButton(reservation)),
+        bodyHtml: textToHtml(body) + cancel,
         org: contact.org,
         url: contact.url,
         // Not the edited body: a custom one could open with anything.
-        preheader: emailPreheader(reservation, status, contact, boothName),
+        preheader: emailPreheader(
+          reservation,
+          status,
+          contact,
+          boothName,
+          weekly,
+        ),
       }),
     });
   } catch (err) {
