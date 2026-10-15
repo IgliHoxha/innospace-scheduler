@@ -12,7 +12,14 @@ import {
 } from "../helpers/dom";
 
 vi.mock("next/script", () => ({ default: () => null }));
-vi.mock("@/components/Topbar", () => ({ Topbar: () => null }));
+// Only what the screen hands it is of interest here; the menu has its own test.
+vi.mock("@/components/Topbar", () => ({
+  Topbar: (p: { username?: string; email?: string; signOutTo?: string }) => (
+    <div data-testid="topbar">
+      {[p.username, p.email, p.signOutTo].join("|")}
+    </div>
+  ),
+}));
 vi.mock("@/components/SiteFooter", () => ({ SiteFooter: () => null }));
 
 const ADA = { name: "Ada Lovelace", email: "ada@example.com" };
@@ -681,8 +688,8 @@ describe("the board itself", () => {
 // Google sign-in is optional: a guest books as before, a member types nothing.
 describe("signed in with Google", () => {
   const member = { name: "Ada Lovelace", email: "ada@example.com" };
-  const signedIn = () =>
-    document.querySelector('[data-testid="signed-in"]')?.textContent ?? "";
+  const labels = () =>
+    [...document.querySelectorAll(".field-label")].map((l) => l.textContent);
   const repeat = () =>
     document.getElementById("repeatWeeks") as HTMLSelectElement | null;
 
@@ -693,13 +700,17 @@ describe("signed in with Google", () => {
     return view;
   }
 
-  it("shows who is booking instead of asking, with a way to sign out", async () => {
+  it("drops the details card and names the booker in the top bar instead", async () => {
     await readyAsMember();
     expect(form.name()).toBeNull();
     expect(form.email()).toBeNull();
-    expect(signedIn()).toContain("Ada Lovelace");
-    expect(signedIn()).toContain("ada@example.com");
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(labels()).not.toContain("Your details");
+    expect(labels()).toContain("Repeat");
+    expect(document.body.textContent).not.toContain("Sign in with Google");
+    // The menu on the right carries the name, the address and the way out.
+    expect(screen.getByTestId("topbar").textContent).toBe(
+      "Ada Lovelace|ada@example.com|/",
+    );
     expect(
       screen.queryByRole("link", { name: "Sign in with Google" }),
     ).toBeNull();
@@ -813,24 +824,16 @@ describe("signed in with Google", () => {
     expect(form.reserve().disabled).toBe(false);
   });
 
-  it("signs out through the login route and reloads", async () => {
-    const reload = vi.fn();
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: { ...window.location, reload },
-    });
-    const { user } = await readyAsMember();
-    await user.click(screen.getByRole("button", { name: "Sign out" }));
-    await waitFor(() => expect(reload).toHaveBeenCalled());
-    const calls = vi.mocked(fetch).mock.calls as [string, RequestInit?][];
-    expect(
-      calls.some(([u, i]) => u === "/api/login" && i?.method === "DELETE"),
-    ).toBe(true);
+  it("gives a guest no menu in the top bar", async () => {
+    await ready();
+    expect(screen.getByTestId("topbar").textContent).toBe("||/");
   });
 
-  it("hides the repeat picker when only one week is allowed", async () => {
+  it("shows no card at all when only one week is allowed", async () => {
     await readyAsMember({ maxRepeatWeeks: 1 });
     expect(repeat()).toBeNull();
+    expect(labels()).not.toContain("Repeat");
+    expect(document.querySelector(".guest-card")).toBeNull();
   });
 });
 

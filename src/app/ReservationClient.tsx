@@ -72,12 +72,6 @@ export interface Member {
 const SIGN_IN_FAILED_MESSAGE =
   "Google sign-in didn't complete. You can still book as a guest below.";
 
-/** Hard-navigates so no client state survives sign-out. */
-async function signOut(): Promise<void> {
-  await fetch("/api/login", { method: "DELETE" });
-  window.location.reload();
-}
-
 interface Availability {
   /** The day this board answers for, so no count shows against another date. */
   date: string;
@@ -575,7 +569,14 @@ export default function ReservationClient({
 
   return (
     <>
-      <Topbar brandHref="/" brandLabel="Innospace Scheduler" />
+      {/* A member signs out from the top bar, back to this screen as a guest. */}
+      <Topbar
+        brandHref="/"
+        brandLabel="Innospace Scheduler"
+        username={member?.name}
+        email={member?.email}
+        signOutTo="/"
+      />
 
       <div className="container">
         <div className="page-head">
@@ -722,27 +723,15 @@ export default function ReservationClient({
           )}
         </div>
 
-        <div className="field-label">Your details</div>
-        <div className="card guest-card">
-          {member ? (
+        {/* A member is named in the top bar, so the details card gives way to the repeat. */}
+        {member ? (
+          maxRepeatWeeks > 1 && (
             <>
-              <div className="signed-in" data-testid="signed-in">
-                <div>
-                  <strong>{member.name}</strong>
-                  <span className="muted">{member.email}</span>
-                </div>
-                <button
-                  type="button"
-                  className="btn ghost sm"
-                  onClick={signOut}
-                >
-                  Sign out
-                </button>
-              </div>
-              {maxRepeatWeeks > 1 && (
-                <div className="guest-row" style={{ marginTop: 12 }}>
+              <div className="field-label">Repeat</div>
+              <div className="card guest-card">
+                <div className="guest-row">
                   <label className="guest-field">
-                    <span>Repeat</span>
+                    <span>How often</span>
                     <select
                       id="repeatWeeks"
                       name="repeatWeeks"
@@ -765,10 +754,13 @@ export default function ReservationClient({
                     </select>
                   </label>
                 </div>
-              )}
+              </div>
             </>
-          ) : (
-            <>
+          )
+        ) : (
+          <>
+            <div className="field-label">Your details</div>
+            <div className="card guest-card">
               <div className="guest-row">
                 <label className="guest-field">
                   <span>
@@ -835,9 +827,9 @@ export default function ReservationClient({
                   </span>
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
 
         {noteError && (
           <p id="note-error" className="error">

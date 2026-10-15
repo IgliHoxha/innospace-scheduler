@@ -3,12 +3,22 @@
 import { useEffect, useState } from "react";
 
 /** Hard-navigates so no client state survives sign-out. */
-async function logout(): Promise<void> {
+async function logout(to: string): Promise<void> {
   await fetch("/api/login", { method: "DELETE" });
-  window.location.replace("/login");
+  window.location.replace(to);
 }
 
-export function UserMenu({ username }: { username: string }) {
+export function UserMenu({
+  username,
+  email,
+  signOutTo = "/login",
+}: {
+  username: string;
+  /** Shown under the name for a Google member; the admin has none to show. */
+  email?: string;
+  /** Where sign-out lands: the admin's login, or the booking screen for a member. */
+  signOutTo?: string;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -44,8 +54,12 @@ export function UserMenu({ username }: { username: string }) {
           <div className="user-dropdown-head">
             Signed in as
             <strong>{username}</strong>
+            {email && <span className="user-email">{email}</span>}
           </div>
-          <button className="user-dropdown-item" onClick={logout}>
+          <button
+            className="user-dropdown-item"
+            onClick={() => logout(signOutTo)}
+          >
             Sign out
           </button>
         </div>

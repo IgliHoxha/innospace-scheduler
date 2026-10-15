@@ -240,6 +240,14 @@ button {
   font-size: 14px;
 }
 
+/* A member's address, which can run long: never let it widen the menu. */
+.user-dropdown-head .user-email {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .user-dropdown-item {
   width: 100%;
   text-align: left;
@@ -770,21 +778,6 @@ button {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
-}
-
-/* Who is booking, read-only, with the way out beside it. */
-.signed-in {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  font-size: 14px;
-}
-
-.signed-in .muted {
-  display: block;
-  font-size: 12px;
 }
 
 /* The optional sign-in, offered beneath the guest fields, never demanded. */
