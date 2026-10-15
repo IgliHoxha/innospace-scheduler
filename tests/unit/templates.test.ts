@@ -163,6 +163,27 @@ describe("contact footer", () => {
   });
 });
 
+// Replies are routed to a dead address, so no body may invite one.
+describe("the no-reply wording", () => {
+  it("points the reader at the sign-off details instead of a reply, on every status", () => {
+    for (const status of ["confirmed", "pending", "cancelled"] as const) {
+      const body = t.emailBodyText(base, status, contact, boothName);
+      expect(body).not.toMatch(/reply/i);
+    }
+  });
+
+  it("names the contact details right below the line that points at them", () => {
+    for (const status of ["confirmed", "cancelled"] as const) {
+      const lines = t
+        .emailBodyText(base, status, contact, boothName)
+        .split("\n");
+      const at = lines.findIndex((l) => l.includes("details below"));
+      expect(at).toBeGreaterThan(-1);
+      expect(lines.slice(at)).toContain("Email: hi@test.co");
+    }
+  });
+});
+
 describe("reservations missing their times", () => {
   it("has no date to report when startsAt is absent", () => {
     expect(
@@ -280,7 +301,7 @@ describe("the whole email body, line for line", () => {
         "Time: 09:30 - 11:00",
         "Note: Client call",
         "",
-        "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
+        "If your plans change, use the cancel link at the bottom of this email, or get in touch using the details below.",
         "",
         "Best regards,",
         "Alex",
@@ -303,7 +324,7 @@ describe("the whole email body, line for line", () => {
           "Date: Tuesday, 14 July 2026",
           "Time: 09:30 - 11:00",
           "",
-          "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
+          "If your plans change, use the cancel link at the bottom of this email, or get in touch using the details below.",
           "",
           "Best regards,",
           "Alex",
@@ -371,7 +392,7 @@ describe("the whole email body, line for line", () => {
         "",
         "We're sorry to let you know that your reservation for Booth 1 on Tuesday, 14 July 2026 (09:30 - 11:00) has been cancelled.",
         "",
-        "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
+        "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or get in touch using the details below and we'll be glad to help.",
         "",
         "Best regards,",
         "Alex",
@@ -391,7 +412,7 @@ describe("the whole email body, line for line", () => {
         "",
         "We're sorry to let you know that your reservation for Booth 1 on Tuesday, 14 July 2026 (09:30 - 11:00) has been cancelled.",
         "",
-        "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
+        "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or get in touch using the details below and we'll be glad to help.",
         "",
         "Best regards,",
         "Alex",

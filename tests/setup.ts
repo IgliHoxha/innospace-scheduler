@@ -36,6 +36,7 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
 // Optional flags stay off for determinism; loadDb() sets DATA_FILE per test.
 for (const key of [
   "RESEND_API_KEY",
+  "EMAIL_REPLY_TO",
   "ALLOWED_ORIGINS",
   "TURNSTILE_SITE_KEY",
   "TURNSTILE_SECRET_KEY",
