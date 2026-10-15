@@ -829,6 +829,16 @@ describe("signed in with Google", () => {
     expect(screen.getByTestId("topbar").textContent).toBe("||/");
   });
 
+  // Google vouched for them, so the Cloudflare widget never loads.
+  it("skips the bot check: no widget, and Reserve is not held up for a token", async () => {
+    const { user } = await readyAsMember({ turnstileSiteKey: "site-key" });
+    expect(document.querySelector(".turnstile-slot")).toBeNull();
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(form.alerts()).toEqual([]);
+    expect(server.posts).toHaveLength(1);
+  });
+
   it("shows no card at all when only one week is allowed", async () => {
     await readyAsMember({ maxRepeatWeeks: 1 });
     expect(repeat()).toBeNull();
@@ -846,6 +856,19 @@ describe("a guest offered Google sign-in", () => {
     expect(form.name()).toBeTruthy();
     expect(form.email()).toBeTruthy();
     expect(document.getElementById("repeatWeeks")).toBeNull();
+  });
+
+  it("still faces the bot check as a guest, and is told to complete it", async () => {
+    mountForm({ turnstileSiteKey: "site-key" });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    expect(document.querySelector(".turnstile-slot")).not.toBeNull();
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await fillGuest(user);
+    await user.click(form.reserve());
+    expect(form.alerts()).toEqual([
+      "Please complete the human check below, then reserve again.",
+    ]);
+    expect(server.posts).toEqual([]);
   });
 
   it("sees no link while sign-in is off", async () => {

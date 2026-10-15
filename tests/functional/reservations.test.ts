@@ -1162,6 +1162,34 @@ describe("POST /api/reservations - Turnstile", () => {
     expect(db.queryReservations({}).total).toBe(1);
   });
 
+  // Google already vouched for them, so there is no token to verify.
+  it("is skipped for a member signed in with Google", async () => {
+    enable();
+    const res = await route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body: { boothId: "booth-1", date: DAY, start: "14:00", end: "15:00" },
+        headers: { "x-real-ip": "10.0.0.6" },
+        token: memberToken(),
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still challenges the admin's session, which is no booker", async () => {
+    enable();
+    const res = await route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body: ok,
+        headers: { "x-real-ip": "10.0.0.5" },
+        token: adminToken(),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
   // Single-use, so it must not be spent on a request bound to fail.
   it("does not call siteverify when the slot itself is invalid", async () => {
     enable();

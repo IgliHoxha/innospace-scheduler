@@ -127,7 +127,7 @@ export default function ReservationClient({
   minReservationMinutes,
   stepMinutes,
   contact,
-  turnstileSiteKey,
+  turnstileSiteKey: configuredSiteKey,
   member = null,
   googleSignIn = false,
   signInFailed = false,
@@ -153,6 +153,8 @@ export default function ReservationClient({
   /** The longest weekly repeat a member may ask for. */
   maxRepeatWeeks?: number;
 }) {
+  // Google already vouched for a member, so the bot check is for guests only.
+  const turnstileSiteKey = member ? undefined : configuredSiteKey;
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [avail, setAvail] = useState<Availability | null>(null);

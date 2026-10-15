@@ -210,8 +210,8 @@ export async function POST(req: NextRequest) {
     ? "pending"
     : "confirmed";
 
-  // Last gate before a write, so a bad request never spends its token.
-  if (!(await verifyTurnstile(body.turnstileToken, ip))) {
+  // Last gate before a write, so a bad request never spends its token; Google vouched for a member.
+  if (!member && !(await verifyTurnstile(body.turnstileToken, ip))) {
     return jsonError(
       "We couldn't verify that you're human. Please reload and retry.",
       403,
