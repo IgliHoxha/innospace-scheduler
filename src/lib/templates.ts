@@ -123,7 +123,7 @@ function confirmedBody(
     "",
     ...detailLines(r, boothName),
     "",
-    "If your plans change, use the cancel link at the bottom of this email, or get in touch using the details below.",
+    "If your plans change, use the cancel link at the bottom of this email, or just reply to it.",
     "",
     ...signOff(contact),
   ].join("\n");
@@ -145,7 +145,7 @@ function cancelledBody(
       r,
     )} (${timeText(r)}) has been cancelled.`,
     "",
-    "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or get in touch using the details below and we'll be glad to help.",
+    "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
     "",
     ...signOff(contact),
   ].join("\n");

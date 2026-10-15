@@ -126,7 +126,7 @@ const letter = (hello: string, what: string) =>
     "",
     `We're sorry to let you know that your reservation for ${what} has been cancelled.`,
     "",
-    "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or get in touch using the details below and we'll be glad to help.",
+    "We sincerely apologize for the inconvenience. Please feel free to reserve another slot at your convenience, or reply to this email and we'll be glad to help.",
     "",
     "Best regards,",
     "Test Signer",

@@ -111,7 +111,7 @@ for anything beyond local dev:
 | `AUTH_SECRET` | Signs login session cookies. Use a long random string. |
 | `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | Admin login. Change the defaults. |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Sending email (skipped if the key is unset). |
-| `EMAIL_REPLY_TO` | Optional `Reply-To` on every email; a no-reply address here stops the sender being answered. |
+| `EMAIL_REPLY_TO` | Optional `Reply-To` on every email, so replies reach a real inbox instead of the sender. |
 | `APP_BASE_URL` | Links and logo in emails. Must be publicly reachable. |
 | `TZ` | Timezone for the day boundary (e.g. `Europe/Tirane`). |
 | `DATA_FILE` | SQLite path (default `./data/scheduler.db`). |

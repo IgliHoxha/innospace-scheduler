@@ -546,17 +546,17 @@ describe("escaping the env-supplied copy", () => {
   });
 });
 
-// A reply follows Reply-To, so pointing it at a dead address makes the sender unanswerable.
+// A reply follows Reply-To, so the sender mailbox never has to be read.
 describe("the reply address", () => {
   const sentReplyTo = (call: number = 0) =>
     send.mock.calls[call][0].replyTo as string | undefined;
 
   it("sends every status with EMAIL_REPLY_TO as the Reply-To, from EMAIL_FROM unchanged", async () => {
-    vi.stubEnv("EMAIL_REPLY_TO", "no-reply@example.test");
+    vi.stubEnv("EMAIL_REPLY_TO", "info@example.test");
     for (const status of ["confirmed", "pending", "cancelled"] as const) {
       send.mockClear();
       await email.sendReservationEmail(RESERVATION, status);
-      expect(sentReplyTo()).toBe("no-reply@example.test");
+      expect(sentReplyTo()).toBe("info@example.test");
       expect(send.mock.calls[0][0].from).toBe("onboarding@resend.dev");
     }
   });
@@ -574,18 +574,10 @@ describe("the reply address", () => {
 
   it("reads the value at send time, so a change needs no restart of the client", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed");
-    vi.stubEnv("EMAIL_REPLY_TO", "no-reply@example.test");
+    vi.stubEnv("EMAIL_REPLY_TO", "info@example.test");
     await email.sendReservationEmail(RESERVATION, "confirmed");
     expect(sentReplyTo(0)).toBeUndefined();
-    expect(sentReplyTo(1)).toBe("no-reply@example.test");
-  });
-
-  it("never asks the reader to reply in the rendered body, on any status", async () => {
-    for (const status of ["confirmed", "pending", "cancelled"] as const) {
-      send.mockClear();
-      await email.sendReservationEmail(RESERVATION, status);
-      expect(htmlOf()).not.toMatch(/reply/i);
-    }
+    expect(sentReplyTo(1)).toBe("info@example.test");
   });
 });
 
