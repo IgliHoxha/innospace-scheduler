@@ -164,7 +164,9 @@ describe("profileFromIdToken", () => {
 describe("googleProfileForCode", () => {
   // Typed like fetch, so the calls read back as a URL and its init.
   const exchange = (reply: () => Promise<unknown> | unknown) => {
-    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => reply());
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => unknown>(() =>
+      reply(),
+    );
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
   };
