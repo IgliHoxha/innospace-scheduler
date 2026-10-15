@@ -73,6 +73,12 @@ export function fakeServer() {
     cancels: [] as Booking[],
     taken: (() => []) as (booth: string, date: string) => Taken[],
     earliest: "00:00",
+    /** Who /api/me says is signed in; null is a guest. */
+    member: null as { name: string; email: string } | null,
+    /** How many times the form asked /api/me. */
+    whoAsked: 0,
+    /** /api/me rejects like a lost connection. */
+    meFails: false,
     /** Used up in order; once empty, `otherwise` answers. */
     replies: [] as (Reply | ((b: Booking) => Reply))[],
     otherwise: ((b: Booking) => reply.booked(b)) as (b: Booking) => Reply,
@@ -99,6 +105,11 @@ export function fakeServer() {
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const u = new URL(url, "http://localhost");
+      if (u.pathname === "/api/me") {
+        server.whoAsked += 1;
+        if (server.meFails) throw new TypeError("Failed to fetch");
+        return json(200, { ok: true, member: server.member });
+      }
       if (u.pathname === "/api/availability") {
         const booth = u.searchParams.get("booth") ?? "";
         const date = u.searchParams.get("date") ?? "";

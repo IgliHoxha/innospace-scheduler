@@ -41,6 +41,9 @@ const nextConfig = {
       { source: "/login", headers: noStore },
       { source: "/cancel/:path*", headers: noStore },
       { source: "/api/login", headers: noStore },
+      // Session-specific, and "/" is cached, so this is where the form asks.
+      { source: "/api/me", headers: noStore },
+      { source: "/api/auth/:path*", headers: noStore },
       { source: "/api/cancel", headers: noStore },
       { source: "/api/reservations/:path*", headers: noStore },
     ];

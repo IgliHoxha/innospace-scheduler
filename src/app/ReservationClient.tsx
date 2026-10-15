@@ -128,7 +128,6 @@ export default function ReservationClient({
   stepMinutes,
   contact,
   turnstileSiteKey: configuredSiteKey,
-  member = null,
   googleSignIn = false,
   signInFailed = false,
   maxRepeatWeeks = 1,
@@ -144,8 +143,6 @@ export default function ReservationClient({
   contact: { phone: string; email: string };
   /** Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
-  /** Signed in with Google; null books as a guest. */
-  member?: Member | null;
   /** Whether the Google sign-in is configured, so a guest can be offered it. */
   googleSignIn?: boolean;
   /** Google sent the person back without a session. */
@@ -153,8 +150,22 @@ export default function ReservationClient({
   /** The longest weekly repeat a member may ask for. */
   maxRepeatWeeks?: number;
 }) {
+  // Unknown until /api/me answers: the page itself is cached for everyone.
+  const [member, setMember] = useState<Member | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/me", { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ member?: Member | null }>)
+      .then((json) => !cancelled && setMember(json.member ?? null))
+      // Unreachable or unparsable: book as a guest, which needs no session.
+      .catch(() => !cancelled && setMember(null));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Google already vouched for a member, so the bot check is for guests only.
-  const turnstileSiteKey = member ? undefined : configuredSiteKey;
+  const turnstileSiteKey = member === null ? configuredSiteKey : undefined;
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [avail, setAvail] = useState<Availability | null>(null);
@@ -179,8 +190,8 @@ export default function ReservationClient({
   // Members only: a guest has no session for the later dates to come back to.
   const [repeatWeeks, setRepeatWeeks] = useState(1);
 
-  const [fullName, setFullName] = useState(member?.name ?? "");
-  const [email, setEmail] = useState(member?.email ?? "");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   // Shown as a red field only, so every failing field is held.
   const [guestErrors, setGuestErrors] = useState<
     Partial<Record<GuestField, string>>
@@ -411,8 +422,15 @@ export default function ReservationClient({
   useEffect(() => {
     liveAttempt.current = attempt;
   }, [attempt]);
+  // Waits for /api/me too, or a member's first press would book as a guest.
   const canReserve =
-    !!avail && !!start && !!end && !problem && !reservation && !refusal;
+    !!avail &&
+    !!start &&
+    !!end &&
+    !problem &&
+    !reservation &&
+    !refusal &&
+    member !== undefined;
 
   // A reply must not pull focus from a field the user has since moved into.
   const focusUnlessBusy = (id: string) => {
@@ -726,7 +744,7 @@ export default function ReservationClient({
         </div>
 
         {/* A member is named in the top bar, so the details card gives way to the repeat. */}
-        {member ? (
+        {member === undefined ? null : member ? (
           maxRepeatWeeks > 1 && (
             <>
               <div className="field-label">Repeat</div>

@@ -694,7 +694,8 @@ describe("signed in with Google", () => {
     document.getElementById("repeatWeeks") as HTMLSelectElement | null;
 
   async function readyAsMember(props = {}) {
-    const view = mountForm({ member, maxRepeatWeeks: 8, ...props });
+    server.member = member;
+    const view = mountForm({ maxRepeatWeeks: 8, ...props });
     await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
     await waitFor(() => expect(form.reserve().disabled).toBe(false));
     return view;
@@ -837,6 +838,25 @@ describe("signed in with Google", () => {
     await waitFor(() => expect(form.banner()).not.toBe(""));
     expect(form.alerts()).toEqual([]);
     expect(server.posts).toHaveLength(1);
+  });
+
+  // The page is cached at the edge for everyone, so only this call may say who.
+  it("learns who is signed in from /api/me, asked once and never cached", async () => {
+    await readyAsMember();
+    expect(server.whoAsked).toBe(1);
+    const call = vi
+      .mocked(fetch)
+      .mock.calls.find(([u]) => String(u) === "/api/me");
+    expect(call?.[1]).toMatchObject({ cache: "no-store" });
+  });
+
+  it("books as a guest when /api/me cannot be reached", async () => {
+    server.member = member;
+    server.meFails = true;
+    mountForm({ maxRepeatWeeks: 8 });
+    await waitFor(() => expect(form.name()).not.toBeNull());
+    expect(screen.getByTestId("topbar").textContent).toBe("||/");
+    expect(repeat()).toBeNull();
   });
 
   it("shows no card at all when only one week is allowed", async () => {
