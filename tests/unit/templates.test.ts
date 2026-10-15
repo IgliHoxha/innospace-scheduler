@@ -222,6 +222,89 @@ describe("the note line in a pending request", () => {
   });
 });
 
+// One email covers every date of a weekly repeat.
+describe("a weekly series", () => {
+  const week = (n: number): Reservation => ({
+    ...base,
+    id: `r${n}`,
+    seriesId: "s1",
+    startsAt: `2026-07-${14 + 7 * n}T09:30`,
+    endsAt: `2026-07-${14 + 7 * n}T11:00`,
+  });
+  const series = [week(0), week(1), week(2)];
+
+  it("counts the dates in the confirmed subject and says weekly in the pending one", () => {
+    expect(
+      t.emailSubject("confirmed", contact, boothName, series[0], series),
+    ).toBe("Your Booth 1 weekly reservation is confirmed (3 dates)");
+    expect(
+      t.emailSubject("pending", contact, boothName, series[0], series),
+    ).toBe("We received your Booth 1 weekly reservation request at Test Org");
+  });
+
+  it("lists every date under the time, instead of one date line", () => {
+    const body = t.emailBodyText(
+      series[0],
+      "confirmed",
+      contact,
+      boothName,
+      series,
+    );
+    expect(body).toContain("Your meeting booth is reserved every week.");
+    expect(body).toContain(
+      [
+        "Booth: Booth 1",
+        "Time: 09:30 - 11:00",
+        "Dates: every week on Tuesday, 3 dates",
+        "- Tuesday, 14 July 2026",
+        "- Tuesday, 21 July 2026",
+        "- Tuesday, 28 July 2026",
+      ].join("\n"),
+    );
+    expect(body).not.toContain("Date: Tuesday");
+    expect(body).toContain("cancels every date still ahead");
+  });
+
+  it("says each date is reviewed on its own in a pending request", () => {
+    const body = t.emailBodyText(
+      series[0],
+      "pending",
+      contact,
+      boothName,
+      series,
+    );
+    expect(body).toContain("- Tuesday, 28 July 2026");
+    expect(body).toContain("as each date is approved");
+    expect(body).toContain("The slots are held for you");
+  });
+
+  it("says 'every week from' the first date in the preheader", () => {
+    expect(
+      t.emailPreheader(series[0], "confirmed", contact, boothName, series),
+    ).toContain(
+      "Confirmed: Booth 1 · every week from Tuesday, 14 July 2026 · 09:30 - 11:00 at Test Org.",
+    );
+  });
+
+  it("treats one date as no series at all", () => {
+    const one = [series[0]];
+    expect(
+      t.emailSubject("confirmed", contact, boothName, series[0], one),
+    ).toBe(t.emailSubject("confirmed", contact, boothName, series[0]));
+    expect(
+      t.emailBodyText(series[0], "confirmed", contact, boothName, one),
+    ).toBe(t.emailBodyText(series[0], "confirmed", contact, boothName));
+  });
+
+  it("names the dates as the summary does", () => {
+    expect(t.seriesDates(series)).toEqual([
+      "Tuesday, 14 July 2026",
+      "Tuesday, 21 July 2026",
+      "Tuesday, 28 July 2026",
+    ]);
+  });
+});
+
 // Without a snippet a client scrapes the wordmark and shows "innospaceTIRANA".
 describe("the email preheader", () => {
   const pre = (status: t.EmailStatus, r: Reservation = base) =>

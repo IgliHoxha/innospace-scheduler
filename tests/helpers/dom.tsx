@@ -202,8 +202,10 @@ export function fakeLayout(initial: Partial<typeof widths> = {}) {
   };
 }
 
+type FormProps = Partial<React.ComponentProps<typeof ReservationClient>>;
+
 /** The booking screen mounted on three booths and three days, with a user to drive it. */
-export function mountForm() {
+export function mountForm(props: FormProps = {}) {
   const user = userEvent.setup();
   const view = render(
     <ReservationClient
@@ -217,6 +219,7 @@ export function mountForm() {
       minReservationMinutes={15}
       stepMinutes={5}
       contact={{ phone: "+355 00 000", email: "hello@test.test" }}
+      {...props}
     />,
   );
   return { user, ...view };

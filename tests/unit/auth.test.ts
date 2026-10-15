@@ -10,9 +10,15 @@ import {
 import {
   checkAdminCredentials,
   createCancelToken,
+  createSeriesCancelToken,
   createSessionToken,
+  isRole,
+  MEMBER_SESSION_TTL_SECONDS,
+  ROLES,
   safeEqual,
+  SESSION_TTL_SECONDS,
   verifyCancelToken,
+  verifySeriesCancelToken,
   verifySessionToken,
   type Session,
 } from "@/lib/auth";
@@ -58,13 +64,37 @@ describe("session tokens", () => {
     ).toBeNull();
   });
 
-  it("rejects any role but admin, so an old member cookie is dead", () => {
+  it("rejects any role it does not know, so an account-era cookie is dead", () => {
     // Minted by hand: the current API can't express the retired "user" role.
     const forged = createSessionToken({
       ...adminSession,
       role: "user",
     } as unknown as Session);
     expect(verifySessionToken(forged)).toBeNull();
+  });
+
+  it("round-trips a member signed in with Google, email included", () => {
+    const member: Session = {
+      role: "member",
+      sub: "google-sub-1",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+    };
+    expect(verifySessionToken(createSessionToken(member))).toEqual(member);
+  });
+
+  it("knows exactly two roles", () => {
+    expect(ROLES).toEqual(["admin", "member"]);
+    expect(isRole("admin")).toBe(true);
+    expect(isRole("member")).toBe(true);
+    expect(isRole("user")).toBe(false);
+    expect(isRole(1)).toBe(false);
+  });
+
+  // A booker comes back for later dates, so their cookie lasts longer.
+  it("gives a member a longer life than the admin", () => {
+    expect(MEMBER_SESSION_TTL_SECONDS).toBe(30 * 24 * 60 * 60);
+    expect(MEMBER_SESSION_TTL_SECONDS).toBeGreaterThan(SESSION_TTL_SECONDS);
   });
 
   it("is scoped by AUTH_SECRET (a token minted under a different secret fails)", () => {
@@ -104,6 +134,39 @@ describe("cancel tokens", () => {
     const tok = createCancelToken("r42", inAnHour());
     vi.stubEnv("AUTH_SECRET", SIGNING_ALT);
     expect(verifyCancelToken(tok)).toBeNull();
+  });
+});
+
+describe("series cancel tokens", () => {
+  it("round-trips the series id", () => {
+    expect(
+      verifySeriesCancelToken(createSeriesCancelToken("s1", inAnHour())),
+    ).toBe("s1");
+  });
+
+  // One link must never release the other kind of booking.
+  it("is not a single-booking token, and the reverse", () => {
+    expect(
+      verifyCancelToken(createSeriesCancelToken("s1", inAnHour())),
+    ).toBeNull();
+    expect(
+      verifySeriesCancelToken(createCancelToken("r42", inAnHour())),
+    ).toBeNull();
+    expect(
+      verifySeriesCancelToken(createSessionToken(adminSession)),
+    ).toBeNull();
+  });
+
+  it("expires when the last date has ended", () => {
+    expect(
+      verifySeriesCancelToken(createSeriesCancelToken("s1", Date.now() - 1)),
+    ).toBeNull();
+  });
+
+  it("is scoped by AUTH_SECRET", () => {
+    const tok = createSeriesCancelToken("s1", inAnHour());
+    vi.stubEnv("AUTH_SECRET", SIGNING_ALT);
+    expect(verifySeriesCancelToken(tok)).toBeNull();
   });
 });
 

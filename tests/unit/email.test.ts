@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reservation } from "@/lib/types";
-import { verifyCancelToken } from "@/lib/auth";
+import { verifyCancelToken, verifySeriesCancelToken } from "@/lib/auth";
 
 // A shared `send` keeps the module's singleton client observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
@@ -198,6 +198,75 @@ describe("cancel link", () => {
     expect(await reservationHtml()).toContain(
       "color:#000000;text-decoration:none",
     );
+  });
+});
+
+describe("a weekly series email", () => {
+  const week = (n: number): Reservation => ({
+    ...RESERVATION,
+    id: `rs_${n}`,
+    seriesId: "series-1",
+    startsAt: `2026-07-${16 + 7 * n}T09:30`,
+    endsAt: `2026-07-${16 + 7 * n}T11:00`,
+  });
+  const series = [week(0), week(1), week(2)];
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-16T08:00:00"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const tokenIn = (html: string) =>
+    decodeURIComponent(/cancel\?token=([^"]+)/.exec(html)![1]);
+
+  it("carries one link that cancels the whole series, not one per date", async () => {
+    await email.sendReservationEmail(series[0], "confirmed", undefined, series);
+    const html = htmlOf();
+    expect(html).toContain("Cancel all remaining dates");
+    expect(html).not.toContain("Cancel this reservation");
+    expect(html.match(/cancel\?token=/g)).toHaveLength(1);
+    expect(verifySeriesCancelToken(tokenIn(html))).toBe("series-1");
+    expect(verifyCancelToken(tokenIn(html))).toBeNull();
+  });
+
+  it("lets that link live until the last date has ended", async () => {
+    vi.setSystemTime(new Date("2026-07-30T10:00:00"));
+    await email.sendReservationEmail(series[0], "confirmed", undefined, series);
+    expect(htmlOf()).toContain("Cancel all remaining dates");
+    vi.setSystemTime(new Date("2026-07-30T11:01:00"));
+    send.mockClear();
+    await email.sendReservationEmail(series[0], "confirmed", undefined, series);
+    expect(htmlOf()).not.toContain("/cancel?token=");
+  });
+
+  it("lists every date and says weekly in the subject", async () => {
+    await email.sendReservationEmail(series[0], "confirmed", undefined, series);
+    const mail = send.mock.calls[0][0];
+    expect(mail.subject).toBe(
+      "Your Booth 1 weekly reservation is confirmed (3 dates)",
+    );
+    expect(mail.html).toContain("Thursday, 30 July 2026");
+    expect(mail.html).toContain("every week from Thursday, 16 July 2026");
+  });
+
+  it("falls back to the single-booking email when the series holds one date", async () => {
+    await email.sendReservationEmail(series[0], "confirmed", undefined, [
+      series[0],
+    ]);
+    expect(htmlOf()).toContain("Cancel this reservation");
+    expect(send.mock.calls[0][0].subject).toContain("is confirmed for");
+  });
+
+  it("keeps the edited body but still adds the series link", async () => {
+    await email.sendReservationEmail(
+      series[0],
+      "confirmed",
+      "See you every Thursday.",
+      series,
+    );
+    expect(htmlOf()).toContain("See you every Thursday.");
+    expect(htmlOf()).toContain("Cancel all remaining dates");
   });
 });
 

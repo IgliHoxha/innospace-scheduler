@@ -40,6 +40,12 @@ describe("attemptKey", () => {
     }
   });
 
+  // A refusal of four weeks says nothing about one, so the key must move.
+  it("changes with the repeat count, and reads no count as one", () => {
+    expect(attemptKey({ ...ada, repeatWeeks: 4 })).not.toBe(attemptKey(ada));
+    expect(attemptKey({ ...ada, repeatWeeks: 1 })).toBe(attemptKey(ada));
+  });
+
   // The server asks for the note, so writing one must not void its demand.
   it("ignores everything that is not part of the attempt, the note included", () => {
     const withNote = { ...ada, note: "Board meeting", fullName: "Ada L" };
