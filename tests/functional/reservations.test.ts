@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { adminToken, makeRequest, resetApp } from "../helpers/app";
+import { adminToken, makeRequest, memberToken, resetApp } from "../helpers/app";
 
 // DNS is stubbed: the suite must never do a real lookup.
 vi.mock("@/lib/email-verify", () => ({
@@ -204,6 +204,252 @@ describe("POST /api/reservations - cancel token for the booking browser", () => 
     expect((await json(res)).ok).toBe(true);
     const row = db.getReservation(body.reservation!.id!);
     expect(row?.status).toBe("cancelled");
+  });
+});
+
+// A member's session identifies them; a guest's body does, and cannot repeat.
+describe("POST /api/reservations - signed in with Google", () => {
+  const asMember = (body: unknown, ip = "10.0.0.9") =>
+    route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body,
+        headers: { "x-real-ip": ip },
+        token: memberToken("Ada Lovelace", "ada@example.com"),
+      }),
+    );
+  const slot = { boothId: "booth-1", date: DAY, start: "14:00", end: "15:00" };
+
+  it("books under the session's name and email, with none in the body", async () => {
+    const res = await asMember(slot);
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.reservation?.fullName).toBe("Ada Lovelace");
+    expect(body.reservation?.email).toBe("ada@example.com");
+  });
+
+  it("ignores a name or email in the body: Google is the authority", async () => {
+    const res = await asMember({
+      ...slot,
+      fullName: "Mallory Mallory",
+      email: "mallory@example.com",
+    });
+    const body = await json(res);
+    expect(body.reservation?.fullName).toBe("Ada Lovelace");
+    expect(body.reservation?.email).toBe("ada@example.com");
+  });
+
+  it("accepts a one-word Google name, which a guest could not give", async () => {
+    const res = await route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body: slot,
+        headers: { "x-real-ip": "10.0.0.8" },
+        token: memberToken("Ada", "ada@example.com"),
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect((await json(res)).reservation?.fullName).toBe("Ada");
+  });
+
+  it("skips the mail-domain check: Google already verified the address", async () => {
+    // Not a one-shot: the member path never consumes it, so it would leak.
+    vi.mocked(verify.checkEmailDeliverable).mockResolvedValue({
+      ok: false,
+      error: "no mail",
+    });
+    expect((await asMember(slot)).status).toBe(201);
+    expect(verify.checkEmailDeliverable).not.toHaveBeenCalled();
+    vi.mocked(verify.checkEmailDeliverable).mockResolvedValue({ ok: true });
+  });
+
+  it("still runs that check for a guest", async () => {
+    vi.mocked(verify.checkEmailDeliverable).mockResolvedValueOnce({
+      ok: false,
+      error: "no mail",
+    });
+    expect((await post(ok)).status).toBe(400);
+  });
+
+  it("treats the admin's session as no booker at all", async () => {
+    const res = await route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body: slot,
+        headers: { "x-real-ip": "10.0.0.7" },
+        token: adminToken(),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await json(res)).field).toBe("fullName");
+  });
+
+  it("still cannot hold two booths at once under that email", async () => {
+    await asMember(slot);
+    const res = await asMember({ ...slot, boothId: "booth-2" });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe("POST /api/reservations - a weekly repeat", () => {
+  const asMember = (body: unknown, ip = "10.0.0.9") =>
+    route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body,
+        headers: { "x-real-ip": ip },
+        token: memberToken("Ada Lovelace", "ada@example.com"),
+      }),
+    );
+  const slot = { boothId: "booth-1", date: DAY, start: "14:00", end: "15:00" };
+  type Made = Body & {
+    reservations?: {
+      id: string;
+      status: string;
+      startsAt: string;
+      seriesId?: string;
+      cancelToken?: string;
+    }[];
+    seriesCancelToken?: string;
+  };
+  const made = (res: Response) => res.json() as Promise<Made>;
+
+  it("401s a guest who asks for one, naming the way in", async () => {
+    const res = await post({ ...ok, repeatWeeks: 3 });
+    expect(res.status).toBe(401);
+    expect((await json(res)).error).toBe(
+      "Sign in with Google to set up a weekly repeat.",
+    );
+    expect(db.queryReservations({ filter: "all" }).total).toBe(0);
+  });
+
+  it("400s a count outside 1 to 8, or not a whole number", async () => {
+    for (const bad of [0, 9, 2.5, "x"]) {
+      const res = await asMember({ ...slot, repeatWeeks: bad });
+      expect(res.status).toBe(400);
+      expect((await json(res)).error).toBe(
+        "Choose how many weeks to repeat for, from 1 to 8.",
+      );
+    }
+  });
+
+  it("stores one date a week under a shared series id and returns them all", async () => {
+    const res = await asMember({ ...slot, repeatWeeks: 3 });
+    expect(res.status).toBe(201);
+    const body = await made(res);
+    expect(body.reservations?.map((r) => r.startsAt)).toEqual([
+      "2026-07-16T14:00",
+      "2026-07-23T14:00",
+      "2026-07-30T14:00",
+    ]);
+    const ids = new Set(body.reservations?.map((r) => r.seriesId));
+    expect(ids.size).toBe(1);
+    expect(body.reservation?.id).toBe(body.reservations?.[0].id);
+    expect(db.queryReservations({ filter: "all" }).total).toBe(3);
+  });
+
+  it("gates only the first date by the booking window", async () => {
+    // Eight weeks runs far past the 14-day window, and is still accepted.
+    expect((await asMember({ ...slot, repeatWeeks: 8 })).status).toBe(201);
+    const late = await asMember({
+      ...slot,
+      date: "2026-09-01",
+      repeatWeeks: 2,
+    });
+    expect(late.status).toBe(400);
+  });
+
+  it("hands back a cancel token per date and one for the whole series", async () => {
+    const body = await made(await asMember({ ...slot, repeatWeeks: 2 }));
+    const auth = await import("@/lib/auth");
+    for (const r of body.reservations!) {
+      expect(auth.verifyCancelToken(r.cancelToken)).toBe(r.id);
+    }
+    expect(auth.verifySeriesCancelToken(body.seriesCancelToken)).toBe(
+      body.reservations![0].seriesId,
+    );
+    // The series link lasts until the last date ends, a week after the first.
+    vi.setSystemTime(new Date("2026-07-23T15:01:00"));
+    expect(auth.verifySeriesCancelToken(body.seriesCancelToken)).toBeNull();
+  });
+
+  it("sends one email covering every date, and announces each", async () => {
+    await asMember({ ...slot, repeatWeeks: 3 });
+    expect(email.sendReservationEmail).toHaveBeenCalledOnce();
+    const [first, status, custom, series] = vi.mocked(
+      email.sendReservationEmail,
+    ).mock.calls[0];
+    expect(status).toBe("confirmed");
+    expect(custom).toBeUndefined();
+    expect(series).toHaveLength(3);
+    expect(series?.[0].id).toBe(first.id);
+    expect(slack.postReservationToSlack).toHaveBeenCalledTimes(3);
+  });
+
+  it("409s naming the date when a later week is taken, and stores nothing", async () => {
+    db.createReservation({
+      boothId: "booth-1",
+      startsAt: "2026-07-30T14:30",
+      endsAt: "2026-07-30T15:30",
+      fullName: "Bob Builder",
+      email: "bob@example.com",
+    });
+    const res = await asMember({ ...slot, repeatWeeks: 3 });
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe(
+      "Thursday, 30 July 2026: That time slot is no longer available.",
+    );
+    expect(db.queryReservations({ filter: "all" }).total).toBe(1);
+  });
+
+  it("holds every date for approval when one of them joins a long run", async () => {
+    // A booking right before the second week's slot makes that week a long run.
+    await asMember({
+      ...slot,
+      date: "2026-07-23",
+      start: "12:00",
+      end: "14:00",
+      note: "Prep",
+    });
+    const res = await asMember({
+      ...slot,
+      repeatWeeks: 2,
+      note: "Weekly sync",
+    });
+    expect(res.status).toBe(201);
+    const body = await made(res);
+    expect(body.reservations?.map((r) => r.status)).toEqual([
+      "confirmed",
+      "pending",
+    ]);
+    expect(vi.mocked(email.sendReservationEmail).mock.calls.at(-1)?.[1]).toBe(
+      "pending",
+    );
+  });
+
+  it("asks for a note when any week's run reaches the limit", async () => {
+    await asMember({
+      ...slot,
+      date: "2026-07-23",
+      start: "13:00",
+      end: "14:00",
+    });
+    const res = await asMember({ ...slot, repeatWeeks: 2 });
+    expect(res.status).toBe(400);
+    expect((await json(res)).field).toBe("note");
+  });
+
+  it("drops every date when the one email fails", async () => {
+    vi.mocked(email.sendReservationEmail).mockResolvedValueOnce("failed");
+    expect((await asMember({ ...slot, repeatWeeks: 3 })).status).toBe(502);
+    expect(db.queryReservations({ filter: "all" }).total).toBe(0);
+  });
+
+  it("books a single date for a member who asks for one week, with no series", async () => {
+    const body = await made(await asMember({ ...slot, repeatWeeks: 1 }));
+    expect(body.reservations).toHaveLength(1);
+    expect(body.reservations?.[0].seriesId).toBeUndefined();
+    expect(body.seriesCancelToken).toBeUndefined();
   });
 });
 
@@ -669,6 +915,16 @@ describe("GET /api/reservations", () => {
     expect((await route.GET(makeRequest("/api/reservations"))).status).toBe(
       401,
     );
+  });
+  // A booker's Google session must never open the list of who booked what.
+  it("401 for a member signed in with Google", async () => {
+    expect(
+      (
+        await route.GET(
+          makeRequest("/api/reservations", { token: memberToken() }),
+        )
+      ).status,
+    ).toBe(401);
   });
   it("returns every reservation plus the stat counts for an admin", async () => {
     db.createReservation({

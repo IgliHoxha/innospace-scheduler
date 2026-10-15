@@ -66,6 +66,56 @@ function mount({ held = false } = {}) {
 const confirm = () => screen.getByRole("button") as HTMLButtonElement;
 const alert = () => document.querySelector("p.error")?.textContent ?? "";
 
+/** The same page for a weekly series link, listing the dates still ahead. */
+function mountSeries(dates: string[]) {
+  release = () => {};
+  const user = userEvent.setup();
+  render(
+    <CancelClient
+      token="tok-series"
+      booth="Booth 2"
+      date={dates[0]}
+      time="14:00 - 15:00"
+      dates={dates}
+    />,
+  );
+  return user;
+}
+
+describe("the cancel page for a weekly series", () => {
+  const DATES = ["Thursday, 23 July 2026", "Thursday, 30 July 2026"];
+
+  it("asks about every remaining date at once", () => {
+    mountSeries(DATES);
+    const question = document.querySelector("p")!;
+    expect(question.textContent).toBe(
+      "Cancel all 2 remaining dates of this weekly reservation?Booth 214:00 - 15:00, every weekThursday, 23 July 2026, Thursday, 30 July 2026",
+    );
+    expect(confirm().textContent).toBe("Yes, cancel them all");
+    expect(
+      screen.getByRole("link", { name: "Keep them" }).getAttribute("href"),
+    ).toBe("/");
+  });
+
+  it("sends the series token and confirms every date is free", async () => {
+    const user = mountSeries(DATES);
+    await user.click(confirm());
+    await waitFor(() =>
+      expect(document.querySelector("p")?.textContent).toBe(
+        "Every remaining date is cancelled. The slots are free for someone else now.",
+      ),
+    );
+    expect(sent[0].init.body).toBe(JSON.stringify({ token: "tok-series" }));
+  });
+
+  it("reads as a single booking when the list is empty", () => {
+    mountSeries([]);
+    expect(document.querySelector("p")?.textContent).toContain(
+      "Cancel this reservation?",
+    );
+  });
+});
+
 describe("the cancel page", () => {
   it("says which booking is about to go and offers both ways out", () => {
     mount();

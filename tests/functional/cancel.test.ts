@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
-import { createCancelToken, createSessionToken } from "@/lib/auth";
+import {
+  createCancelToken,
+  createSeriesCancelToken,
+  createSessionToken,
+} from "@/lib/auth";
 import { epochMsOf } from "@/lib/datetime";
 
 vi.mock("@/lib/slack", () => ({
@@ -174,6 +178,92 @@ describe("the Slack notice on a guest cancellation", () => {
   it("says nothing when the token is not valid", async () => {
     await post("nonsense");
     expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/cancel - a whole weekly series", () => {
+  const series = () =>
+    db.createReservationSeries(
+      [16, 23, 30].map((d) => ({
+        input: {
+          boothId: "booth-1",
+          startsAt: `2026-07-${d}T14:00`,
+          endsAt: `2026-07-${d}T15:00`,
+          fullName: "Ada Lovelace",
+          email: "ada@example.com",
+        },
+        status: "confirmed" as const,
+      })),
+    );
+  const tokenFor = (made: ReturnType<typeof series>) =>
+    createSeriesCancelToken(made[0].seriesId!, epochMsOf("2026-07-30T15:00"));
+
+  it("cancels every date still ahead and says how many", async () => {
+    const made = series();
+    const res = await post(tokenFor(made));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      alreadyCancelled: false,
+      cancelled: 3,
+    });
+    expect(made.map((r) => db.getReservation(r.id)?.status)).toEqual([
+      "cancelled",
+      "cancelled",
+      "cancelled",
+    ]);
+  });
+
+  it("leaves a date already under way, and the ones passed, alone", async () => {
+    const made = series();
+    vi.setSystemTime(new Date("2026-07-23T14:30:00"));
+    const res = await post(tokenFor(made));
+    expect((await res.json()).cancelled).toBe(1);
+    expect(made.map((r) => db.getReservation(r.id)?.status)).toEqual([
+      "confirmed",
+      "confirmed",
+      "cancelled",
+    ]);
+  });
+
+  it("reports a second click as already done, posting nothing more", async () => {
+    const made = series();
+    await post(tokenFor(made));
+    vi.mocked(slack.postReservationToSlack).mockClear();
+    const res = await post(tokenFor(made));
+    expect(await res.json()).toEqual({
+      ok: true,
+      alreadyCancelled: true,
+      cancelled: 0,
+    });
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("tells the channel about each freed date as the guest's doing", async () => {
+    const made = series();
+    await post(tokenFor(made));
+    expect(slack.postReservationToSlack).toHaveBeenCalledTimes(3);
+    for (const call of vi.mocked(slack.postReservationToSlack).mock.calls) {
+      expect(call[1]).toBe("cancelled");
+      expect(call[3]).toBe("guest");
+    }
+  });
+
+  it("400s once the last date has ended", async () => {
+    const made = series();
+    vi.setSystemTime(new Date("2026-07-30T15:01:00"));
+    expect((await post(tokenFor(made))).status).toBe(400);
+  });
+
+  it("does not accept a single-booking token as a series, nor the reverse", async () => {
+    const made = series();
+    const single = createCancelToken(made[1].id, epochMsOf("2026-07-23T15:00"));
+    await post(single);
+    expect(made.map((r) => db.getReservation(r.id)?.status)).toEqual([
+      "confirmed",
+      "cancelled",
+      "confirmed",
+    ]);
   });
 });
 

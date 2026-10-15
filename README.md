@@ -47,26 +47,21 @@ deploy to Fly.io.
 
 ## Roles
 
-- **Members** are invited by the admin (by email), then activate their account
-  from a tokenised link (valid for `INVITE_TTL_DAYS`) where they set their name and
-  password. They sign in at `/login`, reserve booths, and see or cancel their own
-  reservations.
-- **Admin** signs in with the env `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD`, sees
-  every reservation, approves or cancels (emailing the member) or deletes, and
-  manages members from the **Users** page.
+- **Guests** need no account: anyone reserves a booth from `/` by giving a name
+  and an email, and cancels through the signed link in the confirmation email.
+- **Members** are guests who chose "Sign in with Google" (offered only when
+  `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set). Their name and email come
+  from Google, and they can book the same slot **every week for up to 8 weeks**.
+  One email covers the series, with a link that cancels every date still ahead.
+- **Admin** signs in at `/login` with the env `DASHBOARD_USERNAME` /
+  `DASHBOARD_PASSWORD`, sees every reservation, approves or cancels (emailing the
+  booker) or deletes.
 
 The admin dashboard lists every reservation with live status counts, a search box,
 status filters, and a preview of the exact email each action would send:
 
 <p align="center">
   <img src="docs/img/dashboard.png" alt="The admin reservations dashboard: status count tiles (total, awaiting, confirmed, cancelled, deleted), a search box with status filters, and a table of reservations each showing a preview of the email that action would send" width="860">
-</p>
-
-Members are invite-only and managed from the **Users** page: enter an email, and
-the member sets their own name and password from the activation link.
-
-<p align="center">
-  <img src="docs/img/users.png" alt="The admin members page: an email invite box and a table of members with name, email, active status, and the date added" width="860">
 </p>
 
 ## Tech stack

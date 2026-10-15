@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { adminToken, makeRequest, resetApp } from "../helpers/app";
+import { adminToken, makeRequest, memberToken, resetApp } from "../helpers/app";
 import { DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_USER } from "../helpers/fixtures";
 import { SESSION_COOKIE } from "@/lib/auth";
 
@@ -74,6 +74,15 @@ describe("DELETE /api/login", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     // Deletion is surfaced as an expired/empty cookie.
+    expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
+  });
+
+  // A Google booker signs out through the same door.
+  it("signs a member out too", async () => {
+    const res = await route.DELETE(
+      makeRequest("/api/login", { method: "DELETE", token: memberToken() }),
+    );
+    expect(res.status).toBe(200);
     expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
   });
 

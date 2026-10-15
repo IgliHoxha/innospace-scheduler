@@ -678,6 +678,195 @@ describe("the board itself", () => {
   });
 });
 
+// Google sign-in is optional: a guest books as before, a member types nothing.
+describe("signed in with Google", () => {
+  const member = { name: "Ada Lovelace", email: "ada@example.com" };
+  const signedIn = () =>
+    document.querySelector('[data-testid="signed-in"]')?.textContent ?? "";
+  const repeat = () =>
+    document.getElementById("repeatWeeks") as HTMLSelectElement | null;
+
+  async function readyAsMember(props = {}) {
+    const view = mountForm({ member, maxRepeatWeeks: 8, ...props });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    await waitFor(() => expect(form.reserve().disabled).toBe(false));
+    return view;
+  }
+
+  it("shows who is booking instead of asking, with a way to sign out", async () => {
+    await readyAsMember();
+    expect(form.name()).toBeNull();
+    expect(form.email()).toBeNull();
+    expect(signedIn()).toContain("Ada Lovelace");
+    expect(signedIn()).toContain("ada@example.com");
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "Sign in with Google" }),
+    ).toBeNull();
+  });
+
+  it("books with no name or email in the body: the session carries them", async () => {
+    const { user } = await readyAsMember();
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(server.posts).toEqual([
+      {
+        boothId: "booth-1",
+        date: DAYS[0],
+        start: "09:00",
+        end: "10:00",
+        note: "",
+        turnstileToken: "",
+      },
+    ]);
+    expect(form.banner()).toContain("We've emailed ada@example.com");
+  });
+
+  it("offers a weekly repeat, says so in the summary, and sends the count", async () => {
+    const { user } = await readyAsMember();
+    expect(repeat()?.value).toBe("1");
+    expect([...repeat()!.options].map((o) => o.textContent)).toEqual([
+      "Just this once",
+      ...[2, 3, 4, 5, 6, 7, 8].map((n) => `Every week for ${n} weeks`),
+    ]);
+    await user.selectOptions(repeat()!, "3");
+    expect(document.querySelector(".reserve-summary")?.textContent).toContain(
+      "every week for 3 weeks",
+    );
+
+    server.otherwise = (b) => ({
+      status: 201,
+      body: {
+        ok: true,
+        reservation: {
+          id: "r1",
+          status: "confirmed",
+          boothId: b.boothId,
+          startsAt: `${b.date}T${b.start}`,
+          endsAt: `${b.date}T${b.end}`,
+        },
+        reservations: [
+          {
+            id: "r1",
+            startsAt: `${DAYS[0]}T09:00`,
+            endsAt: `${DAYS[0]}T10:00`,
+            cancelToken: "tok-1",
+          },
+          {
+            id: "r2",
+            startsAt: `2026-07-23T09:00`,
+            endsAt: `2026-07-23T10:00`,
+            cancelToken: "tok-2",
+          },
+          {
+            id: "r3",
+            startsAt: `2026-07-30T09:00`,
+            endsAt: `2026-07-30T10:00`,
+            cancelToken: "tok-3",
+          },
+        ],
+      },
+    });
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(server.posts[0]).toMatchObject({ repeatWeeks: 3 });
+    expect(form.banner()).toBe(
+      "Reserved Booth 1 on Thursday, 16 July 2026, 09:00 - 10:00, every week for 3 weeks. We've emailed ada@example.com a confirmation, with a link to cancel if your plans change.",
+    );
+    // Every date is remembered as this browser's, with its own cancel token.
+    const mine = JSON.parse(localStorage.getItem("innospace.mine") ?? "[]");
+    expect(mine.map((m: { k: string; t: string }) => [m.k, m.t])).toEqual([
+      ["booth-1|2026-07-30T09:00", "tok-3"],
+      ["booth-1|2026-07-23T09:00", "tok-2"],
+      [`booth-1|${DAYS[0]}T09:00`, "tok-1"],
+    ]);
+    // Back to a single booking, so the next press cannot repeat by accident.
+    expect(repeat()?.value).toBe("1");
+  });
+
+  it("sends no count for a single booking", async () => {
+    const { user } = await readyAsMember();
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(server.posts[0]).not.toHaveProperty("repeatWeeks");
+  });
+
+  it("lets a refusal of a repeat expire when the count changes", async () => {
+    const { user } = await readyAsMember();
+    await user.selectOptions(repeat()!, "2");
+    server.replies.push({
+      status: 409,
+      body: {
+        ok: false,
+        error: "Thursday, 23 July 2026: That time slot is no longer available.",
+      },
+    });
+    await user.click(form.reserve());
+    await waitFor(() =>
+      expect(form.alerts()).toEqual([
+        "Thursday, 23 July 2026: That time slot is no longer available.",
+      ]),
+    );
+    expect(form.reserve().disabled).toBe(true);
+    await user.selectOptions(repeat()!, "1");
+    expect(form.alerts()).toEqual([]);
+    expect(form.reserve().disabled).toBe(false);
+  });
+
+  it("signs out through the login route and reloads", async () => {
+    const reload = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, reload },
+    });
+    const { user } = await readyAsMember();
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(reload).toHaveBeenCalled());
+    const calls = vi.mocked(fetch).mock.calls as [string, RequestInit?][];
+    expect(
+      calls.some(([u, i]) => u === "/api/login" && i?.method === "DELETE"),
+    ).toBe(true);
+  });
+
+  it("hides the repeat picker when only one week is allowed", async () => {
+    await readyAsMember({ maxRepeatWeeks: 1 });
+    expect(repeat()).toBeNull();
+  });
+});
+
+describe("a guest offered Google sign-in", () => {
+  it("sees the link only when sign-in is configured, beside the usual fields", async () => {
+    mountForm({ googleSignIn: true });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    const link = screen.getByRole("link", { name: "Sign in with Google" });
+    expect(link.getAttribute("href")).toBe("/api/auth/google");
+    expect(form.name()).toBeTruthy();
+    expect(form.email()).toBeTruthy();
+    expect(document.getElementById("repeatWeeks")).toBeNull();
+  });
+
+  it("sees no link while sign-in is off", async () => {
+    await ready();
+    expect(
+      screen.queryByRole("link", { name: "Sign in with Google" }),
+    ).toBeNull();
+  });
+
+  it("is told when Google sent them back without a session, and can still book", async () => {
+    mountForm({ googleSignIn: true, signInFailed: true });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    expect(form.alerts()).toEqual([
+      "Google sign-in didn't complete. You can still book as a guest below.",
+    ]);
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await fillGuest(user);
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(form.alerts()).toEqual([]);
+    expect(server.posts).toHaveLength(1);
+  });
+});
+
 describe("cancelling from the board", () => {
   it("frees the slot, says so, and forgets what the server had asked", async () => {
     ownBooking();

@@ -162,8 +162,9 @@ describe("profileFromIdToken", () => {
 });
 
 describe("googleProfileForCode", () => {
+  // Typed like fetch, so the calls read back as a URL and its init.
   const exchange = (reply: () => Promise<unknown> | unknown) => {
-    const fetchMock = vi.fn(reply);
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => reply());
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
   };
@@ -177,7 +178,8 @@ describe("googleProfileForCode", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
     });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0];
+    if (!init) throw new Error("fetch was called without an init");
     expect(url).toBe("https://oauth2.googleapis.com/token");
     expect(init.method).toBe("POST");
     const sent = new URLSearchParams(String(init.body));
@@ -193,7 +195,8 @@ describe("googleProfileForCode", () => {
   it("gives up after ten seconds", async () => {
     const fetchMock = exchange(() => okWith({ id_token: idToken(ada) }));
     await googleProfileForCode("code-1");
-    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const init = fetchMock.mock.calls[0][1];
+    if (!init) throw new Error("fetch was called without an init");
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
