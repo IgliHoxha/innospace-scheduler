@@ -17,9 +17,8 @@ export async function changeReservationStatus(
   status: ReservationStatus,
   emailBody?: string,
 ): Promise<StatusChange | null> {
-  // Only a pending row becomes an approval; sync reads cannot interleave.
+  // Read first to tell an approval from a re-confirm; sync calls cannot interleave.
   const before = getReservation(id);
-  // One atomic UPDATE ... RETURNING: a separate existence read would race.
   const reservation = updateReservationStatus(id, status);
   if (!reservation) return null;
 

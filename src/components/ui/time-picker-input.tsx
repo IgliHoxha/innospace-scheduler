@@ -132,7 +132,7 @@ const TimePickerInput = React.forwardRef<
           caretToEnd(e.currentTarget);
           onMouseUp?.(e);
         }}
-        // Drop the draft so an empty or single digit renders back as "09".
+        // Drop the draft so a partial entry renders back zero-padded.
         onBlur={(e) => {
           setDraft(null);
           onBlur?.(e);

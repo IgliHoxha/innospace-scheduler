@@ -9,9 +9,7 @@ export function Topbar({
 }: {
   /** Omitted on the public booking screen while nobody is signed in. */
   username?: string;
-  /** A Google member's address, shown in the menu under their name. */
   email?: string;
-  /** Where sign-out lands; the admin's login unless told otherwise. */
   signOutTo?: string;
   brandHref?: string;
   brandLabel?: string;

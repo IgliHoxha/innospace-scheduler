@@ -26,7 +26,7 @@ export function dateOf(dt: string): string {
   return dt.slice(0, 10);
 }
 
-/** "09:30" from "2026-07-16T09:30": also the <input type="time"> value. */
+/** "09:30" from "2026-07-16T09:30". */
 export function timeOf(dt: string): string {
   return dt.slice(11, 16);
 }
@@ -137,7 +137,7 @@ function parseYMD(v: string | undefined) {
   return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
 }
 
-/** Zeller-free weekday: build a UTC date purely from the parts. */
+/** UTC, so the host's TZ cannot shift the weekday. */
 function weekdayOf(p: { y: number; m: number; d: number }): number {
   return new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay();
 }

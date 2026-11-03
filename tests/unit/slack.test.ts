@@ -200,7 +200,6 @@ describe("the Slack message", () => {
     expect(text({ ...unnamed, fullName: "   " })).toContain("(someone)");
   });
 
-  // A section renders full size; context is the only block Slack draws small.
   it("uses a context block, which is what keeps the type and the icon small", () => {
     expect(body(RESERVATION).type).toBe("context");
     expect(body(RESERVATION).elements[0].type).toBe("mrkdwn");

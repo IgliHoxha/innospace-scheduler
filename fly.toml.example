@@ -1,11 +1,4 @@
-# Template for fly.toml: copy to `fly.toml` (which is gitignored) before deploying:
-#   cp fly.toml.example fly.toml
-#
-# There is intentionally NO [env] block: every runtime variable (paths, sender,
-# base URL, scheduling window, booths, login throttling, credentials, API keys) is
-# stored as an encrypted Fly secret via `fly secrets set`, so nothing
-# environment-specific or sensitive is committed. See .env.example for the full
-# list of vars.
+# No [env] block on purpose: every runtime var is a Fly secret (see .env.example).
 
 app = 'innospace-scheduler'
 primary_region = 'fra'
@@ -19,7 +12,7 @@ primary_region = 'fra'
 [http_service]
   internal_port = 4001
   force_https = true
-  # Suspend keeps a memory snapshot, so an idle machine resumes in well under a second instead of a 4s cold boot.
+  # Resumes from a memory snapshot in under a second instead of a 4s cold boot.
   auto_stop_machines = 'suspend'
   auto_start_machines = true
   min_machines_running = 0

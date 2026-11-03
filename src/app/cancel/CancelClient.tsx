@@ -39,7 +39,6 @@ export default function CancelClient({
     } catch {
       setError("Could not reach the server. Please try again.");
     } finally {
-      // Always released, or a dropped connection leaves the button stuck.
       setBusy(false);
     }
   }

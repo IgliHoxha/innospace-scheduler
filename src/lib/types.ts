@@ -79,7 +79,7 @@ export interface Reservation extends ReservationInput {
 }
 
 export type ContactInfo = {
-  name: string; // who signs off the confirmation
+  name: string; // who signs off every email
   org: string;
   phone: string;
   email: string;

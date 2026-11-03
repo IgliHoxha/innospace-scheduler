@@ -1,4 +1,4 @@
-// Builders for the "ask us about this slot" links. Pure: no env imports.
+// Env-free, so the browser can import it.
 
 /** wa.me wants bare digits: a "+" or a space gives a dead link. */
 export function whatsappLink(phone: string, message: string): string {
@@ -27,7 +27,6 @@ export function slotEnquiry(
   return `Hi, I'd like to ask about the ${boothName} booking on ${dateLabel}, ${from} - ${to}.`;
 }
 
-/** The mailto subject for the same slot. */
 export function slotEnquirySubject(
   boothName: string,
   dateLabel: string,

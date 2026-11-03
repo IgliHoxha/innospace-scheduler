@@ -101,7 +101,6 @@ export async function POST(req: NextRequest) {
       email: member.email.toLowerCase(),
     };
   } else {
-    // The same validator the form runs, so the messages match exactly.
     const guest = validateGuest(body);
     if (!guest.ok) {
       return NextResponse.json(
@@ -114,13 +113,12 @@ export async function POST(req: NextRequest) {
 
   const repeatWeeks = parseRepeatWeeks(body.repeatWeeks);
   if (repeatWeeks === null) return jsonError(repeatWeeksMessage(), 400);
-  // A repeat needs someone to come back to, which a guest session is not.
   if (repeatWeeks > 1 && !member) return jsonError(REPEAT_SIGN_IN_MESSAGE, 401);
 
   if (!isBoothId(boothId)) {
     return jsonError("Please choose a booth.", 400);
   }
-  // The window gates the first date; the repeats are the point of a series.
+  // Only the first date must fall in the window; later repeats may run past it.
   if (!isReservableDate(date)) {
     return jsonError("That date can't be reserved.", 400);
   }
@@ -210,7 +208,7 @@ export async function POST(req: NextRequest) {
     ? "pending"
     : "confirmed";
 
-  // Last gate before a write, so a bad request never spends its token; Google vouched for a member.
+  // Checked last, so a refused request never spends its single-use token.
   if (!member && !(await verifyTurnstile(body.turnstileToken, ip))) {
     return jsonError(
       "We couldn't verify that you're human. Please reload and retry.",
@@ -304,7 +302,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Admin-only: the dashboard list. Nobody else can read who booked what. */
+/** Admin-only, since the list names every booker. */
 export async function GET(req: NextRequest) {
   const admin = requireAdmin(req);
   if (admin instanceof NextResponse) return admin;

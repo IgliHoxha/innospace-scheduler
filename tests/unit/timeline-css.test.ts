@@ -54,6 +54,7 @@ describe("timeline block labels: whole or absent, never cut", () => {
     expect(bar).not.toMatch(/(?<!min-)height:/);
   });
 
+  // The label's own class is what makes any enlargement of the labels reach the bar too.
   it("sizes the bar with an unseen, zero-width line in the label's own class", () => {
     const sizer = rule(".daycal-block-label.daycal-sizer");
     expect(sizer).toMatch(/display:\s*block;/);
@@ -63,7 +64,6 @@ describe("timeline block labels: whole or absent, never cut", () => {
     expect(sizer).not.toMatch(/position|font-size|line-height|height/);
   });
 
-  // The class is what makes any enlargement of the labels reach the bar too.
   it("gives the bin no text gutter, so it fits any block as wide as itself", () => {
     expect(rule(".daycal-block .daycal-block-label.on-hover")).toMatch(
       /padding:\s*0;/,

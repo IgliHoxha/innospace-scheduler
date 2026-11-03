@@ -21,8 +21,7 @@ setup: ## First-time dev setup: copy .env and install deps (no build)
 dev: kill-dev ## Run the dev server (http://localhost:4001), replacing any running one
 	npm run dev
 
-# Next picks a different port when 4001 is busy, so a forgotten server leaves you
-# testing one app while editing another. Kill by port: pkill misses next-server.
+# By port, since pkill misses next-server and a busy 4001 silently moves Next elsewhere.
 kill-dev: ## Stop whatever is listening on port 4001
 	@pids=$$(lsof -t -i:4001 2>/dev/null); \
 	if [ -z "$$pids" ]; then echo "port 4001 is free"; exit 0; fi; \
@@ -81,8 +80,7 @@ coverage: ## Run the tests with a V8 coverage report
 
 ## ---- Production config (Fly + Cloudflare) ----
 
-# Cloudflare credentials for the purge, from a gitignored file. Kept out of .env
-# because that one is the app's own config and is read by the dev server.
+# Cloudflare purge credentials, kept out of .env because the dev server reads that.
 -include .env.deploy
 
 # The only long-lived cached page. Availability expires on its own in 30s.

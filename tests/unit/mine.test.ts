@@ -132,7 +132,6 @@ describe("rememberMine", () => {
 });
 
 describe("heldRangesFor", () => {
-  // The board showing this slot is the only proof the booking still exists.
   const base = {
     entries: [entry()],
     booker: "ada@example.com",

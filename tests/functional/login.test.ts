@@ -77,7 +77,6 @@ describe("DELETE /api/login", () => {
     expect(res.cookies.get(SESSION_COOKIE)?.value).toBeFalsy();
   });
 
-  // A Google booker signs out through the same door.
   it("signs a member out too", async () => {
     const res = await route.DELETE(
       makeRequest("/api/login", { method: "DELETE", token: memberToken() }),

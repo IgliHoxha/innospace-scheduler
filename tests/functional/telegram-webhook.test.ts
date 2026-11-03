@@ -92,7 +92,7 @@ async function booked(
     }),
   );
   const { id } = (await res.json()) as { id: string };
-  // A booking confirmed on its own is never alerted, so this is the text an older alert carried.
+  // A confirmed booking sends no alert, so rebuild the text an older alert carried.
   const alert =
     kind === "pending"
       ? sentMessage(fetchMock, fetchMock.mock.calls.length - 1).text

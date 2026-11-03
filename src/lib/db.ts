@@ -23,6 +23,7 @@ import { formatDateLong } from "./datetime";
 const COLS =
   "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note,seriesId";
 
+// Interpolated, so only ever fed the fixed status lists, never input.
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 const TABLE_BODY = `(
   id TEXT PRIMARY KEY,

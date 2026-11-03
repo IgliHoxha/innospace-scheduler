@@ -54,7 +54,6 @@ export function isValidEmail(value: string): boolean {
   return emailProblem(value) === null;
 }
 
-// googlemail.com is the same inbox as gmail.com.
 const DOMAIN_ALIASES = new Map([["googlemail.com", "gmail.com"]]);
 
 // Gmail alone ignores dots; everyone else treats them as part of the address.

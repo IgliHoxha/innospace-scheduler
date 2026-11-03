@@ -602,7 +602,7 @@ describe("rows stored with fields left unset", () => {
     expect(back?.fullName).toBeUndefined();
     expect(back?.email).toBeUndefined();
     expect(back?.note).toBeUndefined();
-    // It still lists and searches without throwing on the missing columns.
+    // Null fields must not break listing or search.
     const page = db.queryReservations({ search: "booth-1" });
     expect(page.total).toBe(1);
   });

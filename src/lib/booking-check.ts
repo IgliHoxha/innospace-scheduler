@@ -35,7 +35,7 @@ export interface BookingCheckInput {
   /** First minute still reservable today. */
   earliestMin: number;
   reserved: readonly { start: number; end: number; label: string }[];
-  /** Other bookings the board confirms; the server counts every booth. */
+  /** This booker's bookings on this booth's board; the server also counts other booths. */
   held: readonly { start: number; end: number }[];
   note: string;
   stepMinutes: number;

@@ -610,9 +610,9 @@ button {
   cursor: default;
 }
 
-/* Not the pick's sky blue: it would read as a second, wider selection. */
 /* A real pointer only: on a phone a tapped box would stay shaded after the finger lifts. */
 @media (hover: hover) {
+  /* Not the pick's sky blue: it would read as a second, wider selection. */
   .daycal-cell.free:hover {
     background: rgba(15, 91, 82, 0.06);
   }
@@ -827,7 +827,6 @@ button {
   flex: none;
 }
 
-/* The optional sign-in, offered beneath the guest fields, never demanded. */
 .sign-in-offer {
   display: flex;
   flex-wrap: wrap;
@@ -1529,7 +1528,7 @@ tr:last-child td {
   border-top: 1px solid var(--border);
 }
 
-/* Same 1200px as .container, or the footer sits inset from the page above. */
+/* Same width as .container, or the footer sits inset from the page above. */
 .site-footer-inner {
   max-width: var(--page-max);
   margin: 0 auto;

@@ -28,7 +28,7 @@ const TAG_FITS_PX = 96;
 // Space (px) a tag keeps inside its pick, so enlarged text floats it sooner.
 const TAG_MARGIN_PX = 24;
 
-// Travel (px) before a press is a drag; below it, it stays a click.
+// Travel (px) before a press counts as a drag rather than a click.
 const DRAG_SLOP_PX = 4;
 
 // Room (px) a tick needs clear of its neighbour, so a narrow bar shows fewer.
@@ -108,7 +108,7 @@ export default function DayTimeline({
         }
       : null;
 
-  // Measure the bar so a narrow pick can move its time tag outside the block.
+  // Measured: the tag, the ticks and the scroll all need the bar's real width.
   const barRef = useRef<HTMLDivElement>(null);
   const [barPx, setBarPx] = useState(0);
   // One hour mark as it renders, so enlarged text thins the marks.
@@ -189,7 +189,7 @@ export default function DayTimeline({
   const movedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
 
-  // On a phone the day outruns the screen, so the track brings the pick (or now) into view.
+  // On a phone the day outruns the screen, so scroll the pick (or now) into view.
   const scrollRef = useRef<HTMLDivElement>(null);
   const showFromPct = pick ? pick.fromPct : pct(earliestMin);
   const showToPct = pick

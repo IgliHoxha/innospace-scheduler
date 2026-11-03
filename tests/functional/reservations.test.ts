@@ -65,7 +65,7 @@ const ok = {
   end: "15:00",
   ...who,
 };
-// No token: booking is public. `ip` varies so the throttle cannot leak.
+// No token: booking is public; `ip` lets a test pick its own throttle bucket.
 const post = (body: unknown, ip = "10.0.0.1") =>
   route.POST(
     makeRequest("/api/reservations", {
@@ -253,7 +253,7 @@ describe("POST /api/reservations - signed in with Google", () => {
   });
 
   it("skips the mail-domain check: Google already verified the address", async () => {
-    // Not a one-shot: the member path never consumes it, so it would leak.
+    // Not mockResolvedValueOnce: the member path never calls it, so the queued value would leak.
     vi.mocked(verify.checkEmailDeliverable).mockResolvedValue({
       ok: false,
       error: "no mail",

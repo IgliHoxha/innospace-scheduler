@@ -23,7 +23,7 @@ export async function verifyTurnstile(
 ): Promise<boolean> {
   const secret = optionalEnv("TURNSTILE_SECRET_KEY");
   if (!secret) return true; // switched off: nothing to verify against
-  // Logged because it never reaches siteverify, so it would look like nobody.
+  // Logged here, since a missing token never reaches siteverify to leave a trace.
   if (typeof token !== "string" || !token) {
     console.warn(
       "[turnstile] booking rejected: no widget token in the request",

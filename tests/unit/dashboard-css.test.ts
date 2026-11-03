@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// jsdom applies no stylesheet, so the declarations the alerts' place rests on are pinned as text.
+// jsdom applies no stylesheet, so the alerts' CSS is pinned as text.
 const css = readFileSync(
   join(process.cwd(), "src", "app", "globals.css"),
   "utf8",

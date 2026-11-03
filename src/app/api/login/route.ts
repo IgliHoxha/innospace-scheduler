@@ -94,7 +94,6 @@ export async function POST(req: NextRequest) {
   return res;
 }
 
-// Session-guarded, so a forged cross-site DELETE cannot clear the cookie.
 export async function DELETE(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;

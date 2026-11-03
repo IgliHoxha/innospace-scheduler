@@ -28,7 +28,6 @@ export async function GET(req: NextRequest) {
     return jsonError("Date is outside the reservation window.", 400);
   }
 
-  // Times only: the board says a slot is taken, never who by.
   const reserved = reservedRanges(boothId, date).map((b) => ({
     start: timeOf(b.startsAt),
     end: timeOf(b.endsAt),

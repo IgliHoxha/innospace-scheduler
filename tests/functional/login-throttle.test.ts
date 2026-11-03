@@ -58,7 +58,7 @@ describe("POST /api/login brute-force throttling", () => {
       { login: "someone@else.com", password: "whatever" },
       "1.1.1.1",
     );
-    expect(other.status).toBe(401); // rejected as wrong creds, NOT throttled
+    expect(other.status).toBe(401); // wrong credentials, not throttled
   });
 
   it("resets the account counter after a successful login", async () => {
@@ -79,7 +79,6 @@ describe("POST /api/login brute-force throttling", () => {
 });
 
 describe("POST /api/login - the IP ban, the only permanent block", () => {
-  // A fresh limiter per test: the IP bucket tight, the account bucket loose.
   beforeEach(async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     resetApp();

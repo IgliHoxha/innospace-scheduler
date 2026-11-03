@@ -95,7 +95,6 @@ async function answerTo(text: string, alert: unknown): Promise<string | null> {
   return changed ? changeAnswer(changed, action) : GONE;
 }
 
-// The few fields read from Telegram's Update object.
 type Update = {
   message?: {
     message_id?: number;

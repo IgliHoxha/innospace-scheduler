@@ -3,7 +3,7 @@ import { isBookableMinute } from "./reservation-rules";
 import { requireIntEnv } from "./env-app";
 import { shiftDate, todayYMD } from "./datetime";
 
-/** How many days ahead, including today, can be reserved. */
+/** Days bookable after today; today itself is always open. */
 function reservationWindowDays(): number {
   return Math.max(0, requireIntEnv("RESERVATION_WINDOW_DAYS"));
 }

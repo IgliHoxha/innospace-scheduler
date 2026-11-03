@@ -487,7 +487,7 @@ describe("bookings on the bar", () => {
   });
 });
 
-// A 390px phone: the day runs 1152px wide behind a 343px view.
+// A 390px phone: the 1152px track (1150px inside the bar's border) behind a 343px view.
 const PHONE = { bar: 1150, tick: 27, tag: 71, tagText: 71, scroll: 343 };
 const scroller = () => document.querySelector<HTMLElement>(".daycal-scroll")!;
 

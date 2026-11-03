@@ -1,5 +1,3 @@
-// The board's query string and booth tallies, kept out of the component to be tested.
-
 // The edge's s-maxage plus stale-while-revalidate, in total.
 export const EDGE_STALE_MS = 60_000;
 

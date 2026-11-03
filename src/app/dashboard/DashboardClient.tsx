@@ -75,7 +75,7 @@ const UNREACHABLE = "The server could not be reached.";
 const SIGNED_OUT =
   "You have been signed out: reload the page to sign in again.";
 
-/** One API request, never thrown: its body when it went through, else why it did not. */
+/** Never throws: the body on success, else a reason fit to show. */
 async function call<T>(
   url: string,
   init?: RequestInit,
@@ -93,7 +93,6 @@ async function call<T>(
   return { json: null, why };
 }
 
-/** What failed, with the reason after it when there is one. */
 const because = (what: string, why: string) => (why ? `${what} ${why}` : what);
 
 export default function DashboardClient({
@@ -119,7 +118,7 @@ export default function DashboardClient({
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmPurge, setConfirmPurge] = useState(false);
-  // Per-reservation edited cancellation email bodies (id -> body).
+  // Edited cancellation email bodies, keyed by reservation id.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [writeError, setWriteError] = useState("");
@@ -633,7 +632,7 @@ function Stat({
   );
 }
 
-// Client-only timestamp render to avoid a server/client hydration mismatch.
+// Formatted after mount, or the server render would mismatch on hydration.
 function WhenCell({ iso }: { iso: string }) {
   const [text, setText] = useState("");
   useEffect(() => {

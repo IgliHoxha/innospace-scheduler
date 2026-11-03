@@ -72,7 +72,7 @@ export interface Member {
 const SIGN_IN_FAILED_MESSAGE =
   "Google sign-in didn't complete. You can still book as a guest below.";
 
-/** Google's four-colour "G", inline so it needs no request and no asset. */
+/** Google's "G", inline so it costs no request. */
 function GoogleMark() {
   return (
     <svg
@@ -120,7 +120,6 @@ interface DateOption {
 // The length a booking opens on and a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
 
-// Where an untouched day opens the picker.
 const PREFERRED_START_MIN = 9 * 60;
 
 // How long a confirmation stays up; the email repeats it, so nothing is lost.
@@ -168,17 +167,15 @@ export default function ReservationClient({
   /** Longer than this needs approval; at this length or longer, a note. */
   autoApproveMaxHours: number;
   minReservationMinutes: number;
-  /** The minute grid every time snaps to. */
   stepMinutes: number;
   /** Where an enquiry about somebody else's booking goes. */
   contact: { phone: string; email: string };
   /** Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
-  /** Whether the Google sign-in is configured, so a guest can be offered it. */
+  /** Google sign-in is configured, so a guest can be offered it. */
   googleSignIn?: boolean;
   /** Google sent the person back without a session. */
   signInFailed?: boolean;
-  /** The longest weekly repeat a member may ask for. */
   maxRepeatWeeks?: number;
 }) {
   // Unknown until /api/me answers: the page itself is cached for everyone.

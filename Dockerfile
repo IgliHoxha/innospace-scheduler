@@ -27,12 +27,10 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=4001
 ENV HOSTNAME=0.0.0.0
-# SQLite DB file - mount a volume at /app/data to persist it.
 ENV DATA_FILE=/app/data/scheduler.db
 
 RUN mkdir -p /app/data && chown -R node:node /app
 
-# Copy the standalone server output, static assets, and public files.
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
@@ -40,8 +38,7 @@ COPY --from=builder --chown=node:node /app/public ./public
 RUN node -e "new (require('better-sqlite3'))(':memory:').close()"
 COPY --chown=node:node --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
-# Starts as root so the entrypoint can chown a freshly mounted volume, then it
-# drops to the unprivileged "node" user before running the server.
+# Starts as root so the entrypoint can chown a fresh volume before dropping to "node".
 VOLUME ["/app/data"]
 EXPOSE 4001
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

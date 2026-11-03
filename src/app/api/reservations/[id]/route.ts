@@ -30,7 +30,6 @@ export async function PATCH(
     return jsonError("That email body is too long.", 400);
   }
 
-  // Emails the booker and tells Slack; neither failing fails the change.
   const changed = await changeReservationStatus(
     id,
     status,

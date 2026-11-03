@@ -39,7 +39,6 @@ export interface ReservedSlot extends BoardSlot {
   cancelToken?: string;
 }
 
-/** Marks the board's blocks that this browser remembers booking. */
 export function markMine(
   reserved: readonly BoardSlot[],
   owned: readonly MineEntry[],

@@ -27,7 +27,7 @@ function baseUrl(): string {
   return requireEnv("APP_BASE_URL").replace(/\/$/, "");
 }
 
-// Only the mark is artwork; the wordmark is text, so dark mode can invert it.
+// Bump when logo-mark.svg changes: Gmail's image proxy caches per URL.
 const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
@@ -41,7 +41,7 @@ const MARK_WIDTH = 34;
 const FONT_STACK =
   "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
 
-// Fixed wordmark, not BUSINESS_NAME; flat spans, as Gmail splits a table.
+// Text wordmark, so dark mode can invert it; flat spans, as Gmail splits a table.
 function logoLockup(org: string): string {
   return `<img src="${escapeHtml(emailLogoUrl())}" alt="${escapeHtml(org)}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
@@ -148,7 +148,6 @@ function shell(opts: {
   </div>`;
 }
 
-// Ruled off below the sign-off, as utility chrome rather than letter copy.
 function cancelBlock(token: string, label: string, note: string): string {
   const link = `${baseUrl()}/cancel?token=${encodeURIComponent(token)}`;
   return `

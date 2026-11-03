@@ -102,7 +102,7 @@ export async function notifyNewReservation(
   r: Reservation,
   boothName: BoothNamer,
 ): Promise<TelegramOutcome> {
-  // An auto-confirmed booking needs nothing from the admin, so only one awaiting approval is sent.
+  // An auto-confirmed booking needs nothing from the admin.
   if (r.status !== "pending") return "skipped";
   return send(() => ({
     text: newReservationText(r, boothName),

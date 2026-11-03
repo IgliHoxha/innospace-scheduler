@@ -266,7 +266,7 @@ describe("a reservation starting before the window opens", () => {
 });
 
 describe("pickTagPlacement", () => {
-  // A 1000px bar over a 09:00-23:00 day, and a tag at the chip's rendered size.
+  // A 1000px bar over a 14-hour day (one hour is 7.14%), and a tag at the chip's rendered size.
   const BAR = 1000;
   const TAG = 90;
   const FITS = 96;
@@ -293,7 +293,7 @@ describe("pickTagPlacement", () => {
 
   it("floats the tag above a pick too narrow to hold it", () => {
     expect(place(0, 9).above).toBe(true);
-    // Exactly the fitting width still counts as roomy.
+    // 9.6% of 1000px is exactly FITS, which still counts as roomy.
     expect(place(0, 9.6).above).toBe(false);
   });
 

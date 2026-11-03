@@ -12,7 +12,6 @@ export function pageCount(total: number, pageSize: number): number {
 // Compact list of page numbers with ellipses, e.g. 1 ... 4 5 [6] 7 8 ... 20.
 export function pageList(page: number, totalPages: number): (number | "…")[] {
   const out: (number | "…")[] = [];
-  // Pages each side of the current one; `window` would shadow the global.
   const siblings = 1;
   for (let p = 1; p <= totalPages; p++) {
     if (

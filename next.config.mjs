@@ -1,11 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Self-contained server bundle for a small Docker image.
   output: "standalone",
   // Kept external so the native .node binary loads from node_modules.
   serverExternalPackages: ["better-sqlite3"],
-  // Every image is a plain <img>, so the optimizer is off and its native libvips stays out of the image.
+  // Every image is a plain <img>, so the optimizer and its native sharp stay out of the image.
   images: { unoptimized: true },
   outputFileTracingExcludes: {
     "*": ["node_modules/@img/**", "node_modules/sharp/**"],
@@ -16,7 +15,7 @@ const nextConfig = {
     const noStore = [{ key: "Cache-Control", value: "no-store" }];
     return [
       {
-        // The shell varies only with the date list, which rolls once a day.
+        // Edge-cached for everyone, so it must never render anything from the session.
         source: "/",
         headers: [
           {

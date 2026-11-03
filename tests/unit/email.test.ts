@@ -83,7 +83,6 @@ describe("email logo", () => {
     expect(svg).not.toContain("prefers-color-scheme");
   });
 
-  // The wordmark is neutral text so dark mode inverts it.
   it("builds the header without a table, so the card is not split", async () => {
     const html = await reservationHtml();
     expect(html).not.toContain("<table");
@@ -472,7 +471,6 @@ describe("the linkifier", () => {
   });
 });
 
-// Gmail snippets the first text in the body, once the wordmark spans.
 describe("the preheader", () => {
   it("comes before the logo lockup, or the client scrapes the wordmark instead", async () => {
     const html = await reservationHtml();
