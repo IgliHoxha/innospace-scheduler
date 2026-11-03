@@ -165,6 +165,27 @@ describe("queryReservations", () => {
     expect(firstPage.pageSize).toBe(2);
   });
 
+  it("finds Albanian names whatever the case or accent typed", async () => {
+    await reserve("09:00", "09:30", { fullName: "Çelik Hoxha" });
+    await reserve("10:00", "10:30", {
+      fullName: "Ëndrit Kola",
+      email: "endrit@example.com",
+    });
+    const found = (search: string) =>
+      db.queryReservations({ search }).reservations.map((r) => r.fullName);
+    expect(found("çel")).toEqual(["Çelik Hoxha"]);
+    expect(found("CEL")).toEqual(["Çelik Hoxha"]);
+    expect(found("ëndrit")).toEqual(["Ëndrit Kola"]);
+    expect(found("endrit")).toEqual(["Ëndrit Kola"]);
+  });
+
+  it("treats a typed % or _ as a character, not a wildcard", async () => {
+    await reserve("09:00", "09:30", { note: "50% off" });
+    await reserve("10:00", "10:30", { email: "bob@example.com" });
+    expect(db.queryReservations({ search: "%" }).total).toBe(1);
+    expect(db.queryReservations({ search: "_" }).total).toBe(0);
+  });
+
   it("hides soft-deleted rows from the default view", async () => {
     const r = await reserve("10:00", "11:00");
     db.updateReservationStatus(r.id, "deleted");
@@ -293,6 +314,15 @@ describe("status update + delete guard", () => {
     expect(db.deleteReservations([live.id])).toBe(1);
     expect(db.getReservation(live.id)).toBeNull();
     expect(db.deleteReservations([])).toBe(0);
+  });
+
+  // SQLite caps a statement at 32766 placeholders, which one per id would pass.
+  it("purges more ids than SQLite allows placeholders", async () => {
+    const gone = await reserve("10:00", "11:00");
+    db.updateReservationStatus(gone.id, "deleted");
+    const ids = [...Array.from({ length: 40_000 }, (_, i) => `x${i}`), gone.id];
+    expect(db.deleteReservations(ids)).toBe(1);
+    expect(db.getReservation(gone.id)).toBeNull();
   });
 });
 

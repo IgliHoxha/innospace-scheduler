@@ -19,6 +19,7 @@ import { canonicalEmail } from "./guest";
 import { PAGE_SIZE } from "./pagination";
 import { USER_BUSY_MESSAGE } from "./reservation-rules";
 import { formatDateLong } from "./datetime";
+import { foldForSearch } from "./search";
 
 const COLS =
   "id,createdAt,updatedAt,status,fullName,email,boothId,startsAt,endsAt,note,seriesId";
@@ -106,6 +107,10 @@ function getDb(): Database.Database {
   const db = new Database(dbFile);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
+  // SQLite folds only A-Z, so the dashboard search folds through JS, where Ç and Ë fold too.
+  db.function("fold", { deterministic: true }, (v: unknown) =>
+    foldForSearch(v == null ? "" : String(v)),
+  );
   initSchema(db);
   _db = db;
   _stmts = new Map();
@@ -199,7 +204,6 @@ export function queryReservations(
 export function queryReservations(q: ReservationQuery): ReservationPage;
 
 export function queryReservations(q: ReservationQuery = {}): ReservationPage {
-  const db = getDb();
   const page = Math.max(1, Math.trunc(q.page ?? 1));
   const pageSize = Math.min(
     100,
@@ -216,32 +220,31 @@ export function queryReservations(q: ReservationQuery = {}): ReservationPage {
     params.push(q.filter);
   }
 
-  const search = (q.search ?? "").trim().toLowerCase();
+  const search = foldForSearch((q.search ?? "").trim());
   if (search) {
-    const like = `%${search}%`;
+    // instr, not LIKE, so a typed % or _ is a character and not a wildcard.
     where.push(
       "(" +
-        SEARCH_COLS.map((c) => `LOWER(IFNULL(${c}, '')) LIKE ?`).join(" OR ") +
+        SEARCH_COLS.map((c) => `instr(fold(${c}), ?) > 0`).join(" OR ") +
         ")",
     );
-    SEARCH_COLS.forEach(() => params.push(like));
+    SEARCH_COLS.forEach(() => params.push(search));
   }
 
   // Never empty: the status clause above is pushed on every path.
   const whereSql = `WHERE ${where.join(" AND ")}`;
 
+  // Only four shapes of WHERE exist, so both statements stay cacheable.
   const total = (
-    db
-      .prepare(`SELECT COUNT(*) AS n FROM reservations ${whereSql}`)
-      .get(...params) as { n: number }
+    prep(`SELECT COUNT(*) AS n FROM reservations ${whereSql}`).get(
+      ...params,
+    ) as { n: number }
   ).n;
 
   // Newest request on top: "latest" means asked for last, not booked for latest.
-  const rows = db
-    .prepare(
-      `SELECT * FROM reservations ${whereSql} ORDER BY createdAt DESC, startsAt DESC LIMIT ? OFFSET ?`,
-    )
-    .all(...params, pageSize, (page - 1) * pageSize) as Row[];
+  const rows = prep(
+    `SELECT * FROM reservations ${whereSql} ORDER BY createdAt DESC, startsAt DESC LIMIT ? OFFSET ?`,
+  ).all(...params, pageSize, (page - 1) * pageSize) as Row[];
 
   return {
     reservations: rows.map(fromRow),
@@ -394,13 +397,10 @@ export function discardReservation(id: string): boolean {
 
 export function deleteReservations(ids: string[]): number {
   if (ids.length === 0) return 0;
-  const db = getDb();
-  const placeholders = ids.map(() => "?").join(",");
-  const res = db
-    .prepare(
-      `DELETE FROM reservations WHERE status = 'deleted' AND id IN (${placeholders})`,
-    )
-    .run(...ids);
+  // One JSON parameter, not one per id, so any number of ids fits one cached statement.
+  const res = prep(
+    `DELETE FROM reservations WHERE status = 'deleted' AND id IN (SELECT value FROM json_each(?))`,
+  ).run(JSON.stringify(ids));
   return res.changes;
 }
 

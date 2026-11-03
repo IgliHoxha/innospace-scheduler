@@ -1028,6 +1028,22 @@ describe("GET /api/reservations - order", () => {
     expect((await names("?q=f")).names).toEqual(["Fifth", "Fourth", "First"]);
   });
 
+  it("searches past case and accents, and never by wildcard", async () => {
+    db.createReservation({
+      boothId: "booth-2",
+      startsAt: `${DAY}T10:00`,
+      endsAt: `${DAY}T10:30`,
+      fullName: "Çelik",
+      email: "celik@example.com",
+    });
+    expect((await names(`?q=${encodeURIComponent("ÇEL")}`)).names).toEqual([
+      "Çelik",
+    ]);
+    expect((await names("?q=celik")).names).toEqual(["Çelik"]);
+    expect((await names("?q=%25")).names).toEqual([]);
+    expect((await names("?q=_")).names).toEqual([]);
+  });
+
   it("falls back to the same order for an unknown status", async () => {
     expect((await names("?status=bogus")).names).toEqual(newest);
   });
@@ -1099,6 +1115,19 @@ describe("DELETE /api/reservations", () => {
     });
     db.updateReservationStatus(r.id, "deleted");
     const res = await del({ ids: [r.id] }, adminToken());
+    expect(res.status).toBe(200);
+    expect((await json(res)).removed).toBe(1);
+  });
+  it("purges a selection larger than SQLite's placeholder limit", async () => {
+    const r = db.createReservation({
+      boothId: "booth-1",
+      startsAt: `${DAY}T14:00`,
+      endsAt: `${DAY}T15:00`,
+      email: "ada@example.com",
+    });
+    db.updateReservationStatus(r.id, "deleted");
+    const ids = [...Array.from({ length: 40_000 }, (_, i) => `x${i}`), r.id];
+    const res = await del({ ids }, adminToken());
     expect(res.status).toBe(200);
     expect((await json(res)).removed).toBe(1);
   });
