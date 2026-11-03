@@ -8,10 +8,12 @@ import {
   dragRange,
   fittingTicks,
   freeStretchFor,
+  grabAnchor,
   hourCells,
   hourMarkMinutes,
   pickTagPlacement,
   roomFor,
+  scrollToShow,
 } from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { dayEndMinute } from "@/lib/reservation-rules";
@@ -168,16 +170,44 @@ export default function DayTimeline({
     minMinutes,
   );
 
+  // Boxes under the pick: a finger there resizes it instead of swiping the track.
+  const inPick = (c: { from: number; to: number }) =>
+    !!pick && c.from < pick.toMin && c.to > pick.fromMin;
+
   // The gesture in flight, in a ref so the window listeners read live values.
   const dragRef = useRef<{
     anchorMin: number;
+    /** Added to the pointer's minute, so a grabbed edge moves by travel alone. */
+    offsetMin: number;
     startX: number;
     cell: number;
     stretch: { from: number; to: number };
+    /** A finger off the pick is a swipe or a tap, never a drag. */
+    tapOnly: boolean;
   } | null>(null);
   // Set once a press has travelled far enough to be a drag, not a click.
   const movedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
+
+  // On a phone the day outruns the screen, so the track brings the pick (or now) into view.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const showFromPct = pick ? pick.fromPct : pct(earliestMin);
+  const showToPct = pick
+    ? pick.toPct
+    : pctEnd(Math.min(lastEndMin, earliestMin + 60));
+  useEffect(() => {
+    const el = scrollRef.current;
+    // Mid-drag the finger already shows where the pick is.
+    if (!el || dragging) return;
+    const next = scrollToShow({
+      fromPx: (barPx * showFromPct) / 100,
+      toPx: (barPx * showToPct) / 100,
+      scrollPx: el.scrollLeft,
+      viewPx: el.clientWidth,
+      contentPx: barPx,
+    });
+    if (next != null) el.scrollLeft = next;
+  }, [showFromPct, showToPct, barPx, dragging]);
 
   /** The minute under the pointer, measured on the bar rather than on a box. */
   const minuteAt = (clientX: number): number => {
@@ -208,9 +238,10 @@ export default function DayTimeline({
       if (Math.abs(clientX - d.startX) < DRAG_SLOP_PX) return;
       movedRef.current = true;
     }
+    if (d.tapOnly) return;
     const r = dragRange(
       d.anchorMin,
-      minuteAt(clientX),
+      minuteAt(clientX) + d.offsetMin,
       d.stretch,
       step,
       minMinutes,
@@ -293,17 +324,23 @@ export default function DayTimeline({
   useEffect(() => () => endRef.current?.(), []);
 
   /** Track the gesture on the window, so no movement slips through a render. */
-  const beginDrag = (i: number, clientX: number) => {
+  const beginDrag = (i: number, clientX: number, pointerType: string) => {
     const stretch = freeStretchFor(segments, cells[i], earliestMin, lastEndMin);
     if (!stretch) return;
+    const touch = pointerType === "touch";
+    const grabbed = touch && pick && inPick(cells[i]);
     // The box pressed, not the pixel: a drag and a click start alike.
-    const anchorMin = Math.max(cells[i].from, stretch.from);
+    const { anchorMin, offsetMin } = grabbed
+      ? grabAnchor(minuteAt(clientX), { from: pick.fromMin, to: pick.toMin })
+      : { anchorMin: Math.max(cells[i].from, stretch.from), offsetMin: 0 };
     movedRef.current = false;
     dragRef.current = {
       anchorMin,
+      offsetMin,
       startX: clientX,
       cell: i,
       stretch,
+      tapOnly: touch && !grabbed,
     };
 
     const move = (e: PointerEvent) => onMoveRef.current(e.clientX);
@@ -363,153 +400,165 @@ export default function DayTimeline({
     <div className="daycal">
       <div className="daycal-head">
         <span className="daycal-title">Availability</span>
+        {onPick && (
+          <span className="daycal-hint" aria-hidden="true">
+            Tap an hour, drag your pick to resize
+          </span>
+        )}
       </div>
 
-      <div className="daycal-plot">
-        {/* An unseen line of the tag, so the strip above grows with it. */}
-        {tag?.above && (
-          <div
-            className="daycal-pick-tag above daycal-sizer"
-            aria-hidden="true"
-          >
-            <span>{"\u200b"}</span>
-          </div>
-        )}
-        <div
-          className={`daycal-bar ${dragging ? "dragging" : ""}`}
-          ref={barRef}
-        >
-          {/* In the label's own class, so the bar grows with enlarged text. */}
-          <span className="daycal-block-label daycal-sizer" aria-hidden="true">
-            {"\u200b"}
-          </span>
-          {/* A tag sitting inside its pick must fit the bar too. */}
-          <div className="daycal-pick-tag daycal-sizer" aria-hidden="true">
-            <span>{"\u200b"}</span>
-          </div>
-          {hourMarks
-            .filter((t) => t > dayStartMin && t < dayEndMin)
-            .map((t) => (
+      <div className="daycal-scroll" ref={scrollRef}>
+        <div className="daycal-track">
+          <div className="daycal-plot">
+            {/* An unseen line of the tag, so the strip above grows with it. */}
+            {tag?.above && (
               <div
-                key={`g${t}`}
-                className="daycal-grid"
-                style={{ left: `${pct(t)}%` }}
-              />
-            ))}
-
-          {earliestMin > dayStartMin && (
-            <div
-              className="daycal-past"
-              style={{ left: 0, width: `${pct(earliestMin)}%` }}
-              {...tooltip("Already passed")}
-            />
-          )}
-
-          {segments.map((s, i) => {
-            if (!s.reserved) return null;
-            const src = s.reserved.src;
-            const canCancel = !!src.cancelToken;
-            const range = { from: s.fromMin, to: s.toMin };
-            const when = `${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)}`;
-            // Segments are consecutive, so a booked next one means these touch.
-            const seam = !!segments[i + 1]?.reserved;
-            return (
-              <button
-                key={`${s.fromMin}-${s.toMin}`}
-                type="button"
-                className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""} ${seam ? "seam" : ""}`}
-                style={{
-                  left: `${pct(s.fromMin)}%`,
-                  width: `${pctEnd(s.toMin) - pct(s.fromMin)}%`,
-                }}
-                {...tooltip(
-                  canCancel
-                    ? `Your booking, ${when} · click to cancel it`
-                    : src.mine
-                      ? `Your booking, ${when}${contact ? " · click to contact us about it" : ""}`
-                      : `${when} · Booked${contact ? " - click to request information" : ""}`,
-                )}
-                aria-haspopup={canCancel || contact ? "dialog" : undefined}
-                disabled={!canCancel && !contact}
-                onClick={() =>
-                  canCancel ? setCancelling(range) : setAsking(range)
-                }
+                className="daycal-pick-tag above daycal-sizer"
+                aria-hidden="true"
               >
-                <span className="daycal-block-label">
-                  {src.mine ? "You" : "Booked"}
-                </span>
-                {canCancel && (
-                  <span className="daycal-block-label on-hover">
-                    <TrashIcon />
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          {pick && (
+                <span>{"\u200b"}</span>
+              </div>
+            )}
             <div
-              // At the bar's end the border follows the curve, or it is sliced.
-              className={`daycal-pick ${pick.fromPct === 0 ? "at-start" : ""} ${
-                pick.toPct === 100 ? "at-end" : ""
-              }`}
-              style={{
-                left: `${pick.fromPct}%`,
-                width: `${pick.toPct - pick.fromPct}%`,
-              }}
-            />
-          )}
+              className={`daycal-bar ${dragging ? "dragging" : ""}`}
+              ref={barRef}
+            >
+              {/* In the label's own class, so the bar grows with enlarged text. */}
+              <span
+                className="daycal-block-label daycal-sizer"
+                aria-hidden="true"
+              >
+                {"\u200b"}
+              </span>
+              {/* A tag sitting inside its pick must fit the bar too. */}
+              <div className="daycal-pick-tag daycal-sizer" aria-hidden="true">
+                <span>{"\u200b"}</span>
+              </div>
+              {hourMarks
+                .filter((t) => t > dayStartMin && t < dayEndMin)
+                .map((t) => (
+                  <div
+                    key={`g${t}`}
+                    className="daycal-grid"
+                    style={{ left: `${pct(t)}%` }}
+                  />
+                ))}
 
-          {/* On top to take the pointer; taken hours opt out for tooltips. */}
-          {onPick &&
-            cells.map((c, i) => (
-              <button
-                key={`c${c.from}`}
-                type="button"
-                className={`daycal-cell ${c.free ? "free" : "taken"}`}
-                style={{
-                  left: `${pct(c.from)}%`,
-                  width: `${pct(c.to) - pct(c.from)}%`,
-                }}
-                disabled={!c.free}
-                // No title: it would contradict the pick tag as a drag resizes.
-                aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.end)}`}
-                onPointerDown={(e) => {
-                  if (!c.free) return;
-                  e.preventDefault(); // no text selection while dragging
-                  beginDrag(i, e.clientX);
-                }}
-                // Keyboard only: detail 0 tells assistive clicks from presses.
-                onClick={(e) => {
-                  if (e.detail === 0) pickCell(i);
-                }}
-              />
-            ))}
-        </div>
+              {earliestMin > dayStartMin && (
+                <div
+                  className="daycal-past"
+                  style={{ left: 0, width: `${pct(earliestMin)}%` }}
+                  {...tooltip("Already passed")}
+                />
+              )}
 
-        {tag && (
-          <div ref={tagRef} className={tag.className} style={tag.style}>
-            <span>
-              {tag.from} - {tag.to}
-            </span>
+              {segments.map((s, i) => {
+                if (!s.reserved) return null;
+                const src = s.reserved.src;
+                const canCancel = !!src.cancelToken;
+                const range = { from: s.fromMin, to: s.toMin };
+                const when = `${minutesToTime(s.fromMin)} - ${minutesToTime(s.toMin)}`;
+                // Segments are consecutive, so a booked next one means these touch.
+                const seam = !!segments[i + 1]?.reserved;
+                return (
+                  <button
+                    key={`${s.fromMin}-${s.toMin}`}
+                    type="button"
+                    className={`daycal-block ${src.mine ? "mine" : ""} ${canCancel ? "can-cancel" : ""} ${seam ? "seam" : ""}`}
+                    style={{
+                      left: `${pct(s.fromMin)}%`,
+                      width: `${pctEnd(s.toMin) - pct(s.fromMin)}%`,
+                    }}
+                    {...tooltip(
+                      canCancel
+                        ? `Your booking, ${when} · click to cancel it`
+                        : src.mine
+                          ? `Your booking, ${when}${contact ? " · click to contact us about it" : ""}`
+                          : `${when} · Booked${contact ? " - click to request information" : ""}`,
+                    )}
+                    aria-haspopup={canCancel || contact ? "dialog" : undefined}
+                    disabled={!canCancel && !contact}
+                    onClick={() =>
+                      canCancel ? setCancelling(range) : setAsking(range)
+                    }
+                  >
+                    <span className="daycal-block-label">
+                      {src.mine ? "You" : "Booked"}
+                    </span>
+                    {canCancel && (
+                      <span className="daycal-block-label on-hover">
+                        <TrashIcon />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {pick && (
+                <div
+                  // At the bar's end the border follows the curve, or it is sliced.
+                  className={`daycal-pick ${pick.fromPct === 0 ? "at-start" : ""} ${
+                    pick.toPct === 100 ? "at-end" : ""
+                  }`}
+                  style={{
+                    left: `${pick.fromPct}%`,
+                    width: `${pick.toPct - pick.fromPct}%`,
+                  }}
+                />
+              )}
+
+              {/* On top to take the pointer; taken hours opt out for tooltips. */}
+              {onPick &&
+                cells.map((c, i) => (
+                  <button
+                    key={`c${c.from}`}
+                    type="button"
+                    className={`daycal-cell ${c.free ? "free" : "taken"}${inPick(c) ? " in-pick" : ""}`}
+                    style={{
+                      left: `${pct(c.from)}%`,
+                      width: `${pct(c.to) - pct(c.from)}%`,
+                    }}
+                    disabled={!c.free}
+                    // No title: it would contradict the pick tag as a drag resizes.
+                    aria-label={`Reserve ${minutesToTime(c.from)} to ${minutesToTime(c.end)}`}
+                    onPointerDown={(e) => {
+                      if (!c.free) return;
+                      e.preventDefault(); // no text selection while dragging
+                      beginDrag(i, e.clientX, e.pointerType);
+                    }}
+                    // Keyboard only: detail 0 tells assistive clicks from presses.
+                    onClick={(e) => {
+                      if (e.detail === 0) pickCell(i);
+                    }}
+                  />
+                ))}
+            </div>
+
+            {tag && (
+              <div ref={tagRef} className={tag.className} style={tag.style}>
+                <span>
+                  {tag.from} - {tag.to}
+                </span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="daycal-ticks">
-        {/* Unseen, in flow: the strip's height and the width to thin by. */}
-        <div ref={tickRef} className="daycal-tick-sizer" aria-hidden="true">
-          {hourMarks.map((t) => (
-            <span key={t} className="daycal-tick">
-              {minutesToTime(t)}
-            </span>
-          ))}
+          <div className="daycal-ticks">
+            {/* Unseen, in flow: the strip's height and the width to thin by. */}
+            <div ref={tickRef} className="daycal-tick-sizer" aria-hidden="true">
+              {hourMarks.map((t) => (
+                <span key={t} className="daycal-tick">
+                  {minutesToTime(t)}
+                </span>
+              ))}
+            </div>
+            {tickLabels.map((t) => (
+              <span key={t} className="daycal-tick" style={tickStyle(t)}>
+                {minutesToTime(t)}
+              </span>
+            ))}
+          </div>
         </div>
-        {tickLabels.map((t) => (
-          <span key={t} className="daycal-tick" style={tickStyle(t)}>
-            {minutesToTime(t)}
-          </span>
-        ))}
       </div>
 
       <div className="daycal-legend">

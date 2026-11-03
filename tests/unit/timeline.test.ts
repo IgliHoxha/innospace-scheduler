@@ -8,11 +8,13 @@ import {
   findFreeGaps,
   fittingTicks,
   freeStretchFor,
+  grabAnchor,
   hourCells,
   hourMarkMinutes,
   isDayOver,
   pickTagPlacement,
   roomFor,
+  scrollToShow,
   seedGap,
   suggestedEndMin,
   tickMinutes,
@@ -1025,6 +1027,105 @@ describe("fittingTicks", () => {
         if (marks.length) expect(marks[0]).toBe(START);
         if (marks.length > 1) expect(marks[marks.length - 1]).toBe(END);
       }
+    }
+  });
+});
+
+describe("scrollToShow", () => {
+  // A phone track: 1152px of day behind a 343px view.
+  const view = { viewPx: 343, contentPx: 1152 };
+
+  it("leaves a range that already shows whole where it is", () => {
+    expect(
+      scrollToShow({ fromPx: 100, toPx: 148, scrollPx: 0, ...view }),
+    ).toBeNull();
+  });
+
+  it("treats a range touching both view edges as showing", () => {
+    expect(
+      scrollToShow({ fromPx: 200, toPx: 543, scrollPx: 200, ...view }),
+    ).toBeNull();
+  });
+
+  it("centres a range lying past the right edge", () => {
+    expect(scrollToShow({ fromPx: 912, toPx: 960, scrollPx: 0, ...view })).toBe(
+      765,
+    );
+  });
+
+  it("centres a range lying before the left edge", () => {
+    expect(
+      scrollToShow({ fromPx: 480, toPx: 528, scrollPx: 800, ...view }),
+    ).toBe(333);
+  });
+
+  it("centres a range cut by an edge, not only one wholly out of view", () => {
+    expect(scrollToShow({ fromPx: 320, toPx: 368, scrollPx: 0, ...view })).toBe(
+      173,
+    );
+  });
+
+  it("never scrolls before the start or past the end", () => {
+    expect(scrollToShow({ fromPx: 0, toPx: 48, scrollPx: 500, ...view })).toBe(
+      0,
+    );
+    expect(
+      scrollToShow({ fromPx: 1104, toPx: 1152, scrollPx: 0, ...view }),
+    ).toBe(809);
+  });
+
+  it("shows the start of a range wider than the view", () => {
+    expect(scrollToShow({ fromPx: 96, toPx: 864, scrollPx: 0, ...view })).toBe(
+      96,
+    );
+  });
+
+  it("never moves a track that fits its view", () => {
+    expect(
+      scrollToShow({
+        fromPx: 900,
+        toPx: 950,
+        scrollPx: 0,
+        viewPx: 1128,
+        contentPx: 1126,
+      }),
+    ).toBeNull();
+  });
+
+  it("never moves before both widths are measured", () => {
+    const off = { fromPx: 900, toPx: 950, scrollPx: 0 };
+    expect(scrollToShow({ ...off, viewPx: 0, contentPx: 1152 })).toBeNull();
+    expect(scrollToShow({ ...off, viewPx: 343, contentPx: 0 })).toBeNull();
+    expect(scrollToShow({ ...off, viewPx: NaN, contentPx: 1152 })).toBeNull();
+  });
+});
+
+describe("grabAnchor", () => {
+  const pick = { from: 600, to: 660 };
+
+  it("holds the start and moves the end when pressed in the later half", () => {
+    expect(grabAnchor(645, pick)).toEqual({ anchorMin: 600, offsetMin: 15 });
+  });
+
+  it("holds the end and moves the start when pressed in the earlier half", () => {
+    expect(grabAnchor(610, pick)).toEqual({ anchorMin: 660, offsetMin: -10 });
+  });
+
+  it("moves the end from the exact middle", () => {
+    expect(grabAnchor(630, pick)).toEqual({ anchorMin: 600, offsetMin: 30 });
+  });
+
+  // The pressed box can reach past the pick, as an hour box overlapping it does.
+  it("grabs the nearer edge from a press just outside the pick", () => {
+    expect(grabAnchor(680, pick)).toEqual({ anchorMin: 600, offsetMin: -20 });
+    expect(grabAnchor(590, pick)).toEqual({ anchorMin: 660, offsetMin: 10 });
+  });
+
+  it("puts the moving edge back under the press before any travel", () => {
+    for (const press of [590, 605, 629, 630, 655, 700]) {
+      const { anchorMin, offsetMin } = grabAnchor(press, pick);
+      const moving = press + offsetMin;
+      expect([anchorMin, moving].sort((a, b) => a - b)).toEqual([600, 660]);
     }
   });
 });

@@ -199,6 +199,35 @@ export function pickTagPlacement(opts: {
   };
 }
 
+/** The scroll that shows a range whole and centred, or null if it already shows. */
+export function scrollToShow(opts: {
+  fromPx: number;
+  toPx: number;
+  scrollPx: number;
+  viewPx: number;
+  contentPx: number;
+}): number | null {
+  const { fromPx, toPx, scrollPx, viewPx, contentPx } = opts;
+  // Negated, so an unmeasured or unscrollable track never moves.
+  if (!(viewPx > 0) || !(contentPx > viewPx)) return null;
+  if (fromPx >= scrollPx && toPx <= scrollPx + viewPx) return null;
+  // Wider than the view, its start is what shows.
+  const wanted =
+    toPx - fromPx >= viewPx ? fromPx : (fromPx + toPx) / 2 - viewPx / 2;
+  return Math.round(Math.max(0, Math.min(contentPx - viewPx, wanted)));
+}
+
+/** A grabbed pick keeps its far edge; the near one moves by the finger's travel. */
+export function grabAnchor(
+  pressMin: number,
+  pick: { from: number; to: number },
+): { anchorMin: number; offsetMin: number } {
+  const at = Math.min(pick.to, Math.max(pick.from, pressMin));
+  return at - pick.from < pick.to - at
+    ? { anchorMin: pick.to, offsetMin: pick.from - pressMin }
+    : { anchorMin: pick.from, offsetMin: pick.to - pressMin };
+}
+
 export function barPercent(
   min: number,
   dayStartMin: number,

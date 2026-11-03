@@ -486,3 +486,153 @@ describe("bookings on the bar", () => {
     expect(screen.getByRole("button", { name: "Yes, cancel it" })).toBeTruthy();
   });
 });
+
+// A 390px phone: the day runs 1152px wide behind a 343px view.
+const PHONE = { bar: 1150, tick: 27, tag: 71, tagText: 71, scroll: 343 };
+const scroller = () => document.querySelector<HTMLElement>(".daycal-scroll")!;
+
+describe("the day on a phone", () => {
+  beforeEach(() => {
+    layout.resize(PHONE);
+  });
+
+  it("brings a pick past the screen's edge into view, centred", () => {
+    mount({ selection: { start: "18:00", end: "19:00" } });
+    expect(scroller().scrollLeft).toBe(715);
+  });
+
+  it("leaves the track alone while the pick already shows", () => {
+    mount({ selection: { start: "01:00", end: "02:00" } });
+    expect(scroller().scrollLeft).toBe(0);
+  });
+
+  it("follows a pick changed from the time fields, stopping at the day's end", () => {
+    const view = mount({ selection: { start: "01:00", end: "02:00" } });
+    view.rerender(
+      <DayTimeline
+        earliest="00:00"
+        reserved={[]}
+        selection={{ start: "20:00", end: "21:00" }}
+        step={5}
+        minMinutes={15}
+      />,
+    );
+    expect(scroller().scrollLeft).toBe(807);
+  });
+
+  it("opens on the next free hour when nothing is picked yet", () => {
+    mount({ earliest: "15:30" });
+    expect(scroller().scrollLeft).toBe(595);
+  });
+
+  it("keeps where the user swiped to while the pick stays put", () => {
+    const view = mount({ selection: { start: "18:00", end: "19:00" } });
+    scroller().scrollLeft = 0;
+    view.rerender(
+      <DayTimeline
+        earliest="00:00"
+        reserved={[]}
+        selection={{ start: "18:00", end: "19:00" }}
+        step={5}
+        minMinutes={15}
+      />,
+    );
+    expect(scroller().scrollLeft).toBe(0);
+  });
+
+  it("never scrolls a bar that fits its card", () => {
+    layout.resize({ ...DESIGNED, scroll: 1128 });
+    mount({ selection: { start: "20:00", end: "21:00" } });
+    expect(scroller().scrollLeft).toBe(0);
+  });
+});
+
+describe("picking by finger", () => {
+  // One pixel a minute, so a pointer's clientX reads as the minute it lands on.
+  const minuteWide = () => {
+    const bar = document.querySelector<HTMLElement>(".daycal-bar")!;
+    bar.getBoundingClientRect = () => ({ left: 0, width: 1440 }) as DOMRect;
+  };
+  const press = (el: Element, at: number, pointerType = "touch") =>
+    fireEvent.pointerDown(el, { clientX: at, pointerType, isPrimary: true });
+  const move = (at: number) =>
+    fireEvent.pointerMove(window, { clientX: at, pointerType: "touch" });
+  const lift = () => fireEvent.pointerUp(window);
+
+  it("marks the hours under the pick, the ones a finger resizes it from", () => {
+    mount({ onPick: vi.fn(), selection: { start: "10:15", end: "11:15" } });
+    expect(hour("09:00", "10:00").className).toBe("daycal-cell free");
+    expect(hour("10:00", "11:00").className).toBe("daycal-cell free in-pick");
+    expect(hour("11:00", "12:00").className).toBe("daycal-cell free in-pick");
+    expect(hour("12:00", "13:00").className).toBe("daycal-cell free");
+  });
+
+  it("moves the pick's end by the finger's travel, from its later half", () => {
+    const onPick = vi.fn();
+    mount({ onPick, selection: { start: "10:00", end: "11:00" } });
+    minuteWide();
+    press(hour("10:00", "11:00"), 645);
+    move(700);
+    lift();
+    expect(onPick).toHaveBeenLastCalledWith("10:00", "11:55");
+    expect(onPick).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves the pick's start from its earlier half, keeping the end", () => {
+    const onPick = vi.fn();
+    mount({ onPick, selection: { start: "10:00", end: "11:00" } });
+    minuteWide();
+    press(hour("10:00", "11:00"), 610);
+    move(580);
+    lift();
+    expect(onPick).toHaveBeenLastCalledWith("09:30", "11:00");
+  });
+
+  it("lets a finger off the pick swipe the track without picking anything", () => {
+    const onPick = vi.fn();
+    mount({ onPick, selection: { start: "10:00", end: "11:00" } });
+    minuteWide();
+    press(hour("14:00", "15:00"), 850);
+    move(700);
+    lift();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("takes the hour a finger taps off the pick", () => {
+    const onPick = vi.fn();
+    mount({ onPick, selection: { start: "10:00", end: "11:00" } });
+    minuteWide();
+    press(hour("14:00", "15:00"), 850);
+    lift();
+    expect(onPick).toHaveBeenCalledWith("14:00", "15:00");
+  });
+
+  it("picks nothing when the browser takes a touch over for scrolling", () => {
+    const onPick = vi.fn();
+    mount({ onPick });
+    minuteWide();
+    press(hour("14:00", "15:00"), 850);
+    fireEvent.pointerCancel(window);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("still drags a fresh range from any hour with a mouse", () => {
+    const onPick = vi.fn();
+    mount({ onPick, selection: { start: "10:00", end: "11:00" } });
+    minuteWide();
+    press(hour("14:00", "15:00"), 850, "mouse");
+    fireEvent.pointerMove(window, { clientX: 1000, pointerType: "mouse" });
+    lift();
+    expect(onPick).toHaveBeenLastCalledWith("14:00", "16:40");
+  });
+
+  it("tells a finger how to pick, only where picking is offered", () => {
+    mount({ onPick: vi.fn() });
+    const hint = document.querySelector(".daycal-hint")!;
+    expect(hint.textContent).toBe("Tap an hour, drag your pick to resize");
+    expect(hint.getAttribute("aria-hidden")).toBe("true");
+    cleanup();
+    mount();
+    expect(document.querySelector(".daycal-hint")).toBeNull();
+  });
+});

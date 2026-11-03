@@ -403,9 +403,18 @@ button {
 
 .daycal-head {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 8px;
+}
+
+/* Gestures only a finger needs telling about. */
+.daycal-hint {
+  display: none;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .daycal-title {
@@ -586,8 +595,13 @@ button {
   border: 0;
   background: transparent;
   cursor: pointer;
-  /* No tap highlight or text selection while dragging across the bar. */
   -webkit-tap-highlight-color: transparent;
+  /* A finger off the pick scrolls the page or the track, and taps pick an hour. */
+  touch-action: manipulation;
+}
+
+/* A finger on the pick resizes it, so the browser must not scroll instead. */
+.daycal-cell.in-pick {
   touch-action: none;
 }
 
@@ -597,13 +611,16 @@ button {
 }
 
 /* Not the pick's sky blue: it would read as a second, wider selection. */
-.daycal-cell.free:hover {
-  background: rgba(15, 91, 82, 0.06);
-}
+/* A real pointer only: on a phone a tapped box would stay shaded after the finger lifts. */
+@media (hover: hover) {
+  .daycal-cell.free:hover {
+    background: rgba(15, 91, 82, 0.06);
+  }
 
-/* Mid-drag the pick is the feedback; hover would read as the selection jumping. */
-.daycal-bar.dragging .daycal-cell.free:hover {
-  background: transparent;
+  /* Mid-drag the pick is the feedback; hover would read as the selection jumping. */
+  .daycal-bar.dragging .daycal-cell.free:hover {
+    background: transparent;
+  }
 }
 
 .daycal-cell.free:focus-visible {
@@ -723,6 +740,31 @@ button {
 .daycal-legend .sw.pick {
   background: rgba(56, 189, 248, 0.18);
   border-color: var(--tl-pick);
+}
+
+@media (pointer: coarse) {
+  .daycal-hint {
+    display: inline;
+  }
+}
+
+/* A phone fits the day at about 14px an hour, too small to tap, so it scrolls instead. */
+@media (max-width: 640px) {
+  .daycal-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    /* The floating tag's 1px ring sits on the strip's edge, which a scroller clips. */
+    padding-top: 1px;
+  }
+
+  /* 48px an hour: a whole finger per box, and room for every other hour's mark. */
+  .daycal-track {
+    min-width: calc(24 * 48px);
+  }
+
+  .daycal-bar {
+    min-height: 56px;
+  }
 }
 
 .guest-card {

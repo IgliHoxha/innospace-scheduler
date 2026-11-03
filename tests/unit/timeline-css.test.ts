@@ -119,3 +119,50 @@ describe("timeline text enlarged: nothing overflows its strip", () => {
     expect(css).not.toMatch(/has-toptag/);
   });
 });
+
+function media(query: string): string {
+  const at = css.indexOf(`\n@media ${query} {`);
+  expect(at, `no block for ${query}`).toBeGreaterThan(-1);
+  return css.slice(at, css.indexOf("\n}\n", at)).replace(/\/\*.*?\*\//g, "");
+}
+
+describe("timeline on a phone: a day wide enough to tap", () => {
+  it("scrolls the day sideways, kept from swiping the page back", () => {
+    const phone = media("(max-width: 640px)");
+    expect(phone).toMatch(/\.daycal-scroll \{[^}]*overflow-x:\s*auto;/);
+    expect(phone).toMatch(
+      /\.daycal-scroll \{[^}]*overscroll-behavior-x:\s*contain;/,
+    );
+  });
+
+  it("gives every hour a finger's width", () => {
+    expect(media("(max-width: 640px)")).toMatch(
+      /\.daycal-track \{[^}]*min-width:\s*calc\(24 \* 48px\);/,
+    );
+  });
+
+  it("scrolls only on a phone, so a desktop bar still shows the whole day", () => {
+    expect(css).not.toMatch(/\n\.daycal-scroll \{/);
+    expect(css).not.toMatch(/\n\.daycal-track \{/);
+  });
+
+  // None everywhere would leave a page that cannot be scrolled from the bar.
+  it("lets a finger off the pick scroll, and one on it resize", () => {
+    expect(rule(".daycal-cell")).toMatch(/touch-action:\s*manipulation;/);
+    expect(rule(".daycal-cell.in-pick")).toMatch(/touch-action:\s*none;/);
+  });
+
+  it("shades a box under a real pointer only, so a tapped one never stays lit", () => {
+    expect(css).not.toMatch(/\n\.daycal-cell\.free:hover \{/);
+    expect(media("(hover: hover)")).toMatch(
+      /\.daycal-cell\.free:hover \{[^}]*background:/,
+    );
+  });
+
+  it("shows the gesture hint to a finger only", () => {
+    expect(rule(".daycal-hint")).toMatch(/display:\s*none;/);
+    expect(media("(pointer: coarse)")).toMatch(
+      /\.daycal-hint \{[^}]*display:\s*inline;/,
+    );
+  });
+});

@@ -152,12 +152,13 @@ export function fakeServer() {
   return server;
 }
 
-const widths = { bar: 0, tick: 0, tag: 0, tagText: 0 };
+const widths = { bar: 0, tick: 0, tag: 0, tagText: 0, scroll: 0 };
 const observers = new Set<{ notify: () => void; watched: Set<Element> }>();
 const boxes = new Map<Element, string>();
 
 const widthOf = (el: Element) => {
   if (el.classList.contains("daycal-bar")) return widths.bar;
+  if (el.classList.contains("daycal-scroll")) return widths.scroll;
   if (el.classList.contains("daycal-tick-sizer")) return widths.tick;
   if (el.classList.contains("daycal-pick-tag")) return widths.tag;
   if (el.parentElement?.classList.contains("daycal-pick-tag"))
@@ -167,7 +168,11 @@ const widthOf = (el: Element) => {
 
 /** jsdom lays nothing out, so the widths the timeline measures are supplied here. */
 export function fakeLayout(initial: Partial<typeof widths> = {}) {
-  Object.assign(widths, { bar: 0, tick: 0, tag: 0, tagText: 0 }, initial);
+  Object.assign(
+    widths,
+    { bar: 0, tick: 0, tag: 0, tagText: 0, scroll: 0 },
+    initial,
+  );
   observers.clear();
   vi.stubGlobal(
     "ResizeObserver",
