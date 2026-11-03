@@ -36,6 +36,26 @@ describe("deciding whether a push needs a release", () => {
   });
 });
 
+describe("building the image", () => {
+  const step = workflow.slice(
+    workflow.indexOf("- name: Build and push"),
+    workflow.indexOf("deploy:\n"),
+  );
+
+  // Without pipefail, tee's success would hide a failed build.
+  it("reads flyctl's own exit status through the log it tees", () => {
+    expect(step).toContain("set -o pipefail");
+    expect(step).toMatch(/flyctl deploy --build-only [^\n]*\| tee build\.log/);
+  });
+
+  it("retries only a dropped builder connection, at most three times", () => {
+    expect(step).toContain("for attempt in 1 2 3; do");
+    expect(step).toContain(
+      "grep -qE 'rpc error: code = Unavailable|error reading from server: EOF' build.log || exit 1",
+    );
+  });
+});
+
 describe("the release job", () => {
   it("waits for the checks and the image", () => {
     expect(workflow).toMatch(

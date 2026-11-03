@@ -65,9 +65,19 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
       # fly.toml is gitignored, so CI uses the committed template.
+      # Fly's remote builder sometimes drops the connection mid-build; only that is retried, a real build error fails at once.
       - name: Build and push
         if: steps.live.outputs.release == 'true'
-        run: flyctl deploy --build-only --push --remote-only --image-label "$IMAGE_LABEL" --config fly.toml.example
+        shell: bash
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3; do
+            flyctl deploy --build-only --push --remote-only --image-label "$IMAGE_LABEL" --config fly.toml.example 2>&1 | tee build.log && exit 0
+            grep -qE 'rpc error: code = Unavailable|error reading from server: EOF' build.log || exit 1
+            echo "::warning::The builder dropped the connection (attempt $attempt of 3), retrying."
+            sleep 20
+          done
+          exit 1
 
   deploy:
     name: Release
