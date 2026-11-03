@@ -25,7 +25,7 @@ const TARGET: Record<ReplyAction, ReservationStatus> = {
 
 export const NO_TARGET =
   "Reply to the reservation's own message, so I know which one you mean.";
-export const GONE = "That reservation no longer exists.";
+const GONE = "That reservation no longer exists.";
 
 /** False for every caller while no secret is set, so the route fails closed. */
 export function isTelegramWebhook(secret: string | null): boolean {

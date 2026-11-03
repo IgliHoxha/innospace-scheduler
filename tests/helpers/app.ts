@@ -4,11 +4,11 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
-import { SESSION_COOKIE, createSessionToken, type Session } from "@/lib/auth";
+import { SESSION_COOKIE, createSessionToken } from "@/lib/auth";
 
 const tmpFiles: string[] = [];
 
-export function freshDataFile(): string {
+function freshDataFile(): string {
   const f = path.join(os.tmpdir(), `innospace-test-${randomUUID()}.db`);
   tmpFiles.push(f);
   return f;
@@ -40,10 +40,6 @@ export async function loadDb(): Promise<DbModule> {
 
 export function adminToken(name = "admin"): string {
   return createSessionToken({ role: "admin", sub: "admin", name });
-}
-
-export function token(session: Session): string {
-  return createSessionToken(session);
 }
 
 /** A booker signed in with Google, as the callback route would mint one. */
