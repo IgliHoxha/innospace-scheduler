@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install install-local setup dev kill-dev build start lint lint-fix format format-check fmt check typecheck typecheck-tests test test-watch coverage verify clean secret purge docker-build docker-up docker-down docker-logs
+.PHONY: help install install-local setup dev kill-dev build start lint lint-fix format format-check fmt check typecheck typecheck-tests knip test test-watch coverage verify clean secret purge docker-build docker-up docker-down docker-logs
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -63,7 +63,10 @@ typecheck-tests: ## Type-check the Vitest suite (separate tsconfig)
 
 fmt: format lint-fix typecheck ## Format, lint --fix, then typecheck in one go
 
-check: format-check lint typecheck typecheck-tests test ## CI-style: format, lint, types (app + tests) and the test suite
+knip: ## Find unused files, exports and dependencies
+	npm run knip
+
+check: format-check lint typecheck typecheck-tests knip test ## CI-style: format, lint, types (app + tests), dead code and the test suite
 
 verify: check ## Alias for check
 

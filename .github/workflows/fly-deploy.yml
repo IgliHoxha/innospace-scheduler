@@ -34,6 +34,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run typecheck:tests
+      - run: npm run knip
       - run: npm run test
 
   # Runs beside the checks, not after them, so the gate adds no time to a deploy.

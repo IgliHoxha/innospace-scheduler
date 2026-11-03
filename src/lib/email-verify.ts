@@ -25,7 +25,7 @@ const cache = new Map<string, { accepts: boolean; at: number }>();
 
 export type EmailCheck = { ok: true } | { ok: false; error: string };
 
-/** Test seam: drops the memoised DNS answers. */
+/** @public Test seam, reached by dynamic import: drops the memoised DNS answers. */
 export function resetEmailVerifyCache(): void {
   cache.clear();
 }
