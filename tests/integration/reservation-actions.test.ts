@@ -51,6 +51,19 @@ const seed = (
 const slackCalls = () => vi.mocked(slack.postReservationToSlack).mock.calls;
 
 describe("changeReservationStatus", () => {
+  // A slow or hung channel must not hold up the dashboard or a Telegram reply.
+  it("answers before Slack has heard", async () => {
+    let release!: () => void;
+    vi.mocked(slack.postReservationToSlack).mockReturnValueOnce(
+      new Promise((done) => (release = () => done("sent"))),
+    );
+    const r = seed("pending");
+    const changed = await actions.changeReservationStatus(r.id, "confirmed");
+    expect(changed?.reservation.status).toBe("confirmed");
+    expect(slackCalls()).toHaveLength(1);
+    release();
+  });
+
   it("approves a pending reservation, emails the booker and tells Slack", async () => {
     const r = seed("pending");
     const changed = await actions.changeReservationStatus(r.id, "confirmed");

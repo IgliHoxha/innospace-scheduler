@@ -149,6 +149,19 @@ describe("PATCH /api/reservations/[id] - statuses that send no email", () => {
 });
 
 describe("the Slack notice on an admin action", () => {
+  // A slow or hung channel must not hold up the dashboard's button.
+  it("answers the admin before the channel has heard", async () => {
+    let release!: () => void;
+    vi.mocked(slack.postReservationToSlack).mockReturnValueOnce(
+      new Promise((done) => (release = () => done("sent"))),
+    );
+    const r = seed("pending");
+    const res = await patch(r.id, { status: "confirmed" }, adminToken());
+    expect(res.status).toBe(200);
+    expect(db.getReservation(r.id)?.status).toBe("confirmed");
+    release();
+  });
+
   it("announces a cancellation as the admin's doing", async () => {
     const r = seed();
     await patch(r.id, { status: "cancelled" }, adminToken());

@@ -208,23 +208,28 @@ export async function POST(req: NextRequest) {
     ? "pending"
     : "confirmed";
 
-  // Checked last, so a refused request never spends its single-use token.
-  if (!member && !(await verifyTurnstile(body.turnstileToken, ip))) {
+  // At once, since the form drops its token after every attempt anyway; Google vouches for a member.
+  const [human, deliverable] = member
+    ? [true, { ok: true } as const]
+    : await Promise.all([
+        verifyTurnstile(body.turnstileToken, ip),
+        checkEmailDeliverable(identity.email),
+      ]);
+
+  // The bot check answers first, so a bot learns nothing about the address.
+  if (!human) {
     return jsonError(
       "We couldn't verify that you're human. Please reload and retry.",
       403,
     );
   }
 
-  // Before the insert, so a dead address holds nothing; Google's is verified.
-  if (!member) {
-    const deliverable = await checkEmailDeliverable(identity.email);
-    if (!deliverable.ok) {
-      return NextResponse.json(
-        { ok: false, field: "email", error: deliverable.error },
-        { status: 400 },
-      );
-    }
+  // Before the insert, so a dead address holds nothing.
+  if (!deliverable.ok) {
+    return NextResponse.json(
+      { ok: false, field: "email", error: deliverable.error },
+      { status: 400 },
+    );
   }
 
   // Count it once the request is good, so a typo'd form doesn't burn the quota.

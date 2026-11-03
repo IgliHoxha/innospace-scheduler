@@ -1,4 +1,5 @@
 // The dashboard's approve, cancel and delete, shared with the Telegram replies.
+import { after } from "next/server";
 import { getReservation, updateReservationStatus } from "./db";
 import { sendReservationEmail, type EmailOutcome } from "./email";
 import { boothName } from "./booths";
@@ -32,11 +33,13 @@ export async function changeReservationStatus(
     }
   }
 
-  // The booking was announced when made, so only a verdict on it is news.
+  // The booking was announced when made, so only a verdict on it is news; sent once the admin has their answer.
   if (status === "cancelled") {
-    await postReservationToSlack(reservation, "cancelled", boothName, "admin");
+    after(() =>
+      postReservationToSlack(reservation, "cancelled", boothName, "admin"),
+    );
   } else if (status === "confirmed" && before?.status === "pending") {
-    await postReservationToSlack(reservation, "approved", boothName);
+    after(() => postReservationToSlack(reservation, "approved", boothName));
   }
 
   return { reservation, email };

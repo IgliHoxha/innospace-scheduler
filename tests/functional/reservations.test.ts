@@ -1190,6 +1190,36 @@ describe("POST /api/reservations - Turnstile", () => {
     err.mockRestore();
   });
 
+  it("checks the address while Cloudflare is still answering", async () => {
+    enable();
+    let answer!: () => void;
+    fetchMock.mockReturnValue(
+      new Promise((done) => {
+        answer = () =>
+          done({ ok: true, json: async () => ({ success: true }) });
+      }),
+    );
+    const pending = post({ ...ok, turnstileToken: "good" });
+    await vi.waitFor(() =>
+      expect(verify.checkEmailDeliverable).toHaveBeenCalledOnce(),
+    );
+    answer();
+    expect((await pending).status).toBe(201);
+  });
+
+  // A bot must not learn from the reply whether an address is real.
+  it("refuses a failed bot check first, whatever the address", async () => {
+    enable();
+    siteverify(false);
+    vi.mocked(verify.checkEmailDeliverable).mockResolvedValueOnce({
+      ok: false,
+      error: "That email domain cannot receive mail.",
+    });
+    const res = await post({ ...ok, turnstileToken: "bad" });
+    expect(res.status).toBe(403);
+    expect((await json(res)).field).toBeUndefined();
+  });
+
   it("201 when Cloudflare confirms the token", async () => {
     enable();
     siteverify(true);
