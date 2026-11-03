@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Meeting-booth scheduler for Innospace Tirana: members log in, reserve booth time slots (arbitrary start/end, no double-reservation), get an email confirmation, and an admin manages users and reservations from a dashboard.",
+  "description": "Meeting-booth scheduler for Innospace Tirana: anyone books a booth without an account (Google sign-in optional, for weekly repeats), gets an email confirmation with a cancel link, and an admin approves and manages reservations from a dashboard.",
   "scripts": {
     "dev": "next dev -p 4001",
     "build": "next build",
@@ -23,7 +23,7 @@
     "better-sqlite3": "^12.11.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.24.0",
-    "next": "^15.5.27",
+    "next": "^15.5.28",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "resend": "4.1.2",
