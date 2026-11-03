@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
+import { settled } from "../helpers/after";
 import { BOT_CHAT } from "../helpers/fixtures";
 import {
   SEND_URL,
@@ -57,12 +58,14 @@ const short = {
 const long = { ...short, end: "17:00", note: "Team workshop" };
 
 const post = (body: unknown) =>
-  route.POST(
-    makeRequest("/api/reservations", {
-      method: "POST",
-      body,
-      headers: { "x-real-ip": "10.0.0.1" },
-    }),
+  settled(
+    route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body,
+        headers: { "x-real-ip": "10.0.0.1" },
+      }),
+    ),
   );
 const total = () => db.queryReservations().total;
 
@@ -168,11 +171,13 @@ describe("POST /api/reservations (Telegram alert)", () => {
       await post({ ...short, boothId: "booth-9" }),
       await post({ ...short, start: "09:00", end: "10:00" }),
       await post({ ...short, end: "17:00" }),
-      await route.POST(
-        makeRequest("/api/reservations", {
-          method: "POST",
-          rawBody: "{ not json",
-        }),
+      await settled(
+        route.POST(
+          makeRequest("/api/reservations", {
+            method: "POST",
+            rawBody: "{ not json",
+          }),
+        ),
       ),
     ];
     expect(refused.map((r) => r.status)).toEqual([400, 400, 400, 400, 400]);

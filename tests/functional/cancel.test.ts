@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
+import { settled } from "../helpers/after";
 import {
   createCancelToken,
   createSeriesCancelToken,
@@ -43,7 +44,9 @@ const seed = (status: "confirmed" | "pending" = "confirmed") =>
   );
 
 const post = (token?: unknown) =>
-  route.POST(makeRequest("/api/cancel", { method: "POST", body: { token } }));
+  settled(
+    route.POST(makeRequest("/api/cancel", { method: "POST", body: { token } })),
+  );
 
 const json = (res: Response) =>
   res.json() as Promise<{
@@ -162,6 +165,24 @@ describe("the Slack notice on a guest cancellation", () => {
     expect(reservation).toMatchObject({ id: r.id, status: "cancelled" });
     expect(status).toBe("cancelled");
     expect(by).toBe("guest");
+  });
+
+  // A slow or hung channel must not hold up the guest's answer.
+  it("answers the guest before the channel has heard", async () => {
+    let release!: () => void;
+    vi.mocked(slack.postReservationToSlack).mockReturnValueOnce(
+      new Promise((done) => (release = () => done("sent"))),
+    );
+    const r = seed();
+    const res = await route.POST(
+      makeRequest("/api/cancel", {
+        method: "POST",
+        body: { token: createCancelToken(r.id, epochMsOf(ENDS_AT)) },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(db.getReservation(r.id)?.status).toBe("cancelled");
+    release();
   });
 
   // A double-click must not post twice: the second call cancels nothing.

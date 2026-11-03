@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import {
   cancelSeriesFrom,
   getReservation,
@@ -28,9 +28,12 @@ export async function POST(req: NextRequest) {
   if (seriesId) {
     // Dates already under way stay: the person is in the booth.
     const cancelled = cancelSeriesFrom(seriesId, nowDateTime());
-    for (const r of cancelled) {
-      await postReservationToSlack(r, "cancelled", boothName, "guest");
-    }
+    // Sent once the guest has their answer, one date after another.
+    after(async () => {
+      for (const r of cancelled) {
+        await postReservationToSlack(r, "cancelled", boothName, "guest");
+      }
+    });
     return NextResponse.json({
       ok: true,
       alreadyCancelled: cancelled.length === 0,
@@ -58,8 +61,10 @@ export async function POST(req: NextRequest) {
     return jsonError("That reservation no longer exists.", 404);
   }
 
-  // The channel still hears it: the slot is free again.
-  await postReservationToSlack(reservation, "cancelled", boothName, "guest");
+  // The channel still hears it, once the guest has their answer: the slot is free again.
+  after(() =>
+    postReservationToSlack(reservation, "cancelled", boothName, "guest"),
+  );
 
   // No email: their own action, and the template is for an admin cancelling.
   return NextResponse.json({ ok: true, alreadyCancelled: false });

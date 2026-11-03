@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminToken, makeRequest, memberToken, resetApp } from "../helpers/app";
+import { settled } from "../helpers/after";
 
 // DNS is stubbed: the suite must never do a real lookup.
 vi.mock("@/lib/email-verify", () => ({
@@ -67,12 +68,14 @@ const ok = {
 };
 // No token: booking is public; `ip` lets a test pick its own throttle bucket.
 const post = (body: unknown, ip = "10.0.0.1") =>
-  route.POST(
-    makeRequest("/api/reservations", {
-      method: "POST",
-      body,
-      headers: { "x-real-ip": ip },
-    }),
+  settled(
+    route.POST(
+      makeRequest("/api/reservations", {
+        method: "POST",
+        body,
+        headers: { "x-real-ip": ip },
+      }),
+    ),
   );
 
 describe("POST /api/reservations - identity validation", () => {
@@ -210,13 +213,15 @@ describe("POST /api/reservations - cancel token for the booking browser", () => 
 // A member's session identifies them; a guest's body does, and cannot repeat.
 describe("POST /api/reservations - signed in with Google", () => {
   const asMember = (body: unknown, ip = "10.0.0.9") =>
-    route.POST(
-      makeRequest("/api/reservations", {
-        method: "POST",
-        body,
-        headers: { "x-real-ip": ip },
-        token: memberToken("Ada Lovelace", "ada@example.com"),
-      }),
+    settled(
+      route.POST(
+        makeRequest("/api/reservations", {
+          method: "POST",
+          body,
+          headers: { "x-real-ip": ip },
+          token: memberToken("Ada Lovelace", "ada@example.com"),
+        }),
+      ),
     );
   const slot = { boothId: "booth-1", date: DAY, start: "14:00", end: "15:00" };
 
@@ -293,13 +298,15 @@ describe("POST /api/reservations - signed in with Google", () => {
 
 describe("POST /api/reservations - a weekly repeat", () => {
   const asMember = (body: unknown, ip = "10.0.0.9") =>
-    route.POST(
-      makeRequest("/api/reservations", {
-        method: "POST",
-        body,
-        headers: { "x-real-ip": ip },
-        token: memberToken("Ada Lovelace", "ada@example.com"),
-      }),
+    settled(
+      route.POST(
+        makeRequest("/api/reservations", {
+          method: "POST",
+          body,
+          headers: { "x-real-ip": ip },
+          token: memberToken("Ada Lovelace", "ada@example.com"),
+        }),
+      ),
     );
   const slot = { boothId: "booth-1", date: DAY, start: "14:00", end: "15:00" };
   type Made = Body & {
@@ -1415,6 +1422,20 @@ describe("POST /api/reservations - the Slack notice", () => {
       email: "ada@example.com",
     });
     expect(status).toBe("confirmed");
+  });
+
+  // A slow or hung channel must not hold up the guest's Reserve.
+  it("answers the guest before the channel has heard", async () => {
+    let release!: () => void;
+    vi.mocked(slack.postReservationToSlack).mockReturnValueOnce(
+      new Promise((done) => (release = () => done("sent"))),
+    );
+    const res = await route.POST(
+      makeRequest("/api/reservations", { method: "POST", body: ok }),
+    );
+    expect(res.status).toBe(201);
+    expect(slack.postReservationToSlack).toHaveBeenCalledOnce();
+    release();
   });
 
   it("marks a long booking pending, which is what the channel has to act on", async () => {

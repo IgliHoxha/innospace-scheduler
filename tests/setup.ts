@@ -1,5 +1,6 @@
 import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
+import { settleAfter } from "./helpers/after";
 import {
   DEFAULT_ADMIN_PASS,
   DEFAULT_ADMIN_USER,
@@ -57,8 +58,17 @@ for (const key of ["OPEN_HOUR", "CLOSE_HOUR"]) {
   delete process.env[key];
 }
 
+// Next's after() needs a live request, so tests queue its tasks for settleAfter().
+vi.mock("next/server", async (importOriginal) => {
+  const real = await importOriginal<typeof import("next/server")>();
+  const { runAfter } = await import("./helpers/after");
+  return { ...real, after: runAfter };
+});
+
 // Mocks survive vi.resetModules(), so clear history but keep implementations.
-afterEach(() => {
+afterEach(async () => {
+  // Settled first, so one test's late notice never lands in the next one's mocks.
+  await settleAfter();
   vi.clearAllMocks();
   cleanupTmp();
 });

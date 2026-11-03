@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import {
   createReservationSeries,
   discardReservation,
@@ -260,11 +260,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // After the email, so the channel never announces a discarded booking.
-    for (const r of reservations) {
-      await postReservationToSlack(r, r.status as ActiveStatus, boothName);
-      await notifyNewReservation(r, boothName);
-    }
+    // After the email, so a discarded booking is never announced; after the response, so the guest never waits.
+    after(async () => {
+      for (const r of reservations) {
+        await postReservationToSlack(r, r.status as ActiveStatus, boothName);
+        await notifyNewReservation(r, boothName);
+      }
+    });
 
     // The proof the email link carries, so this browser can cancel without it.
     const tokenFor = (r: Reservation): string | undefined => {
