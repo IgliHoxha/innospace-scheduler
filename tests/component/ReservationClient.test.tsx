@@ -892,9 +892,9 @@ describe("a guest offered Google sign-in", () => {
   it("still faces the bot check as a guest, and is told to complete it", async () => {
     mountForm({ turnstileSiteKey: "site-key" });
     await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
-    expect(document.querySelector(".turnstile-slot")).not.toBeNull();
     const user = (await import("@testing-library/user-event")).default.setup();
     await fillGuest(user);
+    expect(document.querySelector(".turnstile-slot")).not.toBeNull();
     await user.click(form.reserve());
     expect(form.alerts()).toEqual([
       "Please complete the human check below, then reserve again.",
@@ -987,11 +987,29 @@ describe("the bot check a guest faces", () => {
   async function guarded() {
     const widget = fakeTurnstile();
     const view = mountForm({ turnstileSiteKey: "site-key" });
-    await waitFor(() => expect(widget.options).not.toBeNull());
     await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
     await fillGuest(view.user);
+    await waitFor(() => expect(widget.options).not.toBeNull());
     return { ...view, widget };
   }
+
+  // Past the 200ms the widget polls for its script, so a late load would have shown.
+  it("loads nothing for someone only looking at the board", async () => {
+    const widget = fakeTurnstile();
+    mountForm({ turnstileSiteKey: "site-key" });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    await new Promise((r) => setTimeout(r, 500));
+    expect(widget.options).toBeNull();
+    expect(document.querySelector(".turnstile-slot")).toBeNull();
+  });
+
+  it("loads on the first touch of the form, even one that only picks a booth", async () => {
+    const widget = fakeTurnstile();
+    const { user } = mountForm({ turnstileSiteKey: "site-key" });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    await user.click(form.booth(2));
+    await waitFor(() => expect(widget.slot).toBe(slot()));
+  });
 
   it("renders into its slot, kept collapsed until Cloudflare shows a challenge", async () => {
     const { widget } = await guarded();
@@ -1060,8 +1078,9 @@ describe("the bot check a guest faces", () => {
   });
 
   it("waits for Cloudflare's script, which loads after the form", async () => {
-    mountForm({ turnstileSiteKey: "site-key" });
+    const { user } = mountForm({ turnstileSiteKey: "site-key" });
     await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    await fillGuest(user);
     const widget = fakeTurnstile();
     await waitFor(() => expect(widget.slot).toBe(slot()));
   });

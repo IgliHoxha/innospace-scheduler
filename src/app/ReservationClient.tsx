@@ -89,7 +89,12 @@ export default function ReservationClient({
 
   // Google already vouched for a member, so the bot check is for guests only.
   const turnstileSiteKey = member === null ? configuredSiteKey : undefined;
-  const turnstile = useTurnstile(turnstileSiteKey);
+  // Turnstile is heavy, so it loads on the first touch of the form, never for someone only looking.
+  const [engaged, setEngaged] = useState(false);
+  const engage = () => {
+    if (!engaged) setEngaged(true);
+  };
+  const turnstile = useTurnstile(engaged ? turnstileSiteKey : undefined);
 
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
@@ -427,7 +432,14 @@ export default function ReservationClient({
         signOutTo="/"
       />
 
-      <div className="container">
+      {/* Click, not pointerdown: a finger that only scrolls the page must not load the check. */}
+      <div
+        className="container"
+        onClickCapture={engage}
+        onFocusCapture={engage}
+        onInputCapture={engage}
+        onKeyDownCapture={engage}
+      >
         <div className="page-head">
           <span className="eyebrow">Innospace Tirana</span>
           <h1 className="page-title">Reserve a meeting booth</h1>
@@ -565,7 +577,7 @@ export default function ReservationClient({
           aria-describedby={noteError ? "note-error" : undefined}
         />
 
-        {turnstileSiteKey && (
+        {turnstileSiteKey && engaged && (
           <>
             <Script
               src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
