@@ -60,6 +60,26 @@ export function CrossIcon() {
   );
 }
 
+/** Outlined, unlike the rest, to read as a quiet label beside the time fields. */
+export function ClockIcon() {
+  return (
+    <svg
+      className="tp-clock"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+
 /** WhatsApp's own mark: recognised faster than the word next to it. */
 export function WhatsAppIcon() {
   return (

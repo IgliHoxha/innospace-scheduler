@@ -1072,3 +1072,16 @@ describe("the bot check a guest faces", () => {
     expect(widget.removed).toEqual(["w-1"]);
   });
 });
+
+describe("the clock beside the time fields", () => {
+  it("is drawn inline, outlined and hidden from assistive technology", async () => {
+    await ready();
+    const clock = document.querySelector<SVGElement>("svg.tp-clock")!;
+    expect(clock.getAttribute("aria-hidden")).toBe("true");
+    expect(clock.getAttribute("focusable")).toBe("false");
+    expect(clock.getAttribute("fill")).toBe("none");
+    expect(clock.getAttribute("stroke")).toBe("currentColor");
+    expect(clock.querySelector("circle")?.getAttribute("r")).toBe("10");
+    expect(clock.querySelector("path")?.getAttribute("d")).toBe("M12 6v6l4 2");
+  });
+});

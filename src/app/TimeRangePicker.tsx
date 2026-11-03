@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Clock } from "lucide-react";
+import { ClockIcon } from "@/components/ui/icons";
 import { TimePickerInput } from "@/components/ui/time-picker-input";
 import { timeOfDate } from "@/lib/datetime";
 
@@ -112,7 +112,7 @@ export default function TimeRangePicker({
         </div>
       </div>
 
-      <Clock className="tp-clock" aria-hidden="true" />
+      <ClockIcon />
     </div>
   );
 }
