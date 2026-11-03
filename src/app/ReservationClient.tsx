@@ -5,15 +5,18 @@ import { flushSync } from "react-dom";
 import Script from "next/script";
 import TimeRangePicker from "./TimeRangePicker";
 import DayTimeline from "./DayTimeline";
+import { BoothGrid } from "./_booking/BoothGrid";
+import { DateChips, type DateOption } from "./_booking/DateChips";
+import { GuestCard, type GuestErrors } from "./_booking/GuestCard";
+import { RepeatCard } from "./_booking/RepeatCard";
+import { ReserveBar } from "./_booking/ReserveBar";
+import { TimeCard } from "./_booking/TimeCard";
+import { useAvailability } from "./_booking/use-availability";
+import { useMember } from "./_booking/use-member";
+import { useTurnstile } from "./_booking/use-turnstile";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
-import {
-  MAX_EMAIL,
-  MAX_NAME,
-  MAX_NOTE,
-  type Booth,
-  type Reservation,
-} from "@/lib/types";
+import { MAX_NOTE, type Booth, type Reservation } from "@/lib/types";
 import {
   canonicalEmail,
   guestProblems,
@@ -30,22 +33,9 @@ import {
   verdictFor,
   withVerdict,
 } from "@/lib/booking-check";
-import {
-  availabilityQuery,
-  countsForDate,
-  edgeMayBeStale,
-  reservationCountLabel,
-} from "@/lib/availability-url";
-import {
-  heldRangesFor,
-  markMine,
-  readMine,
-  rememberMine,
-  slotKey,
-  type BoardSlot,
-  type MineEntry,
-  type ReservedSlot,
-} from "@/lib/mine";
+import { bookedMessage, bookingWhen } from "@/lib/booking-messages";
+import { countsForDate } from "@/lib/availability-url";
+import { heldRangesFor, rememberMine, slotKey } from "@/lib/mine";
 import {
   endForStart,
   findFreeGaps,
@@ -55,67 +45,10 @@ import {
   wantedStartMin,
 } from "@/lib/timeline";
 import { dayEndMinute } from "@/lib/reservation-rules";
-import { repeatLabel } from "@/lib/recurrence";
-import {
-  formatDateLong,
-  formatDuration,
-  minutesToTime,
-  timeToMinutes,
-} from "@/lib/datetime";
-
-/** The booker Google vouched for; the form shows them instead of asking. */
-export interface Member {
-  name: string;
-  email: string;
-}
+import { formatDuration, minutesToTime, timeToMinutes } from "@/lib/datetime";
 
 const SIGN_IN_FAILED_MESSAGE =
   "Google sign-in didn't complete. You can still book as a guest below.";
-
-/** Google's "G", inline so it costs no request. */
-function GoogleMark() {
-  return (
-    <svg
-      className="google-mark"
-      viewBox="0 0 48 48"
-      width="18"
-      height="18"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        fill="#EA4335"
-        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-      />
-      <path
-        fill="#4285F4"
-        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-      />
-      <path
-        fill="#34A853"
-        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-      />
-    </svg>
-  );
-}
-
-interface Availability {
-  /** The day this board answers for, so no count shows against another date. */
-  date: string;
-  reserved: ReservedSlot[];
-  /** Active reservations per booth; absent on a copy cached before a deploy. */
-  counts?: Record<string, number>;
-  earliest: string;
-}
-
-interface DateOption {
-  value: string;
-  label: string;
-}
 
 // The length a booking opens on and a moved start re-anchors its end to.
 const PREFERRED_MINUTES = 60;
@@ -124,31 +57,6 @@ const PREFERRED_START_MIN = 9 * 60;
 
 // How long a confirmation stays up; the email repeats it, so nothing is lost.
 const SUCCESS_MS = 5000;
-
-declare global {
-  interface Window {
-    // Injected by Cloudflare's Turnstile script when the booking widget is on.
-    turnstile?: {
-      render: (
-        container: HTMLElement,
-        options: {
-          sitekey: string;
-          action?: string;
-          appearance?: "always" | "execute" | "interaction-only";
-          theme?: "light" | "dark" | "auto";
-          callback?: (token: string) => void;
-          "error-callback"?: () => void;
-          "expired-callback"?: () => void;
-          "timeout-callback"?: () => void;
-          "before-interactive-callback"?: () => void;
-          "after-interactive-callback"?: () => void;
-        },
-      ) => string;
-      reset: (widget?: string) => void;
-      remove: (widget?: string) => void;
-    };
-  }
-}
 
 export default function ReservationClient({
   booths,
@@ -172,35 +80,22 @@ export default function ReservationClient({
   contact: { phone: string; email: string };
   /** Undefined when Turnstile is switched off. */
   turnstileSiteKey?: string;
-  /** Google sign-in is configured, so a guest can be offered it. */
   googleSignIn?: boolean;
   /** Google sent the person back without a session. */
   signInFailed?: boolean;
   maxRepeatWeeks?: number;
 }) {
-  // Unknown until /api/me answers: the page itself is cached for everyone.
-  const [member, setMember] = useState<Member | null | undefined>(undefined);
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/me", { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ member?: Member | null }>)
-      .then((json) => !cancelled && setMember(json.member ?? null))
-      // Unreachable or unparsable: book as a guest, which needs no session.
-      .catch(() => !cancelled && setMember(null));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const member = useMember();
 
   // Google already vouched for a member, so the bot check is for guests only.
   const turnstileSiteKey = member === null ? configuredSiteKey : undefined;
+  const turnstile = useTurnstile(turnstileSiteKey);
+
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
-  const [avail, setAvail] = useState<Availability | null>(null);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [note, setNote] = useState("");
-  const [loading, setLoading] = useState(false);
   const [reservation, setReservation] = useState(false);
   const [error, setError] = useState("");
   // What the server refused and why, so Reserve cannot repeat it.
@@ -210,132 +105,25 @@ export default function ReservationClient({
   // The attempt Reserve last asked a note for; a server demand needs no mark.
   const [askedFor, setAskedFor] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [mine, setMine] = useState<MineEntry[]>([]);
   // Outlives the board resets, since it answers a redirect, not a pick.
   const [signInNotice, setSignInNotice] = useState(
     signInFailed ? SIGN_IN_FAILED_MESSAGE : "",
   );
   // Members only: a guest has no session for the later dates to come back to.
   const [repeatWeeks, setRepeatWeeks] = useState(1);
-
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [guest, setGuest] = useState<Record<GuestField, string>>({
+    fullName: "",
+    email: "",
+  });
   // Shown as a red field only, so every failing field is held.
-  const [guestErrors, setGuestErrors] = useState<
-    Partial<Record<GuestField, string>>
-  >({});
+  const [guestErrors, setGuestErrors] = useState<GuestErrors>({});
 
-  // Turnstile reserves its box, so the slot stays collapsed until challenged.
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const [challenging, setChallenging] = useState(false);
-  const turnstileRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!turnstileSiteKey) return;
-    let cancelled = false;
-    let id: string | null = null;
-
-    // The script is lazy, so poll for it rather than racing its load event.
-    const render = () => {
-      if (cancelled) return;
-      const ts = window.turnstile;
-      if (!ts || !turnstileRef.current) {
-        window.setTimeout(render, 200);
-        return;
-      }
-      id = ts.render(turnstileRef.current, {
-        sitekey: turnstileSiteKey,
-        action: "turnstile-spin-v2",
-        appearance: "interaction-only",
-        theme: "light",
-        callback: (token) => {
-          setTurnstileToken(token);
-          setChallenging(false);
-        },
-        // A token that errored, expired or timed out is no longer spendable.
-        "error-callback": () => setTurnstileToken(""),
-        "expired-callback": () => setTurnstileToken(""),
-        "timeout-callback": () => setTurnstileToken(""),
-        // The only reliable "I am about to show something" signal there is.
-        "before-interactive-callback": () => setChallenging(true),
-        "after-interactive-callback": () => setChallenging(false),
-      });
-      widgetIdRef.current = id;
-    };
-    render();
-
-    return () => {
-      cancelled = true;
-      try {
-        if (id && window.turnstile) window.turnstile.remove(id);
-      } catch {
-        /* widget already gone */
-      }
-      widgetIdRef.current = null;
-      setTurnstileToken("");
-    };
-  }, [turnstileSiteKey]);
-
-  // When this browser last wrote, so later loads skip the edge's older copy.
-  const wroteAt = useRef(0);
-
-  // A request id stops a slow response winning.
-  const reqId = useRef(0);
-  const loadAvailability = useCallback(
-    async ({
-      fresh = false,
-      keepPick = false,
-    }: { fresh?: boolean; keepPick?: boolean } = {}) => {
-      if (!boothId || !date) return;
-      const id = ++reqId.current;
-      // A refresh of the board on screen happens in place, so nothing unmounts.
-      if (!keepPick) setLoading(true);
-      // Another booth's cached board predates the write too, undoing its count.
-      const bust = fresh || edgeMayBeStale(Date.now(), wroteAt.current);
-      try {
-        const res = await fetch(
-          // After a booking the edge's 30s copy would omit it, hence `fresh`.
-          `/api/availability?${availabilityQuery(boothId, date, bust ? Date.now() : undefined)}`,
-          // This browser's cache only: the CDN ignores it, hence the fresh URL.
-          { cache: "no-store" },
-        );
-        const json = (await res.json()) as { ok: boolean } & Omit<
-          Availability,
-          "reserved"
-        > & { reserved: BoardSlot[] };
-        if (id !== reqId.current) return;
-        const owned = readMine();
-        setMine(owned);
-        setAvail(
-          json.ok
-            ? {
-                ...json,
-                reserved: markMine(json.reserved, owned, boothId, date),
-              }
-            : null,
-        );
-        // A reload that did not change the board keeps the pick.
-        if (!keepPick) {
-          setStart("");
-          setEnd("");
-        }
-      } catch {
-        // A dropped connection or a non-JSON reply: no board beats a stale one.
-        if (id === reqId.current) setAvail(null);
-      } finally {
-        if (id === reqId.current) setLoading(false);
-      }
-    },
-    [boothId, date],
-  );
-
-  // The newest loader, so a late reply reloads the board on screen.
-  const reload = useRef(loadAvailability);
-  useEffect(() => {
-    reload.current = loadAvailability;
-    loadAvailability();
-  }, [loadAvailability]);
+  const clearPick = useCallback(() => {
+    setStart("");
+    setEnd("");
+  }, []);
+  const { avail, loading, mine, setMine, load, reload, noteWrite } =
+    useAvailability(boothId, date, clearPick);
 
   // Banners and errors belong to the board they were raised on.
   useEffect(() => {
@@ -346,9 +134,8 @@ export default function ReservationClient({
     setAskedFor(null);
     setGuestErrors({});
     // Dropped at once, so Reserve waits for the new board whichever reload wins.
-    setStart("");
-    setEnd("");
-  }, [boothId, date]);
+    clearPick();
+  }, [boothId, date, clearPick]);
 
   useEffect(() => {
     if (!success) return;
@@ -363,8 +150,8 @@ export default function ReservationClient({
   // The run belongs to whoever is booking, so it waits for a valid email.
   const booker = member
     ? canonicalEmail(member.email)
-    : isValidEmail(email.trim())
-      ? canonicalEmail(email)
+    : isValidEmail(guest.email.trim())
+      ? canonicalEmail(guest.email)
       : "";
 
   // That person's other bookings that day, so the run rule can warn early.
@@ -460,6 +247,9 @@ export default function ReservationClient({
     !refusal &&
     member !== undefined;
 
+  const selectedBooth = booths.find((b) => b.id === boothId);
+  const dateLabel = dates.find((d) => d.value === date)?.label;
+
   // A reply must not pull focus from a field the user has since moved into.
   const focusUnlessBusy = (id: string) => {
     const at = document.activeElement;
@@ -467,12 +257,26 @@ export default function ReservationClient({
     if (idle || at.id === id) document.getElementById(id)?.focus();
   };
 
-  const onGuestEdit = (field: GuestField, set: (v: string) => void) => {
-    return (value: string) => {
-      set(value);
-      setError("");
-      if (guestErrors[field]) setGuestErrors({ ...guestErrors, [field]: "" });
-    };
+  const editGuest = (field: GuestField, value: string) => {
+    setGuest((g) => ({ ...g, [field]: value }));
+    setError("");
+    if (guestErrors[field]) setGuestErrors({ ...guestErrors, [field]: "" });
+  };
+
+  // A moved start drags the end, keeping the pair bookable.
+  const editRange = ({ from, to }: { from: string; to: string }) => {
+    const reanchored =
+      from === start
+        ? null
+        : endForStart(
+            timeToMinutes(from),
+            freeGaps,
+            minReservationMinutes,
+            PREFERRED_MINUTES,
+          );
+    setStart(from);
+    setEnd(reanchored == null ? to : minutesToTime(reanchored));
+    setError("");
   };
 
   async function reserve() {
@@ -480,16 +284,16 @@ export default function ReservationClient({
     setSignInNotice("");
 
     // The route's own validator, so the client cannot submit a rejection.
-    const guest = member
+    const who = member
       ? {
           ok: true as const,
           guest: { fullName: member.name, email: member.email },
         }
-      : validateGuest({ fullName, email });
-    if (!guest.ok) {
+      : validateGuest(guest);
+    if (!who.ok) {
       // Rendered before the focus, so the reason is there when the field is read.
-      flushSync(() => setGuestErrors(guestProblems({ fullName, email })));
-      document.getElementById(guest.field)?.focus();
+      flushSync(() => setGuestErrors(guestProblems(guest)));
+      document.getElementById(who.field)?.focus();
       return;
     }
     setGuestErrors({});
@@ -502,9 +306,8 @@ export default function ReservationClient({
       return;
     }
 
-    // Reveal the widget rather than refuse a token nobody could earn.
-    if (turnstileSiteKey && !turnstileToken) {
-      setChallenging(true);
+    if (turnstileSiteKey && !turnstile.token) {
+      turnstile.challenge();
       setError("Please complete the human check below, then reserve again.");
       return;
     }
@@ -522,9 +325,9 @@ export default function ReservationClient({
           start,
           end,
           note,
-          turnstileToken,
+          turnstileToken: turnstile.token,
           // A member's identity comes from their session, never the body.
-          ...(member ? {} : guest.guest),
+          ...(member ? {} : who.guest),
           ...(repeatWeeks > 1 ? { repeatWeeks } : {}),
         }),
       });
@@ -536,20 +339,27 @@ export default function ReservationClient({
         reservations?: (Reservation & { cancelToken?: string })[];
         cancelToken?: string;
       };
-      const booth = booths.find((b) => b.id === boothId)?.name ?? "Booth";
-      const weekly = repeatWeeks > 1 ? `, ${repeatLabel(repeatWeeks)}` : "";
-      const when = `${booth} on ${formatDateLong(date)}, ${start} - ${end}${weekly}`;
+      const when = bookingWhen({
+        boothName: selectedBooth?.name ?? "Booth",
+        date,
+        start,
+        end,
+        repeatWeeks,
+      });
       if (res.ok && json.ok) {
         // An earlier verdict described a world now gone; the picker re-seeds.
         setRefused(NO_VERDICTS);
         setNoteDemands(NO_VERDICTS);
         setAskedFor(null);
-        wroteAt.current = Date.now();
-        const held = repeatWeeks > 1 ? "The slots are" : "The slot is";
+        noteWrite();
         setSuccess(
-          json.reservation?.status === "pending"
-            ? `Request submitted: ${when}. Reservations over ${autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. ${held} held for you meanwhile.`
-            : `Reserved ${when}. We've emailed ${guest.guest.email} a confirmation, with a link to cancel if your plans change.`,
+          bookedMessage({
+            when,
+            pending: json.reservation?.status === "pending",
+            repeatWeeks,
+            autoApproveMaxHours,
+            email: who.guest.email,
+          }),
         );
         setNote("");
         setRepeatWeeks(1);
@@ -564,12 +374,12 @@ export default function ReservationClient({
             k: slotKey(boothId, r.startsAt),
             s: r.startsAt,
             e: r.endsAt,
-            m: guest.guest.email,
+            m: who.guest.email,
             t: r.cancelToken ?? "",
           });
         }
         setMine(owned);
-        await reload.current({ fresh: true });
+        await reload({ fresh: true });
       } else {
         const message = json.error || "Could not reserve that time.";
         const field = json.field;
@@ -596,24 +406,15 @@ export default function ReservationClient({
           if (field) focusUnlessBusy(field);
         }
         // Someone may have just taken it, which a cached board would not show.
-        reload.current({ fresh: true, keepPick: true });
+        reload({ fresh: true, keepPick: true });
       }
     } catch {
       setError("Could not reach the server. Please try again.");
     } finally {
       setReservation(false);
-      // A token is single-use, so a retry or second booking needs a fresh one.
-      if (turnstileSiteKey) {
-        setTurnstileToken("");
-        window.turnstile?.reset(widgetIdRef.current ?? undefined);
-      }
+      if (turnstileSiteKey) turnstile.spend();
     }
   }
-
-  const selectedBooth = booths.find((b) => b.id === boothId);
-  // The previous date's board lingers until the new one lands.
-  const counts = countsForDate(avail, date);
-  const fieldError = (field: GuestField) => guestErrors[field] ?? "";
 
   return (
     <>
@@ -640,86 +441,31 @@ export default function ReservationClient({
           </p>
         </div>
 
-        <div className="field-label">Booth</div>
-        <div className="booth-grid">
-          {booths.map((b) => (
-            <button
-              key={b.id}
-              className={`booth-card ${b.id === boothId ? "active" : ""}`}
-              onClick={() => setBoothId(b.id)}
-            >
-              <span className="booth-name">{b.name}</span>
-              {b.capacity ? (
-                <span className="booth-cap">{b.capacity} seats</span>
-              ) : null}
-              {/* Always rendered, so cards do not grow when counts land. */}
-              <span className="booth-count">
-                {counts?.[b.id] == null
-                  ? " "
-                  : reservationCountLabel(counts[b.id])}
-              </span>
-            </button>
-          ))}
-        </div>
+        <BoothGrid
+          booths={booths}
+          selected={boothId}
+          // The previous date's board lingers until the new one lands.
+          counts={countsForDate(avail, date)}
+          onSelect={setBoothId}
+        />
 
-        <div className="field-label">Date</div>
-        <div className="date-row">
-          {dates.map((d) => (
-            <button
-              key={d.value}
-              className={`chip ${d.value === date ? "active" : ""}`}
-              onClick={() => setDate(d.value)}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
+        <DateChips dates={dates} selected={date} onSelect={setDate} />
 
-        <div className="field-label">Time</div>
-        <div className="card time-card">
-          {loading ? (
-            <span className="muted">Loading availability…</span>
-          ) : !avail ? (
-            <div className="load-failed">
-              <span className="muted">Couldn&apos;t load availability.</span>
-              <button
-                type="button"
-                className="btn ghost sm"
-                onClick={() => loadAvailability()}
-              >
-                Try again
-              </button>
-            </div>
-          ) : noTimeLeft || !seed ? (
-            <div className="empty">
-              {dayIsOver
-                ? "There's no time left to reserve today. Pick another date."
-                : "This booth is fully reserved on this day. Try another booth or date."}
-            </div>
-          ) : (
+        <TimeCard
+          loading={loading}
+          loaded={!!avail}
+          empty={noTimeLeft || !seed}
+          dayIsOver={dayIsOver}
+          onRetry={() => load()}
+        >
+          {avail && seed && (
             <>
               <div className="time-row">
                 <div className="time-field">
                   <span>Start &amp; end</span>
                   <TimeRangePicker
                     value={start && end ? { from: start, to: end } : null}
-                    onChange={({ from, to }) => {
-                      // A moved start drags the end, keeping the pair bookable.
-                      const reanchored =
-                        from === start
-                          ? null
-                          : endForStart(
-                              timeToMinutes(from),
-                              freeGaps,
-                              minReservationMinutes,
-                              PREFERRED_MINUTES,
-                            );
-                      setStart(from);
-                      setEnd(
-                        reanchored == null ? to : minutesToTime(reanchored),
-                      );
-                      setError("");
-                    }}
+                    onChange={editRange}
                     defaultRange={{
                       from: minutesToTime(seed.from),
                       to: minutesToTime(
@@ -749,7 +495,7 @@ export default function ReservationClient({
                 minMinutes={minReservationMinutes}
                 contact={contact}
                 boothName={selectedBooth?.name ?? "the booth"}
-                dateLabel={dates.find((d) => d.value === date)?.label ?? date}
+                dateLabel={dateLabel ?? date}
                 onCancelled={() => {
                   setSuccess(
                     "Your reservation is cancelled. The slot is free for someone else now.",
@@ -758,8 +504,8 @@ export default function ReservationClient({
                   // A freed slot can undo a refusal or a note demand.
                   setRefused(NO_VERDICTS);
                   setNoteDemands(NO_VERDICTS);
-                  wroteAt.current = Date.now();
-                  reload.current({ fresh: true, keepPick: true });
+                  noteWrite();
+                  reload({ fresh: true, keepPick: true });
                 }}
                 onPick={(from, to) => {
                   setStart(from);
@@ -769,118 +515,27 @@ export default function ReservationClient({
               />
             </>
           )}
-        </div>
+        </TimeCard>
 
         {/* A member is named in the top bar, so the details card gives way to the repeat. */}
         {member === undefined ? null : member ? (
           maxRepeatWeeks > 1 && (
-            <>
-              <div className="field-label">Repeat</div>
-              <div className="card guest-card">
-                <div className="guest-row">
-                  <label className="guest-field">
-                    <span>How often</span>
-                    <select
-                      id="repeatWeeks"
-                      name="repeatWeeks"
-                      value={repeatWeeks}
-                      onChange={(e) => {
-                        setRepeatWeeks(Number(e.target.value));
-                        setError("");
-                      }}
-                    >
-                      {Array.from(
-                        { length: maxRepeatWeeks },
-                        (_, i) => i + 1,
-                      ).map((n) => (
-                        <option key={n} value={n}>
-                          {n === 1
-                            ? "Just this once"
-                            : `Every week for ${n} weeks`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              </div>
-            </>
+            <RepeatCard
+              weeks={repeatWeeks}
+              maxWeeks={maxRepeatWeeks}
+              onChange={(weeks) => {
+                setRepeatWeeks(weeks);
+                setError("");
+              }}
+            />
           )
         ) : (
-          <>
-            <div className="field-label">Your details</div>
-            <div className="card guest-card">
-              <div className="guest-row">
-                <label className="guest-field">
-                  <span>
-                    Full name <b aria-hidden="true">*</b>
-                  </span>
-                  <input
-                    id="fullName"
-                    name="fullName"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="First and last name"
-                    maxLength={MAX_NAME}
-                    required
-                    aria-invalid={!!fieldError("fullName")}
-                    aria-describedby={
-                      fieldError("fullName") ? "fullName-error" : undefined
-                    }
-                    className={fieldError("fullName") ? "invalid" : ""}
-                    value={fullName}
-                    onChange={(e) =>
-                      onGuestEdit("fullName", setFullName)(e.target.value)
-                    }
-                  />
-                </label>
-                <label className="guest-field">
-                  <span>
-                    Email <b aria-hidden="true">*</b>
-                  </span>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    maxLength={MAX_EMAIL}
-                    required
-                    aria-invalid={!!fieldError("email")}
-                    aria-describedby={
-                      fieldError("email") ? "email-error" : undefined
-                    }
-                    className={fieldError("email") ? "invalid" : ""}
-                    value={email}
-                    onChange={(e) =>
-                      onGuestEdit("email", setEmail)(e.target.value)
-                    }
-                  />
-                </label>
-              </div>
-              {/* A red field is the only visible cue; its reason is read on focus. */}
-              <span id="fullName-error" className="sr-only">
-                {fieldError("fullName")}
-              </span>
-              <span id="email-error" className="sr-only">
-                {fieldError("email")}
-              </span>
-              {googleSignIn && (
-                <div className="sign-in-offer">
-                  <a
-                    className="btn ghost sm google-btn"
-                    href="/api/auth/google"
-                  >
-                    <GoogleMark />
-                    Sign in with Google
-                  </a>
-                  <span>
-                    Optional: skips the typing and lets you repeat a booking
-                    weekly.
-                  </span>
-                </div>
-              )}
-            </div>
-          </>
+          <GuestCard
+            values={guest}
+            errors={guestErrors}
+            onEdit={editGuest}
+            googleSignIn={googleSignIn}
+          />
         )}
 
         {noteError && (
@@ -917,8 +572,8 @@ export default function ReservationClient({
               strategy="afterInteractive"
             />
             <div
-              ref={turnstileRef}
-              className={`turnstile-slot ${challenging ? "is-challenging" : ""}`}
+              ref={turnstile.slotRef}
+              className={`turnstile-slot ${turnstile.challenging ? "is-challenging" : ""}`}
             />
           </>
         )}
@@ -928,29 +583,18 @@ export default function ReservationClient({
         {(refusal || error) && <p className="error">{refusal || error}</p>}
         {success && <p className="success">{success}</p>}
 
-        <div className="reserve-bar">
-          <div className="reserve-summary">
-            {start && end && !problem ? (
-              <>
-                <strong>{selectedBooth?.name}</strong> ·{" "}
-                {dates.find((d) => d.value === date)?.label} · {start} - {end}
-                {repeatWeeks > 1 && (
-                  <span className="hint"> · {repeatLabel(repeatWeeks)}</span>
-                )}
-                {willNeedApproval && (
-                  <span className="hint"> · needs admin approval</span>
-                )}
-              </>
-            ) : (
-              <span className="muted">
-                Pick a start and end time to reserve.
-              </span>
-            )}
-          </div>
-          <button className="btn" disabled={!canReserve} onClick={reserve}>
-            {reservation ? "Reservation…" : "Reserve"}
-          </button>
-        </div>
+        <ReserveBar
+          summary={
+            start && end && !problem
+              ? { booth: selectedBooth?.name, day: dateLabel, start, end }
+              : null
+          }
+          repeatWeeks={repeatWeeks}
+          needsApproval={willNeedApproval}
+          canReserve={canReserve}
+          busy={reservation}
+          onReserve={reserve}
+        />
       </div>
 
       <SiteFooter />

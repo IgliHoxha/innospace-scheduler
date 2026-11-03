@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DAYS,
@@ -939,5 +945,130 @@ describe("cancelling from the board", () => {
       expect(document.querySelector(".daycal-block")).toBeNull(),
     );
     expect(form.pick()).toBe("09:00-10:00");
+  });
+});
+
+type TurnstileOptions = Parameters<
+  NonNullable<Window["turnstile"]>["render"]
+>[1];
+
+/** Cloudflare's script stood in for: the options it was handed, and what was asked of it. */
+function fakeTurnstile() {
+  const widget = {
+    options: null as TurnstileOptions | null,
+    slot: null as HTMLElement | null,
+    resets: [] as (string | undefined)[],
+    removed: [] as (string | undefined)[],
+    /** Fires one of the widget's callbacks the way Cloudflare would. */
+    fire(name: keyof TurnstileOptions, token?: string) {
+      const cb = widget.options?.[name] as ((t?: string) => void) | undefined;
+      act(() => cb?.(token));
+    },
+  };
+  window.turnstile = {
+    render: (slot, options) => {
+      widget.slot = slot;
+      widget.options = options;
+      return "w-1";
+    },
+    reset: (id) => void widget.resets.push(id),
+    remove: (id) => void widget.removed.push(id),
+  };
+  return widget;
+}
+
+describe("the bot check a guest faces", () => {
+  afterEach(() => {
+    delete window.turnstile;
+  });
+
+  const slot = () => document.querySelector(".turnstile-slot")!;
+
+  async function guarded() {
+    const widget = fakeTurnstile();
+    const view = mountForm({ turnstileSiteKey: "site-key" });
+    await waitFor(() => expect(widget.options).not.toBeNull());
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    await fillGuest(view.user);
+    return { ...view, widget };
+  }
+
+  it("renders into its slot, kept collapsed until Cloudflare shows a challenge", async () => {
+    const { widget } = await guarded();
+    expect(widget.slot).toBe(slot());
+    expect(widget.options).toMatchObject({
+      sitekey: "site-key",
+      action: "turnstile-spin-v2",
+      appearance: "interaction-only",
+    });
+    expect(slot().className).toBe("turnstile-slot ");
+    widget.fire("before-interactive-callback");
+    expect(slot().className).toBe("turnstile-slot is-challenging");
+    widget.fire("after-interactive-callback");
+    expect(slot().className).toBe("turnstile-slot ");
+  });
+
+  it("opens the slot when Reserve is pressed before a token was earned", async () => {
+    const { user } = await guarded();
+    await user.click(form.reserve());
+    expect(slot().className).toBe("turnstile-slot is-challenging");
+    expect(server.posts).toEqual([]);
+  });
+
+  it("sends the token it earned, then spends it so the next booking needs another", async () => {
+    const { user, widget } = await guarded();
+    widget.fire("callback", "tok-A");
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).not.toBe(""));
+    expect(server.posts[0].turnstileToken).toBe("tok-A");
+    expect(widget.resets).toEqual(["w-1"]);
+
+    await waitFor(() => expect(form.reserve().disabled).toBe(false));
+    await user.click(form.reserve());
+    expect(form.alerts()).toEqual([
+      "Please complete the human check below, then reserve again.",
+    ]);
+    expect(server.posts).toHaveLength(1);
+  });
+
+  it("spends the token after a refusal too, since Cloudflare accepts it once", async () => {
+    const { user, widget } = await guarded();
+    server.replies.push({
+      status: 409,
+      body: { ok: false, error: "That time was just taken." },
+    });
+    widget.fire("callback", "tok-A");
+    await user.click(form.reserve());
+    await waitFor(() =>
+      expect(form.alerts()).toContain("That time was just taken."),
+    );
+    expect(widget.resets).toEqual(["w-1"]);
+  });
+
+  it("never sends a token that expired, errored or timed out", async () => {
+    const { user, widget } = await guarded();
+    for (const lapse of [
+      "expired-callback",
+      "error-callback",
+      "timeout-callback",
+    ] as const) {
+      widget.fire("callback", "tok-A");
+      widget.fire(lapse);
+      await user.click(form.reserve());
+      expect(server.posts).toEqual([]);
+    }
+  });
+
+  it("waits for Cloudflare's script, which loads after the form", async () => {
+    mountForm({ turnstileSiteKey: "site-key" });
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    const widget = fakeTurnstile();
+    await waitFor(() => expect(widget.slot).toBe(slot()));
+  });
+
+  it("removes the widget when the form goes", async () => {
+    const { widget, unmount } = await guarded();
+    unmount();
+    expect(widget.removed).toEqual(["w-1"]);
   });
 });
