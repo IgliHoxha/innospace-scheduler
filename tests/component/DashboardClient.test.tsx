@@ -561,11 +561,21 @@ describe("first render", () => {
     mount();
     const footer = screen.getByRole("contentinfo");
     expect(footer.textContent).toBe(
-      `© ${new Date().getFullYear()} Innospace Tirana. All rights reserved.`,
+      `© ${new Date().getFullYear()} Innospace Tirana. All rights reserved.Created by stackrover.tech`,
     );
     expect(within(footer).getByRole("img").getAttribute("alt")).toBe(
       "Innospace Tirana",
     );
+  });
+
+  it("credits the maker in the footer, opened in a new tab", () => {
+    mount();
+    const credit = within(screen.getByRole("contentinfo")).getByRole("link", {
+      name: "stackrover.tech",
+    });
+    expect(credit.getAttribute("href")).toBe("https://stackrover.tech");
+    expect(credit.getAttribute("target")).toBe("_blank");
+    expect(credit.getAttribute("rel")).toBe("noopener");
   });
 });
 

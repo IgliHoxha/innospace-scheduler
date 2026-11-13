@@ -8,9 +8,22 @@ export function SiteFooter() {
           src="/logo.svg"
           alt="Innospace Tirana"
         />
-        <span className="site-footer-copy">
-          © {new Date().getFullYear()} Innospace Tirana. All rights reserved.
-        </span>
+        <div className="site-footer-text">
+          <span className="site-footer-copy">
+            © {new Date().getFullYear()} Innospace Tirana. All rights reserved.
+          </span>
+          <span className="site-footer-copy">
+            Created by{" "}
+            <a
+              className="site-footer-credit"
+              href="https://stackrover.tech"
+              target="_blank"
+              rel="noopener"
+            >
+              stackrover.tech
+            </a>
+          </span>
+        </div>
       </div>
     </footer>
   );

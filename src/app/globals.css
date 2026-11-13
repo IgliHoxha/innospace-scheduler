@@ -1547,9 +1547,27 @@ tr:last-child td {
   opacity: 0.85;
 }
 
+.site-footer-text {
+  display: flex;
+  align-items: center;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+}
+
 .site-footer-copy {
   font-size: 12px;
   color: var(--muted);
+}
+
+.site-footer-credit {
+  color: var(--brand-dark);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.site-footer-credit:hover,
+.site-footer-credit:focus-visible {
+  text-decoration: underline;
 }
 
 /* Preflight is off, so the Input's border needs an explicit style. */
