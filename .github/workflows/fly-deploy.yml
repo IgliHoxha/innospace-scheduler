@@ -113,3 +113,43 @@ jobs:
             -H "Authorization: Bearer $CF_API_TOKEN" \
             -H "Content-Type: application/json" \
             --data '{"files":["https://scheduler.innospacetirana.com/"]}'
+
+  # Runs only after a release that passed its smoke test and its purge, so a tag always marks a build visitors received.
+  release:
+    name: Name the release
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # the default token is read-only
+    steps:
+      # couch-gag gives the same episode for the same commit, so a re-run uses no new one.
+      - name: Ask couch-gag for this release's episode
+        id: episode
+        env:
+          COUCH_GAG_URL: ${{ vars.COUCH_GAG_URL }}
+          COUCH_GAG_KEY: ${{ secrets.COUCH_GAG_KEY }}
+        run: |
+          body=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg ref "$GITHUB_SHA" '{repo: $repo, ref: $ref}')
+          release=$(curl --fail-with-body -sS --retry 4 --retry-all-errors --max-time 20 \
+            -H "Authorization: Bearer $COUCH_GAG_KEY" -H "Content-Type: application/json" \
+            -d "$body" "$COUCH_GAG_URL/v1/releases")
+          tag=$(jq -r '"r\(.sequence)-\(.slug)"' <<<"$release")
+          if ! [[ "$tag" =~ ^r[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "::error::couch-gag answered something that is not a release: $release"; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$(jq -r '.name' <<<"$release")" >> "$GITHUB_OUTPUT"
+
+      - name: Create the tag and the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.episode.outputs.tag }}
+          TITLE: ${{ steps.episode.outputs.title }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "$TITLE" --generate-notes
+          fi

@@ -76,6 +76,52 @@ describe("the release job", () => {
   });
 });
 
+describe("naming the release", () => {
+  const job = workflow.slice(workflow.indexOf("  release:\n"));
+
+  // A tag has to mark a build visitors received, so a failed or skipped release gets none.
+  it("runs only after the release job", () => {
+    expect(workflow).toMatch(
+      /release:\s+name: Name the release\s+needs: deploy\s/,
+    );
+  });
+
+  it("may write to the repository, which no other job can", () => {
+    expect(workflow).toMatch(/^permissions:\n {2}contents: read$/m);
+    expect(job).toContain("contents: write");
+    expect(workflow.match(/contents: write/g)).toHaveLength(1);
+  });
+
+  it("asks couch-gag for this repo and commit, with the key from the secret", () => {
+    expect(job).toContain("COUCH_GAG_URL: ${{ vars.COUCH_GAG_URL }}");
+    expect(job).toContain("COUCH_GAG_KEY: ${{ secrets.COUCH_GAG_KEY }}");
+    expect(job).toContain(
+      '--arg repo "$GITHUB_REPOSITORY" --arg ref "$GITHUB_SHA"',
+    );
+    expect(job).toContain('"$COUCH_GAG_URL/v1/releases"');
+  });
+
+  // The same shape as the website's tags: r16-treehouse-of-horror.
+  it("builds the tag from the sequence and the slug, and refuses anything else", () => {
+    expect(job).toContain(String.raw`'"r\(.sequence)-\(.slug)"'`);
+    expect(job).toContain("^r[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$");
+    expect(job).toContain("is not a release");
+  });
+
+  it("titles the GitHub release with the episode, on the released commit", () => {
+    expect(job).toContain('echo "title=$(jq -r \'.name\' <<<"$release")"');
+    expect(job).toContain('gh release create "$TAG"');
+    expect(job).toContain('--target "$GITHUB_SHA"');
+    expect(job).toContain('--title "$TITLE" --generate-notes');
+  });
+
+  // A re-run claims the same episode, so the release it finds must not fail the job.
+  it("leaves an existing release alone", () => {
+    expect(job).toContain('gh release view "$TAG"');
+    expect(job).toContain("already exists");
+  });
+});
+
 describe("what goes into the image", () => {
   it("keeps every .env file out of the build context", () => {
     expect(ignored).toContain(".env*");
