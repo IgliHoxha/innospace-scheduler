@@ -16,7 +16,7 @@ import { postReservationToSlack } from "@/lib/slack";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Cancel from the emailed link; the token names one slot, or one series, and dies with it. */
+/** Cancel from the emailed link; the token names one slot or series and dies with it. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
   if (blocked) return blocked;
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     return jsonError("That reservation no longer exists.", 404);
   }
 
-  // The channel still hears it, once the guest has their answer: the slot is free again.
+  // The channel still hears the slot is free, once the guest has their answer.
   after(() =>
     postReservationToSlack(reservation, "cancelled", boothName, "guest"),
   );

@@ -1,4 +1,4 @@
-// An admin's yes / no / delete reply to an alert, carried out as the dashboard would.
+// An admin's yes / no / delete reply, carried out as the dashboard would.
 import { safeEqual } from "./auth";
 import { getReservation } from "./db";
 import { optionalEnv } from "./env-app";

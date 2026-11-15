@@ -11,7 +11,7 @@
 # production
 /build
 
-# env: every .env variant holds real secrets (.env.deploy too), only the example is committed
+# env: every .env variant holds real secrets; only the example is committed
 .env*
 !.env.example
 
@@ -28,6 +28,5 @@ next-env.d.ts
 # local agent instructions, kept on the machine and out of the repo
 CLAUDE.md
 
-# Deploy config (env-specific; use fly.toml.example as the template).
-# Not committed - configuration lives in `fly secrets`.
+# Local deploy config: fly.toml.example is the template, values live in fly secrets.
 fly.toml

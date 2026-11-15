@@ -62,7 +62,7 @@ function useBarWidths() {
   return { barRef, tickRef, barPx, tickPx };
 }
 
-/** The pick tag's size, read through a callback ref since the tag mounts with the pick. */
+/** The pick tag's size, by callback ref since the tag mounts with the pick. */
 function useTagWidths() {
   // The tag's width, so a floating tag centres on its pick inside the bar.
   const [tagPx, setTagPx] = useState(0);
@@ -86,7 +86,7 @@ function useTagWidths() {
   return { tagRef, tagPx, tagTextPx };
 }
 
-/** The pick's time tag: inside a pick wide enough to hold it, floating above a narrow one. */
+/** The pick's time tag: inside a wide pick, floating above a narrow one. */
 function pickTagFor(
   pick: { fromMin: number; toMin: number; fromPct: number; toPct: number },
   barPx: number,

@@ -11,7 +11,7 @@ beforeEach(async () => {
 
 const ask = (token?: string) => route.GET(makeRequest("/api/me", { token }));
 
-// The booking page is cached at the edge for everyone, so this is the one place a session shows.
+// The booking page is edge-cached for everyone, so a session shows only here.
 describe("GET /api/me", () => {
   it("names a member signed in with Google", async () => {
     const res = await ask(memberToken("Ada Lovelace", "ada@example.com"));

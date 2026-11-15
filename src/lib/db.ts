@@ -107,7 +107,7 @@ function getDb(): Database.Database {
   const db = new Database(dbFile);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
-  // SQLite folds only A-Z, so the dashboard search folds through JS, where Ç and Ë fold too.
+  // SQLite folds only A-Z, so search folds through JS, where Ç and Ë fold too.
   db.function("fold", { deterministic: true }, (v: unknown) =>
     foldForSearch(v == null ? "" : String(v)),
   );
@@ -389,7 +389,7 @@ export function discardReservation(id: string): boolean {
 
 export function deleteReservations(ids: string[]): number {
   if (ids.length === 0) return 0;
-  // One JSON parameter, not one per id, so any number of ids fits one cached statement.
+  // One JSON parameter, so any number of ids fits one cached statement.
   const res = prep(
     `DELETE FROM reservations WHERE status = 'deleted' AND id IN (SELECT value FROM json_each(?))`,
   ).run(JSON.stringify(ids));

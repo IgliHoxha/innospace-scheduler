@@ -1,4 +1,4 @@
-/** Cancels through the emailed link's endpoint: why it failed, empty when it worked. */
+/** Cancels as the emailed link does: why it failed, empty when it worked. */
 export async function cancelByToken(token: string): Promise<string> {
   try {
     const res = await fetch("/api/cancel", {

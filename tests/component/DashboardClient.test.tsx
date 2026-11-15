@@ -183,7 +183,7 @@ function fakeApi() {
       status: 409,
       body: { ok: false, error: "That reservation changed." } as unknown,
     },
-    /** "drop" rejects a list request like a lost connection; "html" answers with a gateway page. */
+    /** "drop" fails like a lost connection; "html" answers with a gateway page. */
     listFails: null as null | "drop" | "html",
     /** The same two failures, for a PATCH or DELETE. */
     writeFails: null as null | "drop" | "html",
@@ -1395,7 +1395,7 @@ describe("confirming", () => {
       listed("all", { page: 2, counts: 1 }),
       listed("all", { page: 1 }),
     ]);
-    // The tallies came with the reply for the page that vanished, and must survive the step back.
+    // The tallies came with the vanished page's reply and must survive the step back.
     expect(dash.stats()).toEqual([
       ["Total", "10"],
       ["Awaiting", "2"],

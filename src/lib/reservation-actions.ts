@@ -33,7 +33,7 @@ export async function changeReservationStatus(
     }
   }
 
-  // The booking was announced when made, so only a verdict on it is news; sent once the admin has their answer.
+  // Announced when made, so only a verdict is news; sent after the admin's answer.
   if (status === "cancelled") {
     after(() =>
       postReservationToSlack(reservation, "cancelled", boothName, "admin"),

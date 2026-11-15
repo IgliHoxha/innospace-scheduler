@@ -3,7 +3,7 @@
 # ---- Dependencies ----
 FROM node:22-alpine AS deps
 WORKDIR /app
-# Every native module ships prebuilt, so scripts are off: npm 10 would otherwise compile better-sqlite3 and need a compiler.
+# Scripts off: every native module is prebuilt, and npm 10 would compile the driver.
 COPY package.json package-lock.json ./
 # The npm cache outlives this layer, so a lockfile change refetches only what moved.
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
@@ -33,7 +33,7 @@ RUN mkdir -p /app/data && chown -R node:node /app
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
-# The standalone trace carries the native sqlite binary: fail the build if it ever stops loading.
+# Fail the build if the traced sqlite binary ever stops loading.
 RUN node -e "new (require('better-sqlite3'))(':memory:').close()"
 COPY --chown=node:node --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 

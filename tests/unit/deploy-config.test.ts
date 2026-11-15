@@ -57,7 +57,7 @@ describe("building the image", () => {
 });
 
 describe("the release job", () => {
-  // A push to a branch not listed here runs nothing, so a branch rename has to reach this line.
+  // A push to an unlisted branch runs nothing, so a rename must reach this line.
   it("is triggered by a push to main, the default branch", () => {
     expect(workflow).toMatch(/\n {2}push:\n {4}branches:\n {6}- main\n/);
     expect(workflow).not.toMatch(/- master\b/);
@@ -152,7 +152,7 @@ describe("what goes into the image", () => {
     ]);
   });
 
-  // With scripts on, npm 10 compiles the prebuilt driver from source, which this image cannot do.
+  // With scripts on, npm 10 compiles the prebuilt driver, which this image cannot do.
   it("installs without scripts and without a compiler", () => {
     expect(dockerfile).toContain("npm ci --ignore-scripts");
     expect(dockerfile).not.toMatch(/apk add[^\n]*(python3|make|g\+\+)/);

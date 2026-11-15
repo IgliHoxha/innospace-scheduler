@@ -4,13 +4,13 @@ const nextConfig = {
   output: "standalone",
   // Kept external so the native .node binary loads from node_modules.
   serverExternalPackages: ["better-sqlite3"],
-  // Every image is a plain <img>, so the optimizer and its native sharp stay out of the image.
+  // Every image is a plain <img>, so the optimizer and sharp stay out of the image.
   images: { unoptimized: true },
   outputFileTracingExcludes: {
     "*": [
       "node_modules/@img/**",
       "node_modules/sharp/**",
-      // The driver ships a binary per platform; the image runs Alpine, so only the musl ones stay.
+      // The driver ships one binary per platform; Alpine needs only the musl ones.
       "node_modules/better-sqlite3/prebuilds/darwin-*",
       "node_modules/better-sqlite3/prebuilds/win32-*",
       "node_modules/better-sqlite3/prebuilds/linux-*",

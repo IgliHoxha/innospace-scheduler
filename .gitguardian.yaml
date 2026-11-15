@@ -1,4 +1,4 @@
-# Local ggshield only (the hosted monitor ignores this file); tests/ holds throwaway fixture passwords.
+# Local ggshield only; tests/ holds throwaway fixture passwords.
 version: 2
 secret:
   ignored-paths:

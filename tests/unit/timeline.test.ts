@@ -266,7 +266,7 @@ describe("a reservation starting before the window opens", () => {
 });
 
 describe("pickTagPlacement", () => {
-  // A 1000px bar over a 14-hour day (one hour is 7.14%), and a tag at the chip's rendered size.
+  // A 1000px bar over a 14-hour day (an hour is 7.14%), and a tag at chip size.
   const BAR = 1000;
   const TAG = 90;
   const FITS = 96;

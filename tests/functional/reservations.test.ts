@@ -264,7 +264,7 @@ describe("POST /api/reservations - signed in with Google", () => {
   });
 
   it("skips the mail-domain check: Google already verified the address", async () => {
-    // Not mockResolvedValueOnce: the member path never calls it, so the queued value would leak.
+    // Not mockResolvedValueOnce: the member path never calls it, so the value would leak.
     vi.mocked(verify.checkEmailDeliverable).mockResolvedValue({
       ok: false,
       error: "no mail",

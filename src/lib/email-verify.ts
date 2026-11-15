@@ -22,10 +22,10 @@ const DISPOSABLE = new Set([
 // Cached per domain: bookings cluster, and DNS outlives one request.
 const TTL_MS = 60 * 60 * 1000;
 const cache = new Map<string, { accepts: boolean; at: number }>();
-// Capped: the process lives until the next deploy, and any caller can name a new domain.
+// Capped: the process is long-lived, and any caller can name a new domain.
 const MAX_CACHED_DOMAINS = 1000;
 
-/** Newest last, so the first key is always the oldest answer and the one to drop. */
+/** Newest last, so the first key is the oldest answer and the one to drop. */
 function remember(domain: string, accepts: boolean): void {
   cache.delete(domain);
   if (cache.size >= MAX_CACHED_DOMAINS) {

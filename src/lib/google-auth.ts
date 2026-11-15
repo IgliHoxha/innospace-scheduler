@@ -52,7 +52,7 @@ function unb64url(s: string): string {
   return Buffer.from(s, "base64url").toString("utf8");
 }
 
-/** Straight from Google's token endpoint over TLS, so the claims need no signature check. */
+/** Straight from Google over TLS, so the claims need no signature check. */
 export function profileFromIdToken(
   idToken: unknown,
   clientId: string,

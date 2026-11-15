@@ -188,7 +188,7 @@ describe("the unseen sizers", () => {
     for (const s of sizers) expect(s.getAttribute("aria-hidden")).toBe("true");
   });
 
-  // A stylesheet keyed on element type must reach a sizer exactly as it reaches the real thing.
+  // A stylesheet keyed on element type must reach a sizer as it does the real thing.
   it("mirror the element they stand for", () => {
     mount({
       selection: { start: "19:00", end: "20:00" },

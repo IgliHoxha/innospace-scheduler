@@ -70,7 +70,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Google already verified a member, so the body cannot rename them; a guest's body is all there is. */
+/** A member is named by their verified session; a guest only by the body. */
 function bookerFrom(
   member: Member | null,
   body: Record<string, unknown>,
@@ -103,7 +103,7 @@ function timesProblem(startsAt: string, endsAt: string): string {
   return "";
 }
 
-/** The back-to-back run a booking joins on each date, or a split stay would dodge the limits. */
+/** The back-to-back run on each date, or a split stay would dodge the limits. */
 function runMinutesOn(
   dates: readonly string[],
   email: string,
@@ -147,7 +147,7 @@ function noteProblem(
   return "";
 }
 
-/** The 201: each date with the proof its email link carries, so this browser can cancel without it. */
+/** The 201: each date with its cancel proof, so this browser can cancel too. */
 function bookedResponse(
   reservations: Reservation[],
   boothId: string,
@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
     ? "pending"
     : "confirmed";
 
-  // At once, since the form drops its token after every attempt anyway; Google vouches for a member.
+  // In parallel: the token is single-use anyway, and Google vouches for a member.
   const [human, deliverable] = member
     ? [true, { ok: true } as const]
     : await Promise.all([
@@ -311,7 +311,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // After the email, so a discarded booking is never announced; after the response, so the guest never waits.
+    // After the email and the response: nothing discarded is announced, nobody waits.
     after(async () => {
       for (const r of reservations) {
         await postReservationToSlack(r, r.status as ActiveStatus, boothName);

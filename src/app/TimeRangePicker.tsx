@@ -5,10 +5,9 @@ import { ClockIcon } from "@/components/ui/icons";
 import { TimePickerInput } from "@/components/ui/time-picker-input";
 import { timeOfDate } from "@/lib/datetime";
 
+/** Both ends as "HH:MM". */
 export interface TimeRange {
-  /** "HH:MM" */
   from: string;
-  /** "HH:MM" */
   to: string;
 }
 

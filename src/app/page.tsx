@@ -14,7 +14,7 @@ import ReservationClient from "./ReservationClient";
 
 export const dynamic = "force-dynamic";
 
-/** The booking screen: edge-cached, so it never reads the session; the form asks /api/me. */
+/** Edge-cached, so it never reads the session; the form asks /api/me. */
 export default async function Home({
   searchParams,
 }: {

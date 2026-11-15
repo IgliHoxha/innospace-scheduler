@@ -99,7 +99,7 @@ export default function ReservationClient({
 
   // Google already vouched for a member, so the bot check is for guests only.
   const turnstileSiteKey = member === null ? configuredSiteKey : undefined;
-  // Turnstile is heavy, so it loads on the first touch of the form, never for someone only looking.
+  // Turnstile is heavy, so it loads on the first touch of the form, not on a visit.
   const [engaged, setEngaged] = useState(false);
   const engage = () => {
     if (!engaged) setEngaged(true);
@@ -441,7 +441,7 @@ export default function ReservationClient({
         signOutTo="/"
       />
 
-      {/* Click, not pointerdown: a finger that only scrolls the page must not load the check. */}
+      {/* Click, not pointerdown: a finger that only scrolls must not load the check. */}
       <div
         className="container"
         onClickCapture={engage}
@@ -538,7 +538,7 @@ export default function ReservationClient({
           )}
         </TimeCard>
 
-        {/* A member is named in the top bar, so the details card gives way to the repeat. */}
+        {/* The top bar names a member, so the details card gives way to the repeat. */}
         {member === undefined ? null : member ? (
           maxRepeatWeeks > 1 && (
             <RepeatCard

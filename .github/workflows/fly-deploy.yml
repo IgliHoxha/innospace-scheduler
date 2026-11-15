@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# Main runs queue in push order and are never cut off mid-release; a newer push to a PR replaces the older run.
+# Main runs queue in order and are never cut off; a newer PR push replaces the older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -52,7 +52,7 @@ jobs:
         with:
           fetch-depth: 0 # the diff below needs the commit that is live
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
-      # Compared with what is live, not with the previous push, so a failed or superseded run is never skipped over.
+      # Compared with what is live, so a failed or superseded run is never skipped over.
       - name: Has anything that ships changed?
         id: live
         run: |
@@ -64,8 +64,7 @@ jobs:
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
-      # fly.toml is gitignored, so CI uses the committed template.
-      # Fly's remote builder sometimes drops the connection mid-build; only that is retried, a real build error fails at once.
+      # Only a dropped builder connection is retried; a real build error fails at once.
       - name: Build and push
         if: steps.live.outputs.release == 'true'
         shell: bash
@@ -92,7 +91,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      # Straight to the origin: through Cloudflare the edge would answer with its copy of the old build.
+      # Straight to the origin: the edge would answer with its copy of the old build.
       - name: Smoke test the new release
         run: |
           curl --fail -sS -o /dev/null --retry 5 --retry-delay 3 --retry-all-errors --max-time 30 \
@@ -114,7 +113,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{"files":["https://scheduler.innospacetirana.com/"]}'
 
-  # Runs only after a release that passed its smoke test and its purge, so a tag always marks a build visitors received.
+  # Only after a release passed its smoke test and purge, so a tag marks a live build.
   release:
     name: Name the release
     needs: deploy

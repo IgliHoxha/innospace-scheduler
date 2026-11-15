@@ -9,7 +9,7 @@ export interface BookingWhen {
   repeatWeeks: number;
 }
 
-/** The booking named in full, for a success or a failure that outlived its form. */
+/** The booking named in full, for a message that outlived its form. */
 export function bookingWhen(b: BookingWhen): string {
   const weekly = b.repeatWeeks > 1 ? `, ${repeatLabel(b.repeatWeeks)}` : "";
   return `${b.boothName} on ${formatDateLong(b.date)}, ${b.start} - ${b.end}${weekly}`;

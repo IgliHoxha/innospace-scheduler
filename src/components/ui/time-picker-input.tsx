@@ -10,7 +10,7 @@ import {
   type TimePickerType,
 } from "@/lib/time-picker-utils";
 
-// One fixed list: nothing overrides it, so no class-merging library ships to the booking page.
+// One fixed list, so no class-merging library ships to the booking page.
 const FIELD_CLASS =
   "flex rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 h-11 w-[46px] px-1 py-0 text-center font-mono text-base leading-none tabular-nums focus:bg-accent focus:text-accent-foreground [&::-webkit-inner-spin-button]:appearance-none";
 

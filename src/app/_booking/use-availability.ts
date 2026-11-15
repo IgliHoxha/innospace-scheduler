@@ -78,7 +78,7 @@ export function useAvailability(
     [boothId, date, clearPick],
   );
 
-  // The newest loader, so a reply landing after a booth or date change reloads the board on screen.
+  // The newest loader, so a late reply reloads the board now on screen.
   const latest = useRef(load);
   useEffect(() => {
     latest.current = load;

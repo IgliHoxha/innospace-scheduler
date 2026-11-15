@@ -1,9 +1,9 @@
-// Posts new bookings to the admin's Telegram. Server-only: it reads the bot token.
+// Alerts the admin's Telegram chat. Server-only: it reads the bot token.
 import { optionalEnv, requireEnv } from "./env-app";
 import type { Reservation } from "./types";
 import { boothLabel, dateText, timeText, type BoothNamer } from "./templates";
 
-/** "skipped" is no bot configured or nothing to approve; only "failed" means Telegram refused it. */
+/** "skipped": no bot, or nothing to approve; only "failed" means Telegram refused. */
 export type TelegramOutcome = "sent" | "skipped" | "failed";
 
 const API_URL = "https://api.telegram.org";
