@@ -316,14 +316,6 @@ function insertIfFree(r: Reservation): void {
   insert(r);
 }
 
-/** Check and insert share a transaction, so racers cannot both win. */
-export function createReservation(
-  input: ReservationInput,
-  status: ActiveStatus = "confirmed",
-): Reservation {
-  return createReservationSeries([{ input, status }])[0];
-}
-
 // The same class again, so the route's instanceof checks still hold.
 function namingDate(err: Error, startsAt: string): Error {
   const message = `${formatDateLong(startsAt.slice(0, 10))}: ${err.message}`;

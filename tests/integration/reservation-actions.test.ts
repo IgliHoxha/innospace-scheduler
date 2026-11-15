@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadDb } from "../helpers/app";
+import { insertReservation, loadDb } from "../helpers/app";
 
 // A shared `send` keeps the mailer's singleton client observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
@@ -36,7 +36,8 @@ const seed = (
   status: "confirmed" | "pending" = "confirmed",
   over: { email?: string } = {},
 ) =>
-  db.createReservation(
+  insertReservation(
+    db,
     {
       boothId: "booth-1",
       startsAt: "2026-07-16T14:00",

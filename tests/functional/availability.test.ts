@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeRequest, resetApp } from "../helpers/app";
+import { insertReservation, makeRequest, resetApp } from "../helpers/app";
 import { todayYMD } from "@/lib/datetime";
 
 type Route = typeof import("@/app/api/availability/route");
@@ -20,7 +20,7 @@ function get(query: string) {
 }
 
 async function seatOne(fullName: string) {
-  db.createReservation({
+  insertReservation(db, {
     boothId: "booth-1",
     startsAt: `${today}T14:00`,
     endsAt: `${today}T15:00`,
@@ -88,7 +88,7 @@ describe("GET /api/availability", () => {
   });
 
   it("exposes times only: never a name, email, note or id", async () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-1",
       startsAt: `${today}T14:00`,
       endsAt: `${today}T15:00`,
@@ -118,7 +118,7 @@ describe("GET /api/availability counts", () => {
   afterEach(() => vi.useRealTimers());
 
   const book = (boothId: string, start: string, end: string, who: string) =>
-    db.createReservation({
+    insertReservation(db, {
       boothId,
       startsAt: `${DAY}T${start}`,
       endsAt: `${DAY}T${end}`,
@@ -169,7 +169,8 @@ describe("GET /api/availability counts", () => {
 
   it("counts a pending request and drops a cancelled one", async () => {
     const cancelled = book("booth-1", "09:00", "10:00", "Ada");
-    db.createReservation(
+    insertReservation(
+      db,
       {
         boothId: "booth-1",
         startsAt: `${DAY}T14:00`,
@@ -191,7 +192,7 @@ describe("GET /api/availability counts", () => {
   // A late booking today and an early one tomorrow sit five minutes apart.
   it("does not let a booking just past midnight count towards the day before", async () => {
     book("booth-1", "23:40", "23:55", "Ada");
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-1",
       startsAt: `${NEXT}T00:00`,
       endsAt: `${NEXT}T01:00`,
@@ -216,7 +217,7 @@ describe("GET /api/availability counts", () => {
   });
 
   it("carries numbers only: no name, email or note rides along", async () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-2",
       startsAt: `${DAY}T09:00`,
       endsAt: `${DAY}T10:00`,

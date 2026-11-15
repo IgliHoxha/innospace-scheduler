@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adminToken, makeRequest, params, resetApp } from "../helpers/app";
+import {
+  adminToken,
+  insertReservation,
+  makeRequest,
+  params,
+  resetApp,
+} from "../helpers/app";
 
 vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +35,8 @@ beforeEach(async () => {
 });
 
 const seed = (status: "confirmed" | "pending" = "confirmed") =>
-  db.createReservation(
+  insertReservation(
+    db,
     {
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,

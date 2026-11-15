@@ -138,11 +138,9 @@ describe("checkBooking: nothing chosen yet", () => {
     expect(check({ startMin: null, endMin: null }).problem).toBe("");
   });
 
-  it("reports no run and no note when nothing is chosen", () => {
+  it("asks for no note and no approval when nothing is chosen", () => {
     const r = check({ startMin: null, endMin: null });
     expect(r).toMatchObject({
-      runMinutes: 0,
-      partOfRun: false,
       mustNote: false,
       needsApproval: false,
     });
@@ -154,8 +152,6 @@ describe("checkBooking: the happy path", () => {
     expect(check()).toMatchObject({
       problem: "",
       field: undefined,
-      runMinutes: 60,
-      partOfRun: false,
       mustNote: false,
       needsApproval: false,
     });
@@ -364,9 +360,9 @@ describe("checkBooking: the back-to-back run", () => {
   // A booking fine alone can still cross the limit joined to a neighbour.
   it("counts an adjacent booking into the run and then demands a note", () => {
     const r = check({ held: [{ start: 9 * 60, end: 10 * 60 }] });
-    expect(r.runMinutes).toBe(120);
-    expect(r.partOfRun).toBe(true);
     expect(r.mustNote).toBe(true);
+    // Two hours is the limit itself: a note is due at it, approval only over it.
+    expect(r.needsApproval).toBe(false);
     expect(r.field).toBe("note");
     expect(r.problem).toBe(noteRequiredMessage(true, 2));
   });
@@ -380,15 +376,24 @@ describe("checkBooking: the back-to-back run", () => {
   it("bridges a gap no one else could book, since that is not a real break", () => {
     // 15-minute gap, exactly the minimum, so nobody could take it.
     const r = check({ held: [{ start: 8 * 60 + 30, end: 9 * 60 + 45 }] });
-    expect(r.partOfRun).toBe(true);
-    expect(r.runMinutes).toBe(135);
+    // 75 held plus this hour is over two hours: only a bridged run gets there.
+    expect(r.needsApproval).toBe(true);
+    expect(r.problem).toBe(noteRequiredMessage(true, 2));
+  });
+
+  it("does not bridge a gap somebody else could still book", () => {
+    // 20 minutes is longer than the minimum, so it is a real break.
+    const r = check({ held: [{ start: 8 * 60 + 25, end: 9 * 60 + 40 }] });
+    expect(r.mustNote).toBe(false);
+    expect(r.needsApproval).toBe(false);
   });
 
   it("leaves a genuinely separate booking out of the run", () => {
+    // Counted in, it would make two hours and demand a note.
     const r = check({ held: [{ start: 14 * 60, end: 15 * 60 }] });
-    expect(r.runMinutes).toBe(60);
-    expect(r.partOfRun).toBe(false);
     expect(r.mustNote).toBe(false);
+    expect(r.needsApproval).toBe(false);
+    expect(r.problem).toBe("");
   });
 
   it("reports the clash before the run rule, since overlapping is the worse problem", () => {

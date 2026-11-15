@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadDb } from "../helpers/app";
+import { insertReservation, loadDb } from "../helpers/app";
+import type { ReservationInput } from "@/lib/types";
 
 type Db = Awaited<ReturnType<typeof loadDb>>;
 let db: Db;
@@ -10,9 +11,9 @@ const at = (t: string) => `${D}T${t}`;
 async function reserve(
   start: string,
   end: string,
-  over?: Partial<Parameters<Db["createReservation"]>[0]>,
+  over?: Partial<ReservationInput>,
 ) {
-  return db.createReservation({
+  return insertReservation(db, {
     boothId: "booth-1",
     startsAt: at(start),
     endsAt: at(end),
@@ -26,7 +27,7 @@ beforeEach(async () => {
   db = await loadDb();
 });
 
-describe("createReservation + overlap", () => {
+describe("one booking + overlap", () => {
   it("stores a confirmed reservation and lists it in reservedRanges", async () => {
     const r = await reserve("10:00", "11:00");
     expect(r.status).toBe("confirmed");
@@ -118,7 +119,8 @@ describe("createReservation + overlap", () => {
 
   it("a pending reservation holds the slot just like a confirmed one", async () => {
     await reserve("13:00", "14:00");
-    db.createReservation(
+    insertReservation(
+      db,
       {
         boothId: "booth-1",
         startsAt: at("15:00"),
@@ -140,7 +142,8 @@ describe("queryReservations", () => {
       email: "bob@example.com",
       fullName: "Bob",
     });
-    db.createReservation(
+    insertReservation(
+      db,
       {
         boothId: "booth-2",
         startsAt: at("11:00"),
@@ -329,7 +332,7 @@ describe("status update + delete guard", () => {
 describe("discardReservation", () => {
   it("removes the row outright and frees the slot", async () => {
     const db = await loadDb();
-    const r = db.createReservation({
+    const r = insertReservation(db, {
       boothId: "booth-1",
       startsAt: "2026-07-16T14:00",
       endsAt: "2026-07-16T15:00",
@@ -340,7 +343,7 @@ describe("discardReservation", () => {
     expect(db.queryReservations({ filter: "all" }).total).toBe(0);
 
     expect(
-      db.createReservation({
+      insertReservation(db, {
         boothId: "booth-1",
         startsAt: "2026-07-16T14:00",
         endsAt: "2026-07-16T15:00",
@@ -373,7 +376,8 @@ describe("reservedRanges", () => {
 
   it("keeps a pending booking, which is holding its slot", async () => {
     await reserve("10:00", "11:00");
-    db.createReservation(
+    insertReservation(
+      db,
       { boothId: "booth-1", startsAt: at("14:00"), endsAt: at("15:00") },
       "pending",
     );
@@ -429,7 +433,8 @@ describe("reservationCountsByBooth", () => {
   });
 
   it("counts a pending booking, which holds its slot", async () => {
-    db.createReservation(
+    insertReservation(
+      db,
       { boothId: "booth-1", startsAt: at("14:00"), endsAt: at("15:00") },
       "pending",
     );
@@ -606,7 +611,8 @@ describe("heldRangesForEmail", () => {
 
   it("counts pending ones, which do hold their slot", async () => {
     await reserve("14:00", "15:00", {}).then(() => undefined);
-    db.createReservation(
+    insertReservation(
+      db,
       {
         boothId: "booth-2",
         startsAt: at("16:00"),
@@ -622,7 +628,7 @@ describe("heldRangesForEmail", () => {
 
 describe("rows stored with fields left unset", () => {
   it("keeps an absent name, email and note as null rather than the string 'undefined'", async () => {
-    const r = db.createReservation({
+    const r = insertReservation(db, {
       boothId: "booth-1",
       startsAt: at("14:00"),
       endsAt: at("15:00"),
@@ -639,7 +645,7 @@ describe("rows stored with fields left unset", () => {
 });
 
 // The route sends these messages as the 409 body, so the wording is copy.
-describe("the refusals createReservation throws", () => {
+describe("the refusals a booking throws", () => {
   const refusal = (attempt: Promise<unknown>) =>
     attempt.then(
       () => null,
@@ -675,10 +681,7 @@ describe("the refusals createReservation throws", () => {
 });
 
 describe("createReservationSeries", () => {
-  const weeks = (
-    n: number,
-    over: Partial<Parameters<Db["createReservation"]>[0]> = {},
-  ) =>
+  const weeks = (n: number, over: Partial<ReservationInput> = {}) =>
     Array.from({ length: n }, (_, i) => ({
       input: {
         boothId: "booth-1",
@@ -708,11 +711,11 @@ describe("createReservationSeries", () => {
     expect(one.seriesId).toBeUndefined();
     expect(db.getReservation(one.id)?.seriesId).toBeUndefined();
     db.updateReservationStatus(one.id, "cancelled");
-    expect(db.createReservation(weeks(1)[0].input).seriesId).toBeUndefined();
+    expect(insertReservation(db, weeks(1)[0].input).seriesId).toBeUndefined();
   });
 
   it("stores nothing when a later date clashes, and names that date", () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-1",
       startsAt: "2026-07-30T10:30",
       endsAt: "2026-07-30T11:30",
@@ -734,7 +737,7 @@ describe("createReservationSeries", () => {
   });
 
   it("names the date when the booker is busy that week, and keeps the class", () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-2",
       startsAt: "2026-07-23T10:00",
       endsAt: "2026-07-23T11:00",
@@ -751,7 +754,7 @@ describe("createReservationSeries", () => {
   });
 
   it("keeps the plain message for a single booking that clashes", () => {
-    db.createReservation(weeks(1)[0].input);
+    insertReservation(db, weeks(1)[0].input);
     expect(() => db.createReservationSeries(weeks(1))).toThrow(
       "That time slot is no longer available.",
     );

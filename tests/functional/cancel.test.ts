@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeRequest, resetApp } from "../helpers/app";
+import { insertReservation, makeRequest, resetApp } from "../helpers/app";
 import { settled } from "../helpers/after";
 import {
   createCancelToken,
@@ -32,7 +32,8 @@ beforeEach(async () => {
 });
 
 const seed = (status: "confirmed" | "pending" = "confirmed") =>
-  db.createReservation(
+  insertReservation(
+    db,
     {
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,

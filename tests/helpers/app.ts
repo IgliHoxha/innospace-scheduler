@@ -5,6 +5,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
 import { SESSION_COOKIE, createSessionToken } from "@/lib/auth";
+import type { ActiveStatus, Reservation, ReservationInput } from "@/lib/types";
 
 const tmpFiles: string[] = [];
 
@@ -36,6 +37,15 @@ type DbModule = typeof import("@/lib/db");
 export async function loadDb(): Promise<DbModule> {
   resetApp();
   return import("@/lib/db");
+}
+
+/** One booking, through the series insert every production booking takes. */
+export function insertReservation(
+  db: DbModule,
+  input: ReservationInput,
+  status: ActiveStatus = "confirmed",
+): Reservation {
+  return db.createReservationSeries([{ input, status }])[0];
 }
 
 export function adminToken(name = "admin"): string {

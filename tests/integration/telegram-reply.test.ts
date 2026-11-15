@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadDb } from "../helpers/app";
+import { insertReservation, loadDb } from "../helpers/app";
 import {
   REPLY_MESSAGE_ID,
   replyUpdate,
   sentMessage,
   stubReplies,
 } from "../helpers/telegram";
-import type { Reservation } from "@/lib/types";
+import type { Reservation, ReservationInput } from "@/lib/types";
 
 // A shared `send` keeps the mailer's singleton client observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
@@ -50,9 +50,10 @@ afterEach(() => {
 
 const seed = (
   status: "confirmed" | "pending" = "pending",
-  over: Partial<Parameters<Db["createReservation"]>[0]> = {},
+  over: Partial<ReservationInput> = {},
 ) =>
-  db.createReservation(
+  insertReservation(
+    db,
     {
       boothId: "booth-1",
       startsAt: "2026-07-16T14:00",

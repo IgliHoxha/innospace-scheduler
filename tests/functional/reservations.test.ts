@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { adminToken, makeRequest, memberToken, resetApp } from "../helpers/app";
+import {
+  adminToken,
+  insertReservation,
+  makeRequest,
+  memberToken,
+  resetApp,
+} from "../helpers/app";
 import { settled } from "../helpers/after";
 
 // DNS is stubbed: the suite must never do a real lookup.
@@ -394,7 +400,7 @@ describe("POST /api/reservations - a weekly repeat", () => {
   });
 
   it("409s naming the date when a later week is taken, and stores nothing", async () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-1",
       startsAt: "2026-07-30T14:30",
       endsAt: "2026-07-30T15:30",
@@ -934,14 +940,14 @@ describe("GET /api/reservations", () => {
     ).toBe(401);
   });
   it("returns every reservation plus the stat counts for an admin", async () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
       fullName: "Ada Lovelace",
       email: "ada@example.com",
     });
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-2",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
@@ -970,7 +976,8 @@ describe("GET /api/reservations - order", () => {
   beforeEach(() => {
     for (const [hour, [fullName, start, status]] of SLOTS.entries()) {
       vi.setSystemTime(new Date(Date.UTC(2026, 6, 1, hour)));
-      db.createReservation(
+      insertReservation(
+        db,
         {
           boothId: "booth-1",
           startsAt: `${DAY}T${start}`,
@@ -1036,7 +1043,7 @@ describe("GET /api/reservations - order", () => {
   });
 
   it("searches past case and accents, and never by wildcard", async () => {
-    db.createReservation({
+    insertReservation(db, {
       boothId: "booth-2",
       startsAt: `${DAY}T10:00`,
       endsAt: `${DAY}T10:30`,
@@ -1114,7 +1121,7 @@ describe("DELETE /api/reservations", () => {
     expect(res.status).toBe(400);
   });
   it("hard-deletes only soft-deleted rows", async () => {
-    const r = db.createReservation({
+    const r = insertReservation(db, {
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
@@ -1126,7 +1133,7 @@ describe("DELETE /api/reservations", () => {
     expect((await json(res)).removed).toBe(1);
   });
   it("purges a selection larger than SQLite's placeholder limit", async () => {
-    const r = db.createReservation({
+    const r = insertReservation(db, {
       boothId: "booth-1",
       startsAt: `${DAY}T14:00`,
       endsAt: `${DAY}T15:00`,
@@ -1312,7 +1319,8 @@ describe("POST /api/reservations - back-to-back runs count as one sitting", () =
   });
 
   it("chains onto a pending neighbour, which holds its slot too", async () => {
-    db.createReservation(
+    insertReservation(
+      db,
       {
         boothId: "booth-2",
         startsAt: `${DAY}T15:00`,

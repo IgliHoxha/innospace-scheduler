@@ -17,10 +17,6 @@ import {
 export type ProblemField = "note";
 
 export interface BookingCheck {
-  /** Booked minutes of the run this joins, 0 until both ends are chosen. */
-  runMinutes: number;
-  /** Longer than this booking alone, so the wording must explain why. */
-  partOfRun: boolean;
   mustNote: boolean;
   needsApproval: boolean;
   /** The blocking problem, empty when there is none. */
@@ -135,8 +131,6 @@ export function checkBooking(input: BookingCheckInput): BookingCheck {
   const partOfRun = runMinutes > duration;
   const mustNote = noteRequiredFor(runMinutes, autoApproveMaxHours);
   const base = {
-    runMinutes,
-    partOfRun,
     mustNote,
     needsApproval: approvalRequiredFor(runMinutes, autoApproveMaxHours),
   };

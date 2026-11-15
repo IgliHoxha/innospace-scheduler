@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { loadDb, resetApp } from "../helpers/app";
+import { insertReservation, loadDb, resetApp } from "../helpers/app";
 
 // Inspect the DB file directly, outside the singleton, to assert initSchema.
 function tableNames(file: string): string[] {
@@ -207,7 +207,7 @@ describe("schema init", () => {
   it("stores identity on the reservation itself, with no userId column", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
-    db.createReservation(seed);
+    insertReservation(db, seed);
 
     const cols = columnNames(file, "reservations");
     expect(cols).toEqual(expect.arrayContaining(["fullName", "email"]));
@@ -219,7 +219,7 @@ describe("schema init", () => {
   it("re-opening an existing DB is a no-op and preserves rows", async () => {
     const db = await loadDb();
     const file = process.env.DATA_FILE as string;
-    db.createReservation(seed);
+    insertReservation(db, seed);
 
     // Rebind to the same file: every CREATE is IF NOT EXISTS, so data survives.
     vi.resetModules();

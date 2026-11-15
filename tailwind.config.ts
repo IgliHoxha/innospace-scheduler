@@ -29,7 +29,6 @@ const config: Config = {
     extend: {
       // App palette for the shadcn Input; hex so var(--border) can't collide.
       colors: {
-        border: COLORS.border,
         input: COLORS.border,
         ring: COLORS.brand,
         background: COLORS.background,
