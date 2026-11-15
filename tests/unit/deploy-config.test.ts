@@ -100,9 +100,10 @@ describe("what goes into the image", () => {
     ]);
   });
 
-  // Without one, npm ci on the image's npm 10 fails trying to compile the driver.
-  it("keeps a compiler in the dependency stage", () => {
-    expect(dockerfile).toContain("RUN apk add --no-cache python3 make g++");
+  // With scripts on, npm 10 compiles the prebuilt driver from source, which this image cannot do.
+  it("installs without scripts and without a compiler", () => {
+    expect(dockerfile).toContain("npm ci --ignore-scripts");
+    expect(dockerfile).not.toMatch(/apk add[^\n]*(python3|make|g\+\+)/);
   });
 
   it("fails the build when the sqlite driver does not load", () => {

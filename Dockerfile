@@ -3,11 +3,10 @@
 # ---- Dependencies ----
 FROM node:22-alpine AS deps
 WORKDIR /app
-# npm 10 compiles better-sqlite3 from its binding.gyp on a lockfile install, prebuilt or not, so it needs a compiler.
-RUN apk add --no-cache python3 make g++
+# Every native module ships prebuilt, so scripts are off: npm 10 would otherwise compile better-sqlite3 and need a compiler.
 COPY package.json package-lock.json ./
 # The npm cache outlives this layer, so a lockfile change refetches only what moved.
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 
 # ---- Build ----
 FROM node:22-alpine AS builder
