@@ -57,6 +57,12 @@ describe("building the image", () => {
 });
 
 describe("the release job", () => {
+  // A push to a branch not listed here runs nothing, so a branch rename has to reach this line.
+  it("is triggered by a push to main, the default branch", () => {
+    expect(workflow).toMatch(/\n {2}push:\n {4}branches:\n {6}- main\n/);
+    expect(workflow).not.toMatch(/- master\b/);
+  });
+
   it("waits for the checks and the image", () => {
     expect(workflow).toMatch(
       /deploy:\s+name: Release\s+needs: \[check, build\]/,

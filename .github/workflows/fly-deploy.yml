@@ -2,14 +2,14 @@ name: Fly Deploy
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
   workflow_dispatch: # allow manual deploys from the Actions tab
 
 permissions:
   contents: read
 
-# Master runs queue in push order and are never cut off mid-release; a newer push to a PR replaces the older run.
+# Main runs queue in push order and are never cut off mid-release; a newer push to a PR replaces the older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

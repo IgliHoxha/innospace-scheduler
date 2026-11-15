@@ -208,7 +208,7 @@ fly deploy
 
 To read or change a value later, use `fly secrets list` (names only) and
 `fly secrets set KEY=value` (triggers a rolling restart). There is no plaintext
-`[env]` to edit. Pushing to `master` also deploys via GitHub Actions, which needs
+`[env]` to edit. Pushing to `main` also deploys via GitHub Actions, which needs
 a `FLY_API_TOKEN` repository secret. The release waits for lint, types and tests
 to pass, and a push that touches only tests or docs is checked but not released.
 

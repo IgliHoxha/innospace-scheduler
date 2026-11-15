@@ -16,8 +16,8 @@ disclosing it publicly.
 
 ## Supported versions
 
-This is a single-tenant application deployed from `master`. Security fixes land
-on `master`; there are no separately maintained release branches.
+This is a single-tenant application deployed from `main`. Security fixes land
+on `main`; there are no separately maintained release branches.
 
 ## Scope notes for self-hosters
 
