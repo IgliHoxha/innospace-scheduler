@@ -20,7 +20,7 @@ describe("deciding whether a push needs a release", () => {
       "docs",
       ".github",
       "*.md",
-      "vitest.config.ts",
+      "vitest.config.mts",
     ]);
   });
 

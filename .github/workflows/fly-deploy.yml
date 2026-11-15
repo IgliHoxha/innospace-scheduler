@@ -58,7 +58,7 @@ jobs:
         run: |
           live=$(flyctl image show --config fly.toml.example --json | jq -r '.[0].Tag // empty' | sed -n 's/^sha-//p')
           if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] &&
-            git diff --quiet "$live" HEAD -- . ':!tests' ':!docs' ':!.github' ':!*.md' ':!vitest.config.ts'; then
+            git diff --quiet "$live" HEAD -- . ':!tests' ':!docs' ':!.github' ':!*.md' ':!vitest.config.mts'; then
             echo "::notice::Nothing in the image changed since $live, so there is nothing to release."
             echo "release=false" >> "$GITHUB_OUTPUT"
           else

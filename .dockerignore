@@ -19,6 +19,6 @@ tests
 coverage
 docs
 .github
-vitest.config.ts
+vitest.config.mts
 Makefile
 fly.toml*

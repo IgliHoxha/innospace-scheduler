@@ -1,6 +1,6 @@
 // Named tsconfig.json so the editor finds it for tests/, which the root config excludes.
 {
   "extends": "../tsconfig.json",
-  "include": ["**/*.ts", "**/*.tsx", "../vitest.config.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "../vitest.config.mts"],
   "exclude": ["../node_modules"]
 }
