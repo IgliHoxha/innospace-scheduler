@@ -1,8 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import {
   getArrowByType,
   getDateByType,
@@ -11,6 +9,10 @@ import {
   setDateByType,
   type TimePickerType,
 } from "@/lib/time-picker-utils";
+
+// One fixed list: nothing overrides it, so no class-merging library ships to the booking page.
+const FIELD_CLASS =
+  "flex rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 h-11 w-[46px] px-1 py-0 text-center font-mono text-base leading-none tabular-nums focus:bg-accent focus:text-accent-foreground [&::-webkit-inner-spin-button]:appearance-none";
 
 export interface TimePickerInputProps extends Omit<
   React.ComponentProps<"input">,
@@ -109,14 +111,11 @@ const TimePickerInput = React.forwardRef<
     };
 
     return (
-      <Input
+      <input
         ref={ref}
         id={id ?? picker}
         name={name ?? picker}
-        className={cn(
-          "h-11 w-[46px] px-1 py-0 text-center font-mono text-base leading-none tabular-nums focus:bg-accent focus:text-accent-foreground [&::-webkit-inner-spin-button]:appearance-none",
-          className,
-        )}
+        className={className ? `${FIELD_CLASS} ${className}` : FIELD_CLASS}
         value={draft ?? shown}
         type={type}
         inputMode="decimal"

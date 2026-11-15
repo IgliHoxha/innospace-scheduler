@@ -227,7 +227,7 @@ src/lib/           booths, schedule window, types, db (reservations + users),
 src/app/           / (member reservation), /login, /dashboard and /users (admin),
                    /activate (member setup), /api/{login,availability,
                    reservations,users,activate}
-src/components/ui/ shadcn Input + the typed time-picker field
+src/components/ui/ the typed time-picker field, tooltip and icons
 tests/             unit / integration / functional (Vitest)
 ```
 

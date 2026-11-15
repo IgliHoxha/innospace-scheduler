@@ -115,6 +115,51 @@ describe("checkEmailDeliverable", () => {
     await verify.checkEmailDeliverable("ada@example.com");
     expect(resolveMx).toHaveBeenCalledTimes(2);
   });
+
+  // The process outlives idle spells, so a stream of new domains must not grow it.
+  it("holds a thousand domains at most, dropping the oldest answer first", async () => {
+    resolveMx.mockResolvedValue([{ exchange: "mx.example.com", priority: 10 }]);
+    for (let i = 0; i <= 1000; i++) {
+      await verify.checkEmailDeliverable(`ada@d${i}.example`);
+    }
+    expect(resolveMx).toHaveBeenCalledTimes(1001);
+
+    // The newest and the second oldest are still held: one domain made room.
+    await verify.checkEmailDeliverable("ada@d1000.example");
+    await verify.checkEmailDeliverable("ada@d1.example");
+    expect(resolveMx).toHaveBeenCalledTimes(1001);
+
+    // The oldest is the one that went, so it is asked about again.
+    await verify.checkEmailDeliverable("ada@d0.example");
+    expect(resolveMx).toHaveBeenCalledTimes(1002);
+    expect(resolveMx).toHaveBeenLastCalledWith("d0.example");
+  });
+
+  it("counts an answer refreshed after its hour as the newest", async () => {
+    vi.useFakeTimers();
+    try {
+      resolveMx.mockResolvedValue([
+        { exchange: "mx.example.com", priority: 10 },
+      ]);
+      await verify.checkEmailDeliverable("ada@d0.example");
+      for (let i = 1; i < 1000; i++) {
+        await verify.checkEmailDeliverable(`ada@d${i}.example`);
+      }
+      vi.advanceTimersByTime(60 * 60 * 1000 + 1);
+      // Expired, so it is looked up again and moves to the back of the queue.
+      await verify.checkEmailDeliverable("ada@d0.example");
+      await verify.checkEmailDeliverable("ada@new.example");
+      resolveMx.mockClear();
+
+      await verify.checkEmailDeliverable("ada@d0.example");
+      expect(resolveMx).not.toHaveBeenCalled();
+      // d1 was the oldest by then, so it is the one the new domain displaced.
+      await verify.checkEmailDeliverable("ada@d1.example");
+      expect(resolveMx).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("disposable domains", () => {

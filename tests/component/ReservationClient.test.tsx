@@ -100,6 +100,23 @@ describe("first load", () => {
     expect(form.alerts()).toEqual([]);
   });
 
+  // Nothing merges classes at runtime, so two sizes on one field would both apply.
+  it("gives each time field one height, width, padding and text size", async () => {
+    await ready();
+    const groups = [/^h-/, /^w-/, /^px-/, /^py-/, /^text-(xs|sm|base|lg)$/];
+    for (const id of [
+      "start-hours",
+      "start-minutes",
+      "end-hours",
+      "end-minutes",
+    ]) {
+      const classes = [...document.getElementById(id)!.classList];
+      for (const group of groups) {
+        expect(classes.filter((c) => group.test(c))).toHaveLength(1);
+      }
+    }
+  });
+
   it("marks both name and email as required", async () => {
     await ready();
     const labels = [...document.querySelectorAll(".guest-field > span")];
