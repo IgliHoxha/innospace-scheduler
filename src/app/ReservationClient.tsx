@@ -58,6 +58,16 @@ const PREFERRED_START_MIN = 9 * 60;
 // How long a confirmation stays up; the email repeats it, so nothing is lost.
 const SUCCESS_MS = 5000;
 
+/** What POST /api/reservations answers, a refusal or a booking alike. */
+interface BookingReply {
+  ok: boolean;
+  error?: string;
+  field?: GuestField | "note";
+  reservation?: Reservation;
+  reservations?: (Reservation & { cancelToken?: string })[];
+  cancelToken?: string;
+}
+
 export default function ReservationClient({
   booths,
   dates,
@@ -284,6 +294,72 @@ export default function ReservationClient({
     setError("");
   };
 
+  /** A 201: the banner, a clean form, and the new blocks labelled "You". */
+  async function showBooked(json: BookingReply, email: string, when: string) {
+    // An earlier verdict described a world now gone; the picker re-seeds.
+    setRefused(NO_VERDICTS);
+    setNoteDemands(NO_VERDICTS);
+    setAskedFor(null);
+    noteWrite();
+    setSuccess(
+      bookedMessage({
+        when,
+        pending: json.reservation?.status === "pending",
+        repeatWeeks,
+        autoApproveMaxHours,
+        email,
+      }),
+    );
+    setNote("");
+    setRepeatWeeks(1);
+    // Recorded before the reload, so the block comes back labelled "You".
+    const made = json.reservations ?? [
+      { ...json.reservation, cancelToken: json.cancelToken },
+    ];
+    let owned = mine;
+    for (const r of made) {
+      if (!r?.startsAt || !r.endsAt) continue;
+      owned = rememberMine({
+        k: slotKey(boothId, r.startsAt),
+        s: r.startsAt,
+        e: r.endsAt,
+        m: email,
+        t: r.cancelToken ?? "",
+      });
+    }
+    setMine(owned);
+    await reload({ fresh: true });
+  }
+
+  /** A refusal, marked on the attempt the server judged wherever the form is now. */
+  function showRefused(status: number, json: BookingReply, when: string) {
+    const message = json.error || "Could not reserve that time.";
+    const field = json.field;
+    // A blank note refused is a demand; any other fault is in the text.
+    const needsNote = field === "note" && !note.trim();
+    const onPick = !field && (status === 400 || status === 409);
+    // Keyed to the attempt, so these stand for it alone wherever the form is.
+    const record = () => {
+      if (needsNote) setNoteDemands((d) => withVerdict(d, attempt, message));
+      else if (onPick) setRefused((r) => withVerdict(r, attempt, message));
+    };
+    if (liveAttempt.current !== attempt) {
+      record();
+      // The form moved on mid-request: name what failed, mark nothing here.
+      setError(`${when} was not reserved. ${message}`);
+    } else {
+      // Rendered before the focus, so the reason is there when it is read.
+      flushSync(() => {
+        record();
+        if (field && field !== "note") setGuestErrors({ [field]: message });
+        else if (!needsNote && !onPick) setError(message);
+      });
+      if (field) focusUnlessBusy(field);
+    }
+    // Someone may have just taken it, which a cached board would not show.
+    reload({ fresh: true, keepPick: true });
+  }
+
   async function reserve() {
     if (!canReserve) return;
     setSignInNotice("");
@@ -336,14 +412,7 @@ export default function ReservationClient({
           ...(repeatWeeks > 1 ? { repeatWeeks } : {}),
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok: boolean;
-        error?: string;
-        field?: GuestField | "note";
-        reservation?: Reservation;
-        reservations?: (Reservation & { cancelToken?: string })[];
-        cancelToken?: string;
-      };
+      const json = (await res.json().catch(() => ({}))) as BookingReply;
       const when = bookingWhen({
         boothName: selectedBooth?.name ?? "Booth",
         date,
@@ -351,68 +420,8 @@ export default function ReservationClient({
         end,
         repeatWeeks,
       });
-      if (res.ok && json.ok) {
-        // An earlier verdict described a world now gone; the picker re-seeds.
-        setRefused(NO_VERDICTS);
-        setNoteDemands(NO_VERDICTS);
-        setAskedFor(null);
-        noteWrite();
-        setSuccess(
-          bookedMessage({
-            when,
-            pending: json.reservation?.status === "pending",
-            repeatWeeks,
-            autoApproveMaxHours,
-            email: who.guest.email,
-          }),
-        );
-        setNote("");
-        setRepeatWeeks(1);
-        // Recorded before the reload, so the block comes back labelled "You".
-        const made = json.reservations ?? [
-          { ...json.reservation, cancelToken: json.cancelToken },
-        ];
-        let owned = mine;
-        for (const r of made) {
-          if (!r?.startsAt || !r.endsAt) continue;
-          owned = rememberMine({
-            k: slotKey(boothId, r.startsAt),
-            s: r.startsAt,
-            e: r.endsAt,
-            m: who.guest.email,
-            t: r.cancelToken ?? "",
-          });
-        }
-        setMine(owned);
-        await reload({ fresh: true });
-      } else {
-        const message = json.error || "Could not reserve that time.";
-        const field = json.field;
-        // A blank note refused is a demand; any other fault is in the text.
-        const needsNote = field === "note" && !note.trim();
-        const onPick = !field && (res.status === 400 || res.status === 409);
-        // Keyed to the attempt, so these stand for it alone wherever the form is.
-        const record = () => {
-          if (needsNote)
-            setNoteDemands((d) => withVerdict(d, attempt, message));
-          else if (onPick) setRefused((r) => withVerdict(r, attempt, message));
-        };
-        if (liveAttempt.current !== attempt) {
-          record();
-          // The form moved on mid-request: name what failed, mark nothing here.
-          setError(`${when} was not reserved. ${message}`);
-        } else {
-          // Rendered before the focus, so the reason is there when it is read.
-          flushSync(() => {
-            record();
-            if (field && field !== "note") setGuestErrors({ [field]: message });
-            else if (!needsNote && !onPick) setError(message);
-          });
-          if (field) focusUnlessBusy(field);
-        }
-        // Someone may have just taken it, which a cached board would not show.
-        reload({ fresh: true, keepPick: true });
-      }
+      if (res.ok && json.ok) await showBooked(json, who.guest.email, when);
+      else showRefused(res.status, json, when);
     } catch {
       setError("Could not reach the server. Please try again.");
     } finally {

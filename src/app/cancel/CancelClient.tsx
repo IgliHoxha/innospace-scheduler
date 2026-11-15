@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cancelByToken } from "@/lib/cancel-request";
 
 export default function CancelClient({
   token,
@@ -24,23 +25,10 @@ export default function CancelClient({
   async function cancel() {
     setBusy(true);
     setError("");
-    try {
-      const res = await fetch("/api/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-      if (res.ok && json.ok) setDone(true);
-      else setError(json.error || "Could not cancel that reservation.");
-    } catch {
-      setError("Could not reach the server. Please try again.");
-    } finally {
-      setBusy(false);
-    }
+    const why = await cancelByToken(token);
+    setBusy(false);
+    if (why) setError(why);
+    else setDone(true);
   }
 
   if (done) {

@@ -16,11 +16,11 @@ import {
   type Reservation,
 } from "@/lib/types";
 import { PAGE_SIZE } from "@/lib/pagination";
-import { memberFrom, requireAdmin } from "@/lib/api-auth";
+import { memberFrom, requireAdmin, type Member } from "@/lib/api-auth";
 import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
-import { validateGuest } from "@/lib/guest";
+import { validateGuest, type GuestResult } from "@/lib/guest";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { checkEmailDeliverable } from "@/lib/email-verify";
 import {
@@ -70,6 +70,118 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Google already verified a member, so the body cannot rename them; a guest's body is all there is. */
+function bookerFrom(
+  member: Member | null,
+  body: Record<string, unknown>,
+): GuestResult {
+  if (!member) return validateGuest(body);
+  return {
+    ok: true,
+    guest: {
+      fullName: member.name.trim().slice(0, MAX_NAME) || member.email,
+      email: member.email.toLowerCase(),
+    },
+  };
+}
+
+/** Why these times cannot be booked, empty when they can; any hour of the day is open. */
+function timesProblem(startsAt: string, endsAt: string): string {
+  const startMin = minutesOfDay(startsAt);
+  const endMin = minutesOfDay(endsAt);
+  const onGrid =
+    isDateTime(startsAt) &&
+    isDateTime(endsAt) &&
+    isValidTimeOfDay(startMin) &&
+    isValidTimeOfDay(endMin);
+  if (!onGrid) return offGridMessage(stepMinutes());
+  if (endMin <= startMin) return END_BEFORE_START_MESSAGE;
+  const minutes = durationMinutes(startsAt, endsAt);
+  if (!meetsMinDuration(minutes, minReservationMinutes()))
+    return tooShortMessage(minReservationMinutes());
+  if (startsAt <= nowDateTime()) return TIME_PASSED_MESSAGE;
+  return "";
+}
+
+/** The back-to-back run a booking joins on each date, or a split stay would dodge the limits. */
+function runMinutesOn(
+  dates: readonly string[],
+  email: string,
+  startMin: number,
+  endMin: number,
+): number[] {
+  const heldOn = (day: string, offsetMin: number) =>
+    heldRangesForEmail(email, day).map((h) => ({
+      start: minutesOfDay(h.startsAt) + offsetMin,
+      end: minutesOfDay(h.endsAt) + offsetMin,
+    }));
+  // Shifted by the last bookable minute, not 24h, so the dead step is no gap.
+  const dayReach = dayEndMinute(stepMinutes());
+  // Each date is judged on its own day, since a run is what sits around it.
+  return dates.map((day) => {
+    // No closing time, so a run can cross midnight and both neighbours count.
+    const held = [
+      ...heldOn(shiftDate(day, -1), -dayReach),
+      ...heldOn(day, 0),
+      ...heldOn(shiftDate(day, 1), dayReach),
+    ];
+    // One sitting spans the shortest bookable gap: nobody could take it.
+    return runTotalMinutes(startMin, endMin, held, minReservationMinutes());
+  });
+}
+
+/** What is wrong with the note for a run this long, empty when nothing is. */
+function noteProblem(
+  note: string | undefined,
+  runMinutes: number,
+  partOfRun: boolean,
+): string {
+  const hours = autoApproveMaxHours();
+  if (noteRequiredFor(runMinutes, hours) && !note) {
+    return partOfRun
+      ? `Please add a note saying what the reservation is for - back to back with your other bookings this comes to ${hours} hours or more.`
+      : `Please add a note saying what the reservation is for - it's required for reservations of ${hours} hours or more.`;
+  }
+  if (note && note.length > MAX_NOTE)
+    return `The note must be ${MAX_NOTE} characters or fewer.`;
+  return "";
+}
+
+/** The 201: each date with the proof its email link carries, so this browser can cancel without it. */
+function bookedResponse(
+  reservations: Reservation[],
+  boothId: string,
+  endsAt: string,
+): NextResponse {
+  const reservation = reservations[0];
+  const tokenFor = (r: Reservation): string | undefined => {
+    const expiresAt = epochMsOf(r.endsAt ?? endsAt);
+    return Number.isFinite(expiresAt)
+      ? createCancelToken(r.id, expiresAt)
+      : undefined;
+  };
+  const last = reservations[reservations.length - 1];
+  const seriesEnd = epochMsOf(last.endsAt ?? endsAt);
+  return NextResponse.json(
+    {
+      ok: true,
+      id: reservation.id,
+      reservation,
+      reservations: reservations.map((r) => ({
+        ...r,
+        cancelToken: tokenFor(r),
+      })),
+      booth: boothName(boothId),
+      cancelToken: tokenFor(reservation),
+      seriesCancelToken:
+        reservation.seriesId && Number.isFinite(seriesEnd)
+          ? createSeriesCancelToken(reservation.seriesId, seriesEnd)
+          : undefined,
+    },
+    { status: 201 },
+  );
+}
+
 /** Signed in or not: a guest's body carries the identity, a member's session does. */
 export async function POST(req: NextRequest) {
   const blocked = requireAllowedOrigin(req.headers);
@@ -92,24 +204,15 @@ export async function POST(req: NextRequest) {
   const note =
     typeof body.note === "string" ? body.note.trim() || undefined : undefined;
 
-  // Google already verified a member, so the body cannot rename them.
   const member = memberFrom(req);
-  let identity: { fullName: string; email: string };
-  if (member) {
-    identity = {
-      fullName: member.name.trim().slice(0, MAX_NAME) || member.email,
-      email: member.email.toLowerCase(),
-    };
-  } else {
-    const guest = validateGuest(body);
-    if (!guest.ok) {
-      return NextResponse.json(
-        { ok: false, error: guest.error, field: guest.field },
-        { status: 400 },
-      );
-    }
-    identity = guest.guest;
+  const who = bookerFrom(member, body);
+  if (!who.ok) {
+    return NextResponse.json(
+      { ok: false, error: who.error, field: who.field },
+      { status: 400 },
+    );
   }
+  const identity = who.guest;
 
   const repeatWeeks = parseRepeatWeeks(body.repeatWeeks);
   if (repeatWeeks === null) return jsonError(repeatWeeksMessage(), 400);
@@ -125,76 +228,20 @@ export async function POST(req: NextRequest) {
 
   const startsAt = toDateTime(date, start);
   const endsAt = toDateTime(date, end);
+  const badTimes = timesProblem(startsAt, endsAt);
+  if (badTimes) return jsonError(badTimes, 400);
+
   const startMin = minutesOfDay(startsAt);
   const endMin = minutesOfDay(endsAt);
-
-  // Real clock times on the step grid; any hour of the day is open.
-  if (
-    !isDateTime(startsAt) ||
-    !isDateTime(endsAt) ||
-    !isValidTimeOfDay(startMin) ||
-    !isValidTimeOfDay(endMin)
-  ) {
-    return jsonError(offGridMessage(stepMinutes()), 400);
-  }
-  if (endMin <= startMin) {
-    return jsonError(END_BEFORE_START_MESSAGE, 400);
-  }
-  if (
-    !meetsMinDuration(
-      durationMinutes(startsAt, endsAt),
-      minReservationMinutes(),
-    )
-  ) {
-    return jsonError(tooShortMessage(minReservationMinutes()), 400);
-  }
-  if (startsAt <= nowDateTime()) {
-    return jsonError(TIME_PASSED_MESSAGE, 400);
-  }
-  // The limits apply to a back-to-back run, or a split stay would dodge them.
-  const heldOn = (day: string, offsetMin: number) =>
-    heldRangesForEmail(identity.email, day).map((h) => ({
-      start: minutesOfDay(h.startsAt) + offsetMin,
-      end: minutesOfDay(h.endsAt) + offsetMin,
-    }));
-  // Shifted by the last bookable minute, not 24h, so the dead step is no gap.
-  const dayReach = dayEndMinute(stepMinutes());
-  // No closing time, so a run can cross midnight and both neighbours count.
-  const runOn = (day: string) => {
-    const held = [
-      ...heldOn(shiftDate(day, -1), -dayReach),
-      ...heldOn(day, 0),
-      ...heldOn(shiftDate(day, 1), dayReach),
-    ];
-    // One sitting spans the shortest bookable gap: nobody could take it.
-    return runTotalMinutes(startMin, endMin, held, minReservationMinutes());
-  };
-  // Each date is judged on its own day, since a run is what sits around it.
   const dates = weeklyDates(date, repeatWeeks);
-  const runs = dates.map(runOn);
+  const runs = runMinutesOn(dates, identity.email, startMin, endMin);
   const runMinutes = Math.max(...runs);
-  const partOfRun = runMinutes > endMin - startMin;
 
-  if (noteRequiredFor(runMinutes, autoApproveMaxHours()) && !note) {
+  const badNote = noteProblem(note, runMinutes, runMinutes > endMin - startMin);
+  if (badNote) {
     return NextResponse.json(
-      {
-        ok: false,
-        // Named so the form lands the cursor on the note, not a message below.
-        field: "note",
-        error: partOfRun
-          ? `Please add a note saying what the reservation is for - back to back with your other bookings this comes to ${autoApproveMaxHours()} hours or more.`
-          : `Please add a note saying what the reservation is for - it's required for reservations of ${autoApproveMaxHours()} hours or more.`,
-      },
-      { status: 400 },
-    );
-  }
-  if (note && note.length > MAX_NOTE) {
-    return NextResponse.json(
-      {
-        ok: false,
-        field: "note",
-        error: `The note must be ${MAX_NOTE} characters or fewer.`,
-      },
+      // Named so the form lands the cursor on the note, not a message below.
+      { ok: false, field: "note", error: badNote },
       { status: 400 },
     );
   }
@@ -248,11 +295,10 @@ export async function POST(req: NextRequest) {
         status: statuses[i],
       })),
     );
-    const reservation = reservations[0];
 
     // A booking counts once the confirmation is away; "skipped" is no refusal.
     const outcome = await sendReservationEmail(
-      reservation,
+      reservations[0],
       status,
       undefined,
       reservations,
@@ -273,33 +319,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // The proof the email link carries, so this browser can cancel without it.
-    const tokenFor = (r: Reservation): string | undefined => {
-      const expiresAt = epochMsOf(r.endsAt ?? endsAt);
-      return Number.isFinite(expiresAt)
-        ? createCancelToken(r.id, expiresAt)
-        : undefined;
-    };
-    const last = reservations[reservations.length - 1];
-    const seriesEnd = epochMsOf(last.endsAt ?? endsAt);
-    return NextResponse.json(
-      {
-        ok: true,
-        id: reservation.id,
-        reservation,
-        reservations: reservations.map((r) => ({
-          ...r,
-          cancelToken: tokenFor(r),
-        })),
-        booth: boothName(boothId),
-        cancelToken: tokenFor(reservation),
-        seriesCancelToken:
-          reservation.seriesId && Number.isFinite(seriesEnd)
-            ? createSeriesCancelToken(reservation.seriesId, seriesEnd)
-            : undefined,
-      },
-      { status: 201 },
-    );
+    return bookedResponse(reservations, boothId, endsAt);
   } catch (err) {
     if (err instanceof SlotUnavailableError || err instanceof UserBusyError) {
       return jsonError(err.message, 409);

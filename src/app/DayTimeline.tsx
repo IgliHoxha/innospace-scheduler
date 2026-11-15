@@ -17,6 +17,7 @@ import {
 } from "@/lib/timeline";
 import { minutesToTime, timeToMinutes } from "@/lib/datetime";
 import { dayEndMinute } from "@/lib/reservation-rules";
+import { cancelByToken } from "@/lib/cancel-request";
 import type { ReservedSlot } from "@/lib/mine";
 import { TrashIcon } from "@/components/ui/icons";
 import { useTooltip } from "@/components/ui/tooltip";
@@ -36,6 +37,92 @@ const TICK_LABEL_PX = 48;
 
 // Clear space (px) between two marks, on top of their measured widths.
 const TICK_GAP_PX = 7;
+
+/** Measured: the tag, the ticks and the scroll all need the bar's real width. */
+function useBarWidths() {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barPx, setBarPx] = useState(0);
+  // One hour mark as it renders, so enlarged text thins the marks.
+  const tickRef = useRef<HTMLDivElement>(null);
+  const [tickPx, setTickPx] = useState(0);
+  useEffect(() => {
+    const bar = barRef.current;
+    const tick = tickRef.current;
+    if (!bar || !tick) return;
+    const update = () => {
+      setBarPx(bar.clientWidth);
+      setTickPx(tick.offsetWidth);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(bar);
+    ro.observe(tick);
+    return () => ro.disconnect();
+  }, []);
+  return { barRef, tickRef, barPx, tickPx };
+}
+
+/** The pick tag's size, read through a callback ref since the tag mounts with the pick. */
+function useTagWidths() {
+  // The tag's width, so a floating tag centres on its pick inside the bar.
+  const [tagPx, setTagPx] = useState(0);
+  // Its text alone: the same inside or floating, so the choice cannot flip.
+  const [tagTextPx, setTagTextPx] = useState(0);
+  const tagRo = useRef<ResizeObserver | null>(null);
+  const tagRef = useCallback((el: HTMLDivElement | null) => {
+    tagRo.current?.disconnect();
+    if (!el) return;
+    const update = () => {
+      setTagPx(el.offsetWidth);
+      setTagTextPx(
+        (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0,
+      );
+    };
+    update();
+    tagRo.current = new ResizeObserver(update);
+    // The border box: floating adds padding, which the content box never sees.
+    tagRo.current.observe(el, { box: "border-box" });
+  }, []);
+  return { tagRef, tagPx, tagTextPx };
+}
+
+/** The pick's time tag: inside a pick wide enough to hold it, floating above a narrow one. */
+function pickTagFor(
+  pick: { fromMin: number; toMin: number; fromPct: number; toPct: number },
+  barPx: number,
+  tagPx: number,
+  tagTextPx: number,
+) {
+  const place = pickTagPlacement({
+    barPx,
+    tagPx,
+    fromPct: pick.fromPct,
+    toPct: pick.toPct,
+    fitsPx: roomFor(tagTextPx, TAG_FITS_PX, 1, TAG_MARGIN_PX),
+  });
+  const style: React.CSSProperties =
+    place.leftPx == null
+      ? {
+          left: `${place.centerPct}%`,
+          transform: place.above ? "translateX(-50%)" : "translate(-50%, -50%)",
+        }
+      : { left: place.leftPx };
+  return {
+    above: place.above,
+    className: `daycal-pick-tag ${place.above ? "above" : "over"}`,
+    style,
+    from: minutesToTime(pick.fromMin),
+    to: minutesToTime(pick.toMin),
+  };
+}
+
+/** What a taken block says on hover: whose it is and what a click on it does. */
+function blockTip(when: string, slot: ReservedSlot, canAsk: boolean): string {
+  if (slot.cancelToken) return `Your booking, ${when} · click to cancel it`;
+  if (slot.mine)
+    return `Your booking, ${when}${canAsk ? " · click to contact us about it" : ""}`;
+  return `${when} · Booked${canAsk ? " - click to request information" : ""}`;
+}
 
 export default function DayTimeline({
   earliest,
@@ -108,26 +195,7 @@ export default function DayTimeline({
         }
       : null;
 
-  // Measured: the tag, the ticks and the scroll all need the bar's real width.
-  const barRef = useRef<HTMLDivElement>(null);
-  const [barPx, setBarPx] = useState(0);
-  // One hour mark as it renders, so enlarged text thins the marks.
-  const tickRef = useRef<HTMLDivElement>(null);
-  const [tickPx, setTickPx] = useState(0);
-  useEffect(() => {
-    const bar = barRef.current;
-    const tick = tickRef.current;
-    if (!bar || !tick) return;
-    const update = () => {
-      setBarPx(bar.clientWidth);
-      setTickPx(tick.offsetWidth);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(bar);
-    ro.observe(tick);
-    return () => ro.disconnect();
-  }, []);
+  const { barRef, tickRef, barPx, tickPx } = useBarWidths();
 
   // A narrow bar labels fewer marks, though the grid still runs hourly.
   const tickLabels = fittingTicks(
@@ -139,26 +207,7 @@ export default function DayTimeline({
     TICK_GAP_PX,
   );
 
-  // The tag's width, so a floating tag centres on its pick inside the bar.
-  const [tagPx, setTagPx] = useState(0);
-  // Its text alone: the same inside or floating, so the choice cannot flip.
-  const [tagTextPx, setTagTextPx] = useState(0);
-  const tagRo = useRef<ResizeObserver | null>(null);
-  // Callback ref: the tag mounts with the pick and its width tracks its class.
-  const tagRef = useCallback((el: HTMLDivElement | null) => {
-    tagRo.current?.disconnect();
-    if (!el) return;
-    const update = () => {
-      setTagPx(el.offsetWidth);
-      setTagTextPx(
-        (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0,
-      );
-    };
-    update();
-    tagRo.current = new ResizeObserver(update);
-    // The border box: floating adds padding, which the content box never sees.
-    tagRo.current.observe(el, { box: "border-box" });
-  }, []);
+  const { tagRef, tagPx, tagTextPx } = useTagWidths();
 
   // One box per hour, pickable only if wholly free and not past.
   const cells = hourCells(
@@ -285,27 +334,14 @@ export default function DayTimeline({
     if (!cancelToken) return;
     setCancelBusy(true);
     setCancelError("");
-    try {
-      const res = await fetch("/api/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: cancelToken }),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-      if (res.ok && json.ok) {
-        closeCancel();
-        onCancelled?.();
-      } else {
-        setCancelError(json.error || "Could not cancel that reservation.");
-      }
-    } catch {
-      setCancelError("Could not reach the server. Please try again.");
-    } finally {
-      setCancelBusy(false);
+    const why = await cancelByToken(cancelToken);
+    setCancelBusy(false);
+    if (why) {
+      setCancelError(why);
+      return;
     }
+    closeCancel();
+    onCancelled?.();
   }
 
   useEffect(() => {
@@ -364,37 +400,7 @@ export default function DayTimeline({
     setDragging(true);
   };
 
-  let tag: {
-    above: boolean;
-    className: string;
-    style: React.CSSProperties;
-    from: string;
-    to: string;
-  } | null = null;
-  if (pick) {
-    const place = pickTagPlacement({
-      barPx,
-      tagPx,
-      fromPct: pick.fromPct,
-      toPct: pick.toPct,
-      fitsPx: roomFor(tagTextPx, TAG_FITS_PX, 1, TAG_MARGIN_PX),
-    });
-    tag = {
-      above: place.above,
-      className: `daycal-pick-tag ${place.above ? "above" : "over"}`,
-      style:
-        place.leftPx == null
-          ? {
-              left: `${place.centerPct}%`,
-              transform: place.above
-                ? "translateX(-50%)"
-                : "translate(-50%, -50%)",
-            }
-          : { left: place.leftPx },
-      from: minutesToTime(pick.fromMin),
-      to: minutesToTime(pick.toMin),
-    };
-  }
+  const tag = pick ? pickTagFor(pick, barPx, tagPx, tagTextPx) : null;
 
   return (
     <div className="daycal">
@@ -469,13 +475,7 @@ export default function DayTimeline({
                       left: `${pct(s.fromMin)}%`,
                       width: `${pctEnd(s.toMin) - pct(s.fromMin)}%`,
                     }}
-                    {...tooltip(
-                      canCancel
-                        ? `Your booking, ${when} · click to cancel it`
-                        : src.mine
-                          ? `Your booking, ${when}${contact ? " · click to contact us about it" : ""}`
-                          : `${when} · Booked${contact ? " - click to request information" : ""}`,
-                    )}
+                    {...tooltip(blockTip(when, src, !!contact))}
                     aria-haspopup={canCancel || contact ? "dialog" : undefined}
                     disabled={!canCancel && !contact}
                     onClick={() =>

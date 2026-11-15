@@ -71,6 +71,16 @@ const ACTION_COPY: Record<
 const cancelActionLabel = (status: ReservationStatus) =>
   status === "pending" ? "Reject reservation" : "Cancel reservation";
 
+/** What confirming does next, so the admin knows whether the guest hears of it. */
+function aftermath({ status, email }: PendingAction): string {
+  if (status === "deleted")
+    return " It will be hidden from the list (no email is sent).";
+  if (!email) return " (No email on file - nothing will be sent.)";
+  if (status === "confirmed")
+    return ` A confirmation email will be sent to ${email}.`;
+  return ` The cancellation email (as shown in the Email column) will be sent to ${email}.`;
+}
+
 const UNREACHABLE = "The server could not be reached.";
 const SIGNED_OUT =
   "You have been signed out: reload the page to sign in again.";
@@ -527,14 +537,7 @@ export default function DashboardClient({
                 for <strong>{pending.name}</strong>
               </>
             ) : null}
-            ?
-            {pending.status === "deleted"
-              ? " It will be hidden from the list (no email is sent)."
-              : !pending.email
-                ? " (No email on file - nothing will be sent.)"
-                : pending.status === "confirmed"
-                  ? ` A confirmation email will be sent to ${pending.email}.`
-                  : ` The cancellation email (as shown in the Email column) will be sent to ${pending.email}.`}
+            ?{aftermath(pending)}
           </p>
         </ConfirmDialog>
       )}
