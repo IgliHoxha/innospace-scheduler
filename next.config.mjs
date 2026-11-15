@@ -7,7 +7,14 @@ const nextConfig = {
   // Every image is a plain <img>, so the optimizer and its native sharp stay out of the image.
   images: { unoptimized: true },
   outputFileTracingExcludes: {
-    "*": ["node_modules/@img/**", "node_modules/sharp/**"],
+    "*": [
+      "node_modules/@img/**",
+      "node_modules/sharp/**",
+      // The driver ships a binary per platform; the image runs Alpine, so only the musl ones stay.
+      "node_modules/better-sqlite3/prebuilds/darwin-*",
+      "node_modules/better-sqlite3/prebuilds/win32-*",
+      "node_modules/better-sqlite3/prebuilds/linux-*",
+    ],
   },
 
   // Edge caching stops crawlers waking the Fly machine; browsers revalidate.

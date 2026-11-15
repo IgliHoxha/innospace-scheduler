@@ -84,10 +84,25 @@ describe("what goes into the image", () => {
   // Dropping sharp is only safe while nothing can ask the optimizer to use it.
   it("leaves the image optimizer out, and turns it off", () => {
     expect(nextConfig.images?.unoptimized).toBe(true);
-    expect(nextConfig.outputFileTracingExcludes?.["*"]).toEqual([
-      "node_modules/@img/**",
-      "node_modules/sharp/**",
+    expect(nextConfig.outputFileTracingExcludes?.["*"]).toEqual(
+      expect.arrayContaining(["node_modules/@img/**", "node_modules/sharp/**"]),
+    );
+  });
+
+  // Alpine loads the musl binary, so excluding it would ship a driver that cannot start.
+  it("drops the sqlite binaries for other platforms, never the musl ones", () => {
+    const excluded = nextConfig.outputFileTracingExcludes?.["*"] ?? [];
+    const prebuilds = "node_modules/better-sqlite3/prebuilds/";
+    expect(excluded.filter((p) => p.startsWith(prebuilds))).toEqual([
+      prebuilds + "darwin-*",
+      prebuilds + "win32-*",
+      prebuilds + "linux-*",
     ]);
+  });
+
+  // Without one, npm ci on the image's npm 10 fails trying to compile the driver.
+  it("keeps a compiler in the dependency stage", () => {
+    expect(dockerfile).toContain("RUN apk add --no-cache python3 make g++");
   });
 
   it("fails the build when the sqlite driver does not load", () => {

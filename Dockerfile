@@ -3,7 +3,7 @@
 # ---- Dependencies ----
 FROM node:22-alpine AS deps
 WORKDIR /app
-# Build tools to compile the native better-sqlite3 module on musl/alpine.
+# npm 10 compiles better-sqlite3 from its binding.gyp on a lockfile install, prebuilt or not, so it needs a compiler.
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 # The npm cache outlives this layer, so a lockfile change refetches only what moved.
