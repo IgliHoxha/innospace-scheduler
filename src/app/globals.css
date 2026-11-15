@@ -1550,7 +1550,8 @@ tr:last-child td {
 .site-footer-text {
   display: flex;
   align-items: center;
-  gap: 4px 16px;
+  /* Rows sit apart, so a wrapped credit pill does not crowd the line above it. */
+  gap: 10px 16px;
   flex-wrap: wrap;
 }
 
@@ -1559,15 +1560,50 @@ tr:last-child td {
   color: var(--muted);
 }
 
+/* The website's credit pill, its white tints swapped for plum on this light footer. */
 .site-footer-credit {
-  color: var(--brand-dark);
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 6px 6px;
+  border-radius: 9999px;
+  background: rgba(82, 69, 82, 0.05);
+  box-shadow: 0 0 0 1px rgba(82, 69, 82, 0.15);
+  font-size: 12px;
+  color: var(--muted);
   text-decoration: none;
+  transition:
+    background-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .site-footer-credit:hover,
 .site-footer-credit:focus-visible {
-  text-decoration: underline;
+  background: rgba(82, 69, 82, 0.1);
+  box-shadow: 0 0 0 1px rgba(82, 69, 82, 0.3);
+}
+
+.site-footer-credit-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.site-footer-credit-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* The mark's tilt is decoration, so it stays still for anyone who asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .site-footer-credit-mark {
+    transition: transform 0.3s;
+  }
+
+  .site-footer-credit:hover .site-footer-credit-mark {
+    transform: rotate(-12deg);
+  }
 }
 
 /* Preflight is off, so the Input's border needs an explicit style. */

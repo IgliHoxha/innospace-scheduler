@@ -570,12 +570,24 @@ describe("first render", () => {
 
   it("credits the maker in the footer, opened in a new tab", () => {
     mount();
+    // The whole pill is the link, so its name is the full sentence.
     const credit = within(screen.getByRole("contentinfo")).getByRole("link", {
-      name: "stackrover.tech",
+      name: "Created by stackrover.tech",
     });
     expect(credit.getAttribute("href")).toBe("https://stackrover.tech");
     expect(credit.getAttribute("target")).toBe("_blank");
     expect(credit.getAttribute("rel")).toBe("noopener");
+  });
+
+  // Decoration only: read aloud, the mark would add nothing to the name beside it.
+  it("hides the maker's mark from assistive tech", () => {
+    mount();
+    const credit = within(screen.getByRole("contentinfo")).getByRole("link");
+    const mark = credit.querySelector("svg");
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      within(screen.getByRole("contentinfo")).getAllByRole("img"),
+    ).toHaveLength(1);
   });
 });
 
