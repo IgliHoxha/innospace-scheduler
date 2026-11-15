@@ -249,7 +249,7 @@ make coverage        # V8 coverage report
   codes, auth scoping, cookies), with email and the clock stubbed.
 
 Tests never touch your dev database or send real email. They live in `tests/`
-and are type-checked on their own (`tsconfig.tests.json`), so they stay out of
+and are type-checked on their own (`tests/tsconfig.json`), so they stay out of
 `next build`.
 
 ## Scripts
