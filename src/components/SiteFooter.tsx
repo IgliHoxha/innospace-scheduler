@@ -25,23 +25,18 @@ export function SiteFooter() {
           src="/logo.svg"
           alt="Innospace Tirana"
         />
-        <div className="site-footer-text">
-          <span className="site-footer-copy">
-            © {new Date().getFullYear()} Innospace Tirana. All rights reserved.
+        <a
+          className="site-footer-credit"
+          href="https://stackrover.tech"
+          target="_blank"
+          rel="noopener"
+        >
+          <StackRoverMark />
+          <span>
+            Created by{" "}
+            <span className="site-footer-credit-name">stackrover.tech</span>
           </span>
-          <a
-            className="site-footer-credit"
-            href="https://stackrover.tech"
-            target="_blank"
-            rel="noopener"
-          >
-            <StackRoverMark />
-            <span>
-              Created by{" "}
-              <span className="site-footer-credit-name">stackrover.tech</span>
-            </span>
-          </a>
-        </div>
+        </a>
       </div>
     </footer>
   );

@@ -560,9 +560,8 @@ describe("first render", () => {
   it("ends with the site footer", () => {
     mount();
     const footer = screen.getByRole("contentinfo");
-    expect(footer.textContent).toBe(
-      `© ${new Date().getFullYear()} Innospace Tirana. All rights reserved.Created by stackrover.tech`,
-    );
+    // The logo names the owner, so the only words are the maker's credit.
+    expect(footer.textContent).toBe("Created by stackrover.tech");
     expect(within(footer).getByRole("img").getAttribute("alt")).toBe(
       "Innospace Tirana",
     );
