@@ -1557,7 +1557,7 @@ tr:last-child td {
   background: rgba(82, 69, 82, 0.05);
   box-shadow: 0 0 0 1px rgba(82, 69, 82, 0.15);
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text);
   text-decoration: none;
   transition:
     background-color 0.15s,
