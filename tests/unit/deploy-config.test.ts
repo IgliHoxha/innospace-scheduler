@@ -253,3 +253,48 @@ describe("what goes into the image", () => {
     expect(read("fly.toml.example")).not.toMatch(/^\s*\[env\]/m);
   });
 });
+
+describe("the release's description", () => {
+  const job = workflow.slice(workflow.indexOf("  release:\n"));
+  const step = job.slice(
+    job.indexOf("- name: Ask Copilot for the description"),
+    job.indexOf("- name: Create the tag and the GitHub release"),
+  );
+
+  it("is worded by Copilot, which only the release job may ask", () => {
+    expect(job).toContain("copilot-requests: write");
+    expect(workflow.match(/copilot-requests: write/g)).toHaveLength(1);
+    expect(step).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(step).toMatch(/COPILOT_CLI: "\d+\.\d+\.\d+"/);
+    expect(step).toContain('"@github/copilot@$COPILOT_CLI"');
+  });
+
+  // The words must come from what was released, not from what the model can go and find.
+  it("hands Copilot the commits since the last release and no tools", () => {
+    expect(step).toContain('"repos/$GITHUB_REPOSITORY/releases/latest"');
+    expect(step).toContain(
+      '"repos/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_SHA"',
+    );
+    expect(step).toContain("--available-tools=");
+    expect(step).toContain("never invent a change");
+  });
+
+  it("describes nothing for a release that exists or a commit with nothing new", () => {
+    expect(step).toContain('[ -n "$TAG" ] || exit 0');
+    expect(step).toMatch(/gh release view "\$TAG"[^\n]+then exit 0; fi/);
+    expect(step).toContain(
+      `grep -q '^- ' "$RUNNER_TEMP/changes.txt" || exit 0`,
+    );
+  });
+
+  // The release matters more than its wording, so a Copilot outage must not cost the tag.
+  it("never stops the release: a failure leaves GitHub's own notes", () => {
+    expect(step).toContain("continue-on-error: true");
+    expect(step).toContain("timeout-minutes: 3");
+    expect(step).toContain(
+      'mv "$RUNNER_TEMP/draft.md" "$RUNNER_TEMP/notes.md"',
+    );
+    expect(job).toContain('if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(');
+    expect(job).toContain('--generate-notes "${notes[@]}"');
+  });
+});
