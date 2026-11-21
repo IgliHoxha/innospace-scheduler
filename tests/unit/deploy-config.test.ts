@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, posix } from "node:path";
 import { describe, expect, it } from "vitest";
 import nextConfig from "../../next.config.mjs";
 
@@ -52,6 +52,91 @@ describe("building the image", () => {
     expect(step).toContain("for attempt in 1 2 3; do");
     expect(step).toContain(
       "grep -qE 'rpc error: code = Unavailable|error reading from server: EOF' build.log || exit 1",
+    );
+  });
+});
+
+describe("the restore point before a release", () => {
+  const decide = workflow.slice(
+    workflow.indexOf("- name: Has anything that ships changed?"),
+    workflow.indexOf("- name: Build and push"),
+  );
+  const step = workflow.slice(
+    workflow.indexOf("- name: Snapshot the data volume"),
+    workflow.indexOf("- run: flyctl deploy --image"),
+  );
+  const touches = /TOUCHES: (.+)\n/.exec(decide)?.[1].split(" ") ?? [];
+  const sources = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory()
+        ? sources(posix.join(dir, entry.name))
+        : [posix.join(dir, entry.name)],
+    );
+
+  it("is taken only when what changed since the live commit can touch the volume", () => {
+    expect(touches).toEqual([
+      "src/lib/db.ts",
+      "Dockerfile",
+      "docker-entrypoint.sh",
+      "fly.toml.example",
+    ]);
+    expect(decide).toContain('git diff --quiet "$live" HEAD -- $TOUCHES; then');
+    expect(workflow).toContain("snapshot: ${{ steps.live.outputs.snapshot }}");
+    expect(step).toContain("NEEDED: ${{ needs.build.outputs.snapshot }}");
+  });
+
+  // A second module opening the database would migrate unseen unless it joins the list.
+  it("covers every module that opens the database", () => {
+    const opens = sources("src").filter(
+      (file) =>
+        /\.(ts|tsx|mjs)$/.test(file) &&
+        /from "better-sqlite3"/.test(readFileSync(file, "utf8")),
+    );
+    expect(opens).toEqual(["src/lib/db.ts"]);
+    for (const file of opens) expect(touches).toContain(file);
+  });
+
+  it("is taken anyway on a manual run, an image no commit names or a missing answer", () => {
+    expect(decide).toContain(
+      'if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] && git diff --quiet "$live" HEAD -- $TOUCHES',
+    );
+    expect(decide).toMatch(
+      /else\n\s+echo "snapshot=true" >> "\$GITHUB_OUTPUT"/,
+    );
+    expect(step).toContain('if [ "$NEEDED" = false ]; then');
+  });
+
+  it("comes before the release, and says so when none was needed", () => {
+    expect(
+      workflow.indexOf("- name: Snapshot the data volume"),
+    ).toBeGreaterThan(workflow.indexOf("deploy:\n"));
+    expect(step).toContain("No restore point for this release");
+    expect(step).toContain("Restore point for this release: snapshot");
+    expect(step.indexOf("No restore point")).toBeLessThan(
+      step.indexOf("flyctl volumes snapshots create"),
+    );
+  });
+
+  it("finds the volume by its name and waits until the snapshot can be restored from", () => {
+    expect(step).toContain('select(.name == "scheduler_data")');
+    expect(read("fly.toml.example")).toContain("source = 'scheduler_data'");
+    expect(step).toMatch(/case "\$STATUS" in\n\s+created\)/);
+  });
+
+  // Fly refuses a second snapshot while the daily one runs, and that one is as good.
+  it("takes the one already on its way, and fails on any other refusal", () => {
+    expect(step).toContain(
+      'if ! OUT=$(flyctl volumes snapshots create "$VOLUME" -a "$APP" 2>&1); then',
+    );
+    expect(step).toContain('grep -q "already scheduled" <<<"$OUT" || exit 1');
+    expect(step).toContain("FLOOR=$(( $(date +%s) - 120 ))");
+  });
+
+  it("stops the release when no snapshot is ready, inside the job's time limit", () => {
+    expect(step).toMatch(/not releasing without it\." >&2\n\s+exit 1/);
+    expect(step).toContain("for _ in $(seq 60); do");
+    expect(workflow).toMatch(
+      /deploy:\s+name: Release[\s\S]*?timeout-minutes: 15/,
     );
   });
 });
