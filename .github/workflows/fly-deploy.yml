@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       release: ${{ steps.live.outputs.release }}
-      snapshot: ${{ steps.live.outputs.snapshot }}
+      backup: ${{ steps.live.outputs.backup }}
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
@@ -68,12 +68,12 @@ jobs:
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
-          # A manual run or an image no commit names takes the snapshot anyway.
+          # A manual run or an image no commit names takes the backup anyway.
           # shellcheck disable=SC2086
           if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] && git diff --quiet "$live" HEAD -- $TOUCHES; then
-            echo "snapshot=false" >> "$GITHUB_OUTPUT"
+            echo "backup=false" >> "$GITHUB_OUTPUT"
           else
-            echo "snapshot=true" >> "$GITHUB_OUTPUT"
+            echo "backup=true" >> "$GITHUB_OUTPUT"
           fi
       # Only a dropped builder connection is retried; a real build error fails at once.
       - name: Build and push
@@ -99,46 +99,21 @@ jobs:
       - uses: actions/checkout@v7
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
       # A schema change here means wiping the file, so a release that can touch the volume gets a way back.
-      - name: Snapshot the data volume
+      - name: Back up the database
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          APP: innospace-scheduler
-          NEEDED: ${{ needs.build.outputs.snapshot }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BACKUP_TOKEN: ${{ secrets.R2_BACKUP_TOKEN }}
+          NEEDED: ${{ needs.build.outputs.backup }}
         run: |
           set -euo pipefail
-          # Only a plain "false" skips it: a missing answer takes the snapshot.
+          # Only a plain "false" skips it: a missing answer takes the backup.
           if [ "$NEEDED" = false ]; then
             echo "No restore point for this release: nothing that touches the volume changed." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          snapshots() { flyctl volumes snapshots list "$VOLUME" -a "$APP" --json | jq -cs '.[0] // []'; }
-          VOLUME=$(flyctl volumes list -a "$APP" --json | jq -er '[.[] | select(.name == "scheduler_data")] | if length == 1 then .[0].id else error("expected one scheduler_data volume, found \(length)") end')
-          BEFORE=$(snapshots | jq -c 'map(.id)')
-          FLOOR=$(( $(date +%s) - 120 ))
-          # This run's own snapshot is one the list did not hold before.
-          PICK='select(.id as $id | $before | index($id) == null)'
-          if ! OUT=$(flyctl volumes snapshots create "$VOLUME" -a "$APP" 2>&1); then
-            echo "$OUT"
-            grep -q "already scheduled" <<<"$OUT" || exit 1
-            # Fly takes one at a time: the daily one was already on its way, and that is the restore point.
-            echo "::notice::A snapshot was already on its way: waiting for that one."
-            PICK='select((try (.created_at | sub("\\.[0-9]+"; "") | fromdateiso8601) catch 0) >= $floor)'
-          fi
-          # Create only schedules it; the snapshot turns "created" once it can be restored from.
-          for _ in $(seq 60); do
-            sleep 3
-            LIST=$(snapshots) || continue
-            SNAP=$(jq -c --argjson before "$BEFORE" --argjson floor "$FLOOR" "[.[] | $PICK] | last // empty" <<<"$LIST")
-            STATUS=$(jq -r '.status // empty' <<<"${SNAP:-null}")
-            case "$STATUS" in
-              created)
-                echo "Restore point for this release: snapshot \`$(jq -r .id <<<"$SNAP")\` of volume \`$VOLUME\`." >> "$GITHUB_STEP_SUMMARY"
-                exit 0 ;;
-              failed | error) echo "Snapshot of $VOLUME failed: $SNAP" >&2; exit 1 ;;
-            esac
-          done
-          echo "Snapshot of $VOLUME was not ready after three minutes; not releasing without it." >&2
-          exit 1
+          # The script stops the job on any failure, so nothing is released without a copy that opens.
+          bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"
       - run: flyctl deploy --image "registry.fly.io/innospace-scheduler:$IMAGE_LABEL" --ha=false --config fly.toml.example
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

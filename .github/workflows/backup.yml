@@ -1,0 +1,23 @@
+name: Database backup
+on:
+  schedule:
+    - cron: "17 2 * * *" # nightly, 03:17 or 04:17 in Tirana, when nobody books
+  workflow_dispatch: # a backup on demand from the Actions tab
+permissions:
+  contents: read # Fly and R2 are reached through their own tokens, nothing here writes to GitHub
+jobs:
+  backup:
+    name: Back up the database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency: backup # the copy has one name inside the machine, so one run at a time
+    steps:
+      - uses: actions/checkout@v7
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+      # Fly's own daily snapshots are off for this volume, so this run is the daily copy.
+      - name: Copy the database to R2
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BACKUP_TOKEN: ${{ secrets.R2_BACKUP_TOKEN }}
+        run: bash .github/scripts/backup-db.sh nightly
