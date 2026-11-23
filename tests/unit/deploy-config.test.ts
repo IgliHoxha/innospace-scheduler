@@ -121,7 +121,8 @@ describe("the restore point before a release", () => {
     for (const name of [
       "FLY_API_TOKEN",
       "CLOUDFLARE_ACCOUNT_ID",
-      "R2_BACKUP_TOKEN",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY",
     ])
       expect(step).toContain(`${name}: \${{ secrets.${name} }}`);
   });
@@ -165,7 +166,7 @@ describe("the database backup", () => {
   });
 
   it("keeps a copy only once it opens and holds the reservations", () => {
-    const upload = script.indexOf("-X PUT");
+    const upload = script.indexOf("--aws-sigv4");
     expect(script).toContain('[ "$check" = ok ] ||');
     expect(script.indexOf("PRAGMA integrity_check")).toBeLessThan(upload);
     expect(script.indexOf("SELECT count(*) FROM reservations")).toBeLessThan(
@@ -175,11 +176,20 @@ describe("the database backup", () => {
 
   it("stores it gzipped in the bucket, and fails when the upload is refused", () => {
     expect(script).toContain("gzip -9 /tmp/scheduler-backup.db");
-    expect(script).toContain("r2/buckets/$BUCKET/objects/$key");
+    expect(script).toContain(
+      "https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com/$BUCKET/$key",
+    );
     expect(script).toContain("curl --fail-with-body");
     expect(script).toContain(
       'key="scheduler-$(date -u +%Y-%m-%dT%H%MZ)-$LABEL.db.gz"',
     );
+  });
+
+  // An argument is visible to every process on the runner; a file in the job's own folder is not.
+  it("hands curl the bucket's keys in a file, never as an argument", () => {
+    expect(script).toContain('-K "$work/r2.curl"');
+    expect(script).toMatch(/umask 077 && printf [^\n]*> "\$work\/r2\.curl"/);
+    expect(script).not.toMatch(/--user|-u "/);
   });
 
   it("leaves no copy behind in the machine", () => {

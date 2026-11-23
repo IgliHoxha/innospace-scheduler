@@ -6,7 +6,7 @@ APP="${APP:-innospace-scheduler}"
 BUCKET="${BUCKET:-innospace-scheduler-backups}"
 # "nightly" or "pre-release-<commit>": part of the object's name, so a restore point is easy to find.
 LABEL="${1:?usage: backup-db.sh <label>}"
-: "${FLY_API_TOKEN:?}" "${CLOUDFLARE_ACCOUNT_ID:?}" "${R2_BACKUP_TOKEN:?}"
+: "${FLY_API_TOKEN:?}" "${CLOUDFLARE_ACCOUNT_ID:?}" "${R2_ACCESS_KEY_ID:?}" "${R2_SECRET_ACCESS_KEY:?}"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -31,8 +31,9 @@ rows=$(sqlite3 "$work/backup.db" "SELECT count(*) FROM reservations")
 
 # Only counts and sizes are printed: the repository is public and the file holds bookers' emails.
 key="scheduler-$(date -u +%Y-%m-%dT%H%MZ)-$LABEL.db.gz"
-curl --fail-with-body -sS --retry 3 --retry-all-errors --max-time 60 -o /dev/null -X PUT \
-  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets/$BUCKET/objects/$key" \
-  -H "Authorization: Bearer $R2_BACKUP_TOKEN" -H "Content-Type: application/gzip" \
-  --data-binary "@$work/backup.db.gz"
+# R2's S3 interface is the one that takes keys limited to this bucket; they go in a file, never on a command line.
+(umask 077 && printf 'user = "%s:%s"\n' "$R2_ACCESS_KEY_ID" "$R2_SECRET_ACCESS_KEY" > "$work/r2.curl")
+curl --fail-with-body -sS --retry 3 --max-time 60 -o /dev/null -K "$work/r2.curl" --aws-sigv4 "aws:amz:auto:s3" \
+  -T "$work/backup.db.gz" -H "x-amz-content-sha256: $(shasum -a 256 "$work/backup.db.gz" | cut -d' ' -f1)" \
+  -H "Content-Type: application/gzip" "https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com/$BUCKET/$key"
 echo "Restore point: \`$key\` in the R2 bucket \`$BUCKET\` ($rows reservations, $(wc -c < "$work/backup.db.gz" | tr -d ' ') bytes)." >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"
