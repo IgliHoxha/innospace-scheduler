@@ -10,9 +10,102 @@ const read = (...path: string[]) =>
 const workflow = read(".github", "workflows", "fly-deploy.yml");
 const dockerfile = read("Dockerfile");
 const ignored = read(".dockerignore").split("\n");
+const sources = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? sources(posix.join(dir, entry.name))
+      : [posix.join(dir, entry.name)],
+  );
+const excluded = (text: string) =>
+  [...text.matchAll(/':!([^']+)'/g)].map((m) => m[1]);
+
+describe("deciding which checks a change needs", () => {
+  const job = workflow.slice(
+    workflow.indexOf("  check:\n"),
+    workflow.indexOf("  build:\n"),
+  );
+  const decide = job.slice(
+    job.indexOf("- name: Which checks does this change need?"),
+    job.indexOf("- uses: actions/setup-node"),
+  );
+  const skips = (answer: string) =>
+    excluded(
+      decide.split("\n").find((l) => l.includes(`echo "${answer}=`)) ?? "",
+    );
+  const gate = (script: string) =>
+    new RegExp(`- run: ${script}\\n\\s+if: ([^\\n]+)`).exec(job)?.[1];
+
+  // The push before may have failed, so only a run that passed proves the files it held.
+  it("measures main from this workflow's last green run", () => {
+    expect(decide).toContain(
+      "actions/workflows/fly-deploy.yml/runs?branch=$GITHUB_REF_NAME&event=push&status=success&per_page=1",
+    );
+    expect(job).toContain("actions: read");
+    expect(job).toContain("fetch-depth: 0");
+  });
+
+  it("measures a pull request from its base", () => {
+    expect(decide).toContain("BASE: ${{ github.event.pull_request.base.sha }}");
+    expect(decide).toContain('if [ "$GITHUB_EVENT_NAME" = push ]; then');
+  });
+
+  it("runs every check when the base is unknown or the answer is missing", () => {
+    expect(decide).toContain("|| BASE=");
+    expect(decide).toContain(
+      'if [ -n "$BASE" ] && git diff --quiet "$BASE" HEAD -- . "$@"; then echo false; else echo true; fi',
+    );
+    expect(job).not.toContain("== 'true'");
+  });
+
+  it("skips every check only for files none of them reads", () => {
+    expect(skips("any")).toEqual(["*.md", "docs"]);
+    expect(read(".prettierignore").split("\n")).toContain("*.md");
+    for (const file of sources("docs")) expect(file).toMatch(/\.png$/);
+  });
+
+  it("skips ESLint and the tests' typecheck for a folder that holds no code", () => {
+    expect(skips("code")).toEqual([...skips("any"), ".github"]);
+    for (const file of sources(".github"))
+      expect(file).not.toMatch(/\.(ts|tsx|mts|js|mjs|cjs)$/);
+  });
+
+  it("skips the app's typecheck for what its tsconfig leaves out", () => {
+    const left = ["tests", "vitest.config.mts"];
+    expect(skips("app")).toEqual([...skips("code"), ...left]);
+    expect(JSON.parse(read("tsconfig.json")).exclude).toEqual(
+      expect.arrayContaining(left),
+    );
+  });
+
+  it("runs each check on the answer for the files it reads", () => {
+    const on = (answer: string) => `steps.changed.outputs.${answer} != 'false'`;
+    expect(gate("npm run format:check")).toBe(on("any"));
+    expect(gate("npm run lint")).toBe(on("code"));
+    expect(gate("npm run typecheck")).toBe(on("app"));
+    expect(gate("npm run typecheck:tests")).toBe(on("code"));
+    expect(gate("npm run knip")).toBe(on("any"));
+    expect(gate("npm run test")).toBe(on("any"));
+  });
+
+  // A manifest that drifted from its lockfile has to reach npm ci, which refuses it.
+  it("installs only when the manifest, the lockfile or Node changed", () => {
+    expect(job).toContain("path: node_modules");
+    expect(job).toContain(
+      "${{ steps.node.outputs.node-version }}-${{ hashFiles('package.json', 'package-lock.json') }}",
+    );
+    expect(gate("npm ci")).toBe(
+      "steps.changed.outputs.any != 'false' && steps.modules.outputs.cache-hit != 'true'",
+    );
+  });
+});
 
 describe("deciding whether a push needs a release", () => {
-  const skipped = [...workflow.matchAll(/':!([^']+)'/g)].map((m) => m[1]);
+  const skipped = excluded(
+    workflow.slice(
+      workflow.indexOf("- name: Has anything that ships changed?"),
+      workflow.indexOf("- name: Build and push"),
+    ),
+  );
 
   it("leaves tests, docs and the workflow itself out of the comparison", () => {
     expect(skipped).toEqual([
@@ -66,12 +159,6 @@ describe("the restore point before a release", () => {
     workflow.indexOf("- run: flyctl deploy --image"),
   );
   const touches = /TOUCHES: (.+)\n/.exec(decide)?.[1].split(" ") ?? [];
-  const sources = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-      entry.isDirectory()
-        ? sources(posix.join(dir, entry.name))
-        : [posix.join(dir, entry.name)],
-    );
 
   it("is taken only when what changed since the live commit can touch the volume", () => {
     expect(touches).toEqual([

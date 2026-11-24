@@ -23,19 +23,60 @@ jobs:
     name: Lint, types and tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # the last green run is read from this workflow's own history
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the diff below needs the last commit that passed
+      # Measured from the last commit that passed, so a red run is never skipped over.
+      - name: Which checks does this change need?
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # A pull request is measured from its base and main from its last green run; a manual run has neither.
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            BASE=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fly-deploy.yml/runs?branch=$GITHUB_REF_NAME&event=push&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // empty') || BASE=
+          fi
+          echo "Measured from ${BASE:-nothing, so every check runs}."
+          # A base git cannot find fails the diff too, so whatever is unsure gets checked.
+          changed() { if [ -n "$BASE" ] && git diff --quiet "$BASE" HEAD -- . "$@"; then echo false; else echo true; fi; }
+          {
+            echo "any=$(changed ':!*.md' ':!docs')"
+            echo "code=$(changed ':!*.md' ':!docs' ':!.github')"
+            echo "app=$(changed ':!*.md' ':!docs' ':!.github' ':!tests' ':!vitest.config.mts')"
+          } | tee -a "$GITHUB_OUTPUT"
+      # Only a plain "false" skips a step below: a missing answer runs the check.
       - uses: actions/setup-node@v7
+        id: node
+        if: steps.changed.outputs.any != 'false'
         with:
           node-version: 22
-          cache: npm
+      # Keyed on the manifest and the lockfile, so an install runs only when a dependency changed.
+      - uses: actions/cache@v6
+        id: modules
+        if: steps.changed.outputs.any != 'false'
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package.json', 'package-lock.json') }}
       - run: npm ci
+        if: steps.changed.outputs.any != 'false' && steps.modules.outputs.cache-hit != 'true'
       - run: npm run format:check
+        if: steps.changed.outputs.any != 'false'
       - run: npm run lint
+        if: steps.changed.outputs.code != 'false'
       - run: npm run typecheck
+        if: steps.changed.outputs.app != 'false'
       - run: npm run typecheck:tests
+        if: steps.changed.outputs.code != 'false'
       - run: npm run knip
+        if: steps.changed.outputs.any != 'false'
       - run: npm run test
+        if: steps.changed.outputs.any != 'false'
 
   # Runs beside the checks, not after them, so the gate adds no time to a deploy.
   build:
