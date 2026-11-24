@@ -12,6 +12,7 @@ import { isActiveStatus } from "@/lib/types";
 import { boothName } from "@/lib/booths";
 import { nowDateTime } from "@/lib/datetime";
 import { postReservationToSlack } from "@/lib/slack";
+import { sendGuestCancellationEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +29,9 @@ export async function POST(req: NextRequest) {
   if (seriesId) {
     // Dates already under way stay: the person is in the booth.
     const cancelled = cancelSeriesFrom(seriesId, nowDateTime());
-    // Sent once the guest has their answer, one date after another.
+    // Sent once the guest has their answer: one email for every date, Slack one by one.
     after(async () => {
+      if (cancelled.length > 0) await sendGuestCancellationEmail(cancelled);
       for (const r of cancelled) {
         await postReservationToSlack(r, "cancelled", boothName, "guest");
       }
@@ -61,11 +63,11 @@ export async function POST(req: NextRequest) {
     return jsonError("That reservation no longer exists.", 404);
   }
 
-  // The channel still hears the slot is free, once the guest has their answer.
-  after(() =>
-    postReservationToSlack(reservation, "cancelled", boothName, "guest"),
-  );
+  // A receipt that also takes it off their calendar, then the channel; neither delays the answer.
+  after(async () => {
+    await sendGuestCancellationEmail([reservation]);
+    await postReservationToSlack(reservation, "cancelled", boothName, "guest");
+  });
 
-  // No email: their own action, and the template is for an admin cancelling.
   return NextResponse.json({ ok: true, alreadyCancelled: false });
 }

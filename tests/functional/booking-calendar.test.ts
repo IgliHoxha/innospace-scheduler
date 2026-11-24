@@ -55,6 +55,7 @@ async function book(body: Record<string, unknown>) {
 
 type Sent = {
   to: string[];
+  subject: string;
   html: string;
   attachments?: { filename: string; content: Buffer; contentType: string }[];
 };
@@ -142,6 +143,36 @@ describe("the admin cancelling it", () => {
     expect(withdrawn.match(/BEGIN:VEVENT/g)).toHaveLength(1);
     expect(field(withdrawn, "UID")).toBe(
       `${reservations[1].id}@scheduler.example.test`,
+    );
+  });
+});
+
+describe("the guest cancelling it", () => {
+  it("emails a receipt that withdraws the same calendar entry", async () => {
+    const booked = (await (await book({})).json()) as {
+      id: string;
+      cancelToken: string;
+    };
+    vi.setSystemTime(new Date(`${DAY}T12:05:00`));
+    const cancel = await import("@/app/api/cancel/route");
+    const res = await settled(
+      cancel.POST(
+        makeRequest("/api/cancel", {
+          method: "POST",
+          body: { token: booked.cancelToken },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(sent(1).subject).toBe(
+      "Your Booth 1 reservation is cancelled for Thursday, 16 July 2026",
+    );
+    const withdrawn = icsOf(1);
+    expect(field(withdrawn, "METHOD")).toBe("CANCEL");
+    expect(field(withdrawn, "UID")).toBe(field(icsOf(0), "UID"));
+    expect(Number(field(withdrawn, "SEQUENCE"))).toBeGreaterThan(
+      Number(field(icsOf(0), "SEQUENCE")),
     );
   });
 });

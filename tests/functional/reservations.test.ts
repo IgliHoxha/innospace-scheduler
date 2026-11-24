@@ -15,6 +15,7 @@ vi.mock("@/lib/email-verify", () => ({
 
 vi.mock("@/lib/email", () => ({
   sendReservationEmail: vi.fn().mockResolvedValue("sent"),
+  sendGuestCancellationEmail: vi.fn().mockResolvedValue("sent"),
 }));
 
 vi.mock("@/lib/slack", () => ({

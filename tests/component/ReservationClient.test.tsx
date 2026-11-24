@@ -1262,14 +1262,16 @@ describe("the quick length buttons", () => {
     server.taken = () => [{ start: "09:30", end: "10:00", label: "Booked" }];
     mountForm();
     await waitFor(() => expect(form.pick()).toBe("09:00-09:30"));
+    // The buttons follow the start the form records a render after the fields show it.
+    await waitFor(() => expect(length(45).disabled).toBe(true));
     expect(length(15).disabled).toBe(false);
     expect(length(30).disabled).toBe(false);
-    expect(length(45).disabled).toBe(true);
   });
 
   it("offers only lengths a booking may have", async () => {
     mountForm({ minReservationMinutes: 30 });
-    await waitFor(() => expect(form.pick()).not.toBeNull());
+    // Waits for the buttons, not the fields, which show the range a render earlier.
+    await screen.findByRole("button", { name: "30 min" });
     expect(screen.queryByRole("button", { name: "15 min" })).toBeNull();
     expect(length(30)).toBeTruthy();
     expect(length(45)).toBeTruthy();

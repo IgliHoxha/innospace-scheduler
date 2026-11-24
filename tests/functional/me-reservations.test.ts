@@ -13,14 +13,20 @@ vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));
 
+vi.mock("@/lib/email", () => ({
+  sendGuestCancellationEmail: vi.fn().mockResolvedValue("sent"),
+}));
+
 type List = typeof import("@/app/api/me/reservations/route");
 type One = typeof import("@/app/api/me/reservations/[id]/route");
 type Db = typeof import("@/lib/db");
 type Slack = typeof import("@/lib/slack");
+type Email = typeof import("@/lib/email");
 let list: List;
 let one: One;
 let db: Db;
 let slack: Slack;
+let email: Email;
 
 const D = "2026-07-16";
 const at = (t: string) => `${D}T${t}`;
@@ -36,6 +42,8 @@ beforeEach(async () => {
   one = await import("@/app/api/me/reservations/[id]/route");
   slack = await import("@/lib/slack");
   vi.mocked(slack.postReservationToSlack).mockClear();
+  email = await import("@/lib/email");
+  vi.mocked(email.sendGuestCancellationEmail).mockClear();
 });
 
 const seed = (
@@ -191,6 +199,28 @@ describe("DELETE /api/me/reservations/[id]", () => {
       expect.any(Function),
       "guest",
     );
+  });
+
+  it("emails the member a receipt that takes it off their calendar", async () => {
+    const r = await seed("15:00", "16:00");
+    await call("DELETE", r.id, ADA);
+    expect(email.sendGuestCancellationEmail).toHaveBeenCalledOnce();
+    const [dates] = vi.mocked(email.sendGuestCancellationEmail).mock.calls[0];
+    expect(dates.map((d) => [d.id, d.status])).toEqual([[r.id, "cancelled"]]);
+  });
+
+  it("emails nothing when the cancel is refused", async () => {
+    const started = await seed("11:30", "12:30");
+    await call("DELETE", started.id, ADA);
+    const theirs = await seed("15:00", "16:00", { email: "grace@example.com" });
+    await call("DELETE", theirs.id, ADA);
+    expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
+  });
+
+  it("emails nothing when the end time moves", async () => {
+    const r = await seed("11:30", "12:30");
+    await call("PATCH", r.id, ADA, { end: "13:00" });
+    expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
   });
 
   it("cancels a pending request too", async () => {

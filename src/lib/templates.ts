@@ -190,6 +190,42 @@ function cancelledBody(
   ].join("\n");
 }
 
+/** The subject when the booker cancelled it themselves: news they made, so no "update". */
+export function guestCancelledSubject(
+  r: Reservation,
+  boothName: BoothNamer,
+  series?: Series,
+): string {
+  const booth = boothLabel(r, boothName);
+  return isSeries(series)
+    ? `Your ${booth} weekly reservation is cancelled (${series.length} dates)`
+    : `Your ${booth} reservation is cancelled for ${dateText(r)}`;
+}
+
+/** Their own cancel: a receipt, without the apology an admin cancel carries. */
+export function guestCancelledBody(
+  r: Reservation,
+  contact: ContactInfo,
+  boothName: BoothNamer,
+  series?: Series,
+): string {
+  return [
+    `Hi ${firstName(r) || "there"},`,
+    "",
+    isSeries(series)
+      ? "As you asked, these dates are cancelled:"
+      : "As you asked, your reservation is cancelled:",
+    "",
+    ...detailLines(r, boothName, series),
+    "",
+    isSeries(series)
+      ? "Those slots are free for someone else now. If that was a mistake or you'd like other times, just reserve again, or reply to this email and we'll help."
+      : "The slot is free for someone else now. If that was a mistake or you'd like another time, just reserve again, or reply to this email and we'll help.",
+    "",
+    ...signOff(contact),
+  ].join("\n");
+}
+
 function pendingBody(
   r: Reservation,
   contact: ContactInfo,

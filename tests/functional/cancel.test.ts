@@ -12,12 +12,18 @@ vi.mock("@/lib/slack", () => ({
   postReservationToSlack: vi.fn().mockResolvedValue("sent"),
 }));
 
+vi.mock("@/lib/email", () => ({
+  sendGuestCancellationEmail: vi.fn().mockResolvedValue("sent"),
+}));
+
 type Route = typeof import("@/app/api/cancel/route");
 type Db = typeof import("@/lib/db");
 type Slack = typeof import("@/lib/slack");
+type Email = typeof import("@/lib/email");
 let route: Route;
 let db: Db;
 let slack: Slack;
+let email: Email;
 
 const DAY = "2026-07-16";
 const ENDS_AT = `${DAY}T15:00`;
@@ -29,6 +35,8 @@ beforeEach(async () => {
   db = await import("@/lib/db");
   route = await import("@/app/api/cancel/route");
   slack = await import("@/lib/slack");
+  email = await import("@/lib/email");
+  vi.mocked(email.sendGuestCancellationEmail).mockClear();
 });
 
 const seed = (status: "confirmed" | "pending" = "confirmed") =>
@@ -203,6 +211,47 @@ describe("the Slack notice on a guest cancellation", () => {
   });
 });
 
+describe("the email on a guest cancellation", () => {
+  const sentFor = () =>
+    vi
+      .mocked(email.sendGuestCancellationEmail)
+      .mock.calls.map(([dates]) => dates.map((r) => [r.id, r.status]));
+
+  it("sends the guest a receipt for the date they cancelled", async () => {
+    const r = seed();
+    await post(createCancelToken(r.id, epochMsOf(ENDS_AT)));
+    expect(sentFor()).toEqual([[[r.id, "cancelled"]]]);
+  });
+
+  // The cancel stands whatever the mail does, so the guest never waits on it.
+  it("answers the guest before the email has gone", async () => {
+    let release!: () => void;
+    vi.mocked(email.sendGuestCancellationEmail).mockReturnValueOnce(
+      new Promise((done) => (release = () => done("sent"))),
+    );
+    const r = seed();
+    const res = await route.POST(
+      makeRequest("/api/cancel", {
+        method: "POST",
+        body: { token: createCancelToken(r.id, epochMsOf(ENDS_AT)) },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(db.getReservation(r.id)?.status).toBe("cancelled");
+    release();
+  });
+
+  it("sends nothing for a second click or a bad token", async () => {
+    const r = seed();
+    const token = createCancelToken(r.id, epochMsOf(ENDS_AT));
+    await post(token);
+    vi.mocked(email.sendGuestCancellationEmail).mockClear();
+    await post(token);
+    await post("nonsense");
+    expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/cancel - a whole weekly series", () => {
   const series = () =>
     db.createReservationSeries(
@@ -259,6 +308,23 @@ describe("POST /api/cancel - a whole weekly series", () => {
       cancelled: 0,
     });
     expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  it("sends one email covering every date it freed, and none for the ones it left", async () => {
+    const made = series();
+    vi.setSystemTime(new Date("2026-07-23T14:30:00"));
+    await post(tokenFor(made));
+    expect(email.sendGuestCancellationEmail).toHaveBeenCalledOnce();
+    const [dates] = vi.mocked(email.sendGuestCancellationEmail).mock.calls[0];
+    expect(dates.map((r) => r.id)).toEqual([made[2].id]);
+  });
+
+  it("sends no email when a second click frees nothing", async () => {
+    const made = series();
+    await post(tokenFor(made));
+    vi.mocked(email.sendGuestCancellationEmail).mockClear();
+    await post(tokenFor(made));
+    expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
   });
 
   it("tells the channel about each freed date as the guest's doing", async () => {

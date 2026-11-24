@@ -17,6 +17,8 @@ import {
   emailHeading,
   emailPreheader,
   emailSubject,
+  guestCancelledBody,
+  guestCancelledSubject,
   WHATSAPP_LABEL,
   type EmailStatus,
   type Series,
@@ -305,6 +307,34 @@ export async function sendReservationEmail(
   /** Every date of a weekly repeat: one email covers them all. */
   series?: Series,
 ): Promise<EmailOutcome> {
+  return deliver(reservation, status, customBody, series);
+}
+
+/** The booker cancelled it themselves: a receipt, and the dates taken off their calendar. */
+export async function sendGuestCancellationEmail(
+  /** Every date that cancel released, first to last. */
+  cancelled: Series,
+): Promise<EmailOutcome> {
+  const first = cancelled[0];
+  if (!first) return "skipped";
+  const weekly = cancelled.length > 1 ? cancelled : undefined;
+  const contact = getContactFromEnv();
+  return deliver(
+    first,
+    "cancelled",
+    guestCancelledBody(first, contact, boothName, weekly),
+    weekly,
+    guestCancelledSubject(first, boothName, weekly),
+  );
+}
+
+async function deliver(
+  reservation: Reservation,
+  status: EmailStatus,
+  customBody: string | undefined,
+  series: Series | undefined,
+  subject?: string,
+): Promise<EmailOutcome> {
   const resend = client();
   if (!resend) return "skipped";
   if (!reservation.email) {
@@ -332,7 +362,9 @@ export async function sendReservationEmail(
       from: from(),
       to: [reservation.email],
       replyTo: replyTo(),
-      subject: emailSubject(status, contact, boothName, reservation, weekly),
+      subject:
+        subject ??
+        emailSubject(status, contact, boothName, reservation, weekly),
       html: shell({
         accent: ACCENT[status],
         heading: emailHeading(status),

@@ -921,3 +921,76 @@ describe("the booking in the booker's calendar", () => {
     expect(sent().html).toContain("calendar invitation for all 3 dates");
   });
 });
+
+describe("the email a booker gets after cancelling it themselves", () => {
+  type Sent = {
+    to: string[];
+    subject: string;
+    html: string;
+    attachments?: { content: Buffer; contentType: string }[];
+  };
+  const sent = () => send.mock.calls.at(-1)![0] as Sent;
+  const ics = () =>
+    sent().attachments![0].content.toString("utf8").replace(/\r\n /g, "");
+  const week = (n: number): Reservation => ({
+    ...RESERVATION,
+    id: `rs_${n}`,
+    seriesId: "series-1",
+    status: "cancelled",
+    startsAt: `2026-07-${16 + 7 * n}T09:30`,
+    endsAt: `2026-07-${16 + 7 * n}T11:00`,
+  });
+
+  beforeEach(() => {
+    send.mockClear();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-16T08:00:00"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("is a receipt with its own subject, and no apology", async () => {
+    expect(
+      await email.sendGuestCancellationEmail([
+        { ...RESERVATION, status: "cancelled" },
+      ]),
+    ).toBe("sent");
+    expect(sent().to).toEqual(["ada@example.com"]);
+    expect(sent().subject).toBe(
+      "Your Booth 1 reservation is cancelled for Thursday, 16 July 2026",
+    );
+    expect(sent().html).toContain(
+      "As you asked, your reservation is cancelled:",
+    );
+    expect(sent().html).toContain("Reservation cancelled");
+    expect(sent().html).not.toMatch(/sorry|apologi/i);
+    // Nothing left to cancel, so no cancel button.
+    expect(sent().html).not.toContain("/cancel?token=");
+  });
+
+  it("takes the booking off their calendar", async () => {
+    await email.sendGuestCancellationEmail([
+      { ...RESERVATION, status: "cancelled" },
+    ]);
+    expect(sent().attachments![0].contentType).toBe(
+      "text/calendar; charset=utf-8; method=CANCEL",
+    );
+    expect(ics()).toContain("METHOD:CANCEL");
+    expect(ics()).toContain("UID:rs_1@scheduler.example.test");
+    expect(sent().html).toContain("takes it off your calendar");
+  });
+
+  it("covers every date a series cancel released in one email", async () => {
+    await email.sendGuestCancellationEmail([week(1), week(2)]);
+    expect(send).toHaveBeenCalledOnce();
+    expect(sent().subject).toBe(
+      "Your Booth 1 weekly reservation is cancelled (2 dates)",
+    );
+    expect(ics().match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(ics()).toContain("UID:rs_2@scheduler.example.test");
+  });
+
+  it("sends nothing when the cancel released nothing", async () => {
+    expect(await email.sendGuestCancellationEmail([])).toBe("skipped");
+    expect(send).not.toHaveBeenCalled();
+  });
+});

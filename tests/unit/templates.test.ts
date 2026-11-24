@@ -532,3 +532,71 @@ describe("the whole email body, line for line", () => {
     }
   });
 });
+
+// Their own cancel: a receipt, never the admin's apology.
+describe("a booker's own cancellation", () => {
+  const week = (n: number): Reservation => ({
+    ...base,
+    id: `r${n}`,
+    startsAt: `2026-07-${14 + 7 * n}T09:30`,
+    endsAt: `2026-07-${14 + 7 * n}T11:00`,
+  });
+
+  it("names the booth and date in the subject", () => {
+    expect(t.guestCancelledSubject(base, boothName)).toBe(
+      "Your Booth 1 reservation is cancelled for Tuesday, 14 July 2026",
+    );
+  });
+
+  it("counts the dates of a series in the subject", () => {
+    expect(
+      t.guestCancelledSubject(base, boothName, [week(0), week(1), week(2)]),
+    ).toBe("Your Booth 1 weekly reservation is cancelled (3 dates)");
+  });
+
+  it("confirms what was cancelled, as asked, and closes like every email", () => {
+    expect(t.guestCancelledBody(base, contact, boothName).split("\n")).toEqual([
+      "Hi Ada,",
+      "",
+      "As you asked, your reservation is cancelled:",
+      "",
+      "Booth: Booth 1",
+      "Date: Tuesday, 14 July 2026",
+      "Time: 09:30 - 11:00",
+      "",
+      "The slot is free for someone else now. If that was a mistake or you'd like another time, just reserve again, or reply to this email and we'll help.",
+      "",
+      "Best regards,",
+      "Alex",
+      "",
+      "Phone: +000 1",
+      "WhatsApp: +000 1",
+      "Email: hi@test.co",
+    ]);
+  });
+
+  it("carries no apology: nobody but them cancelled it", () => {
+    const body = t.guestCancelledBody(base, contact, boothName);
+    expect(body).not.toMatch(/sorry|apologi/i);
+  });
+
+  it("lists every date of a series it released", () => {
+    const body = t.guestCancelledBody(base, contact, boothName, [
+      week(0),
+      week(1),
+    ]);
+    expect(body).toContain("As you asked, these dates are cancelled:");
+    expect(body).toContain("Tuesday, 21 July 2026");
+    expect(body).toContain("Those slots are free for someone else now.");
+  });
+
+  it("greets a booker with no name plainly", () => {
+    expect(
+      t.guestCancelledBody(
+        { ...base, fullName: undefined },
+        contact,
+        boothName,
+      ),
+    ).toMatch(/^Hi there,/);
+  });
+});

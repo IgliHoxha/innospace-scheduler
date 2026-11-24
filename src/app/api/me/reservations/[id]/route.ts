@@ -14,6 +14,7 @@ import { canonicalEmail } from "@/lib/guest";
 import { boothName } from "@/lib/booths";
 import { runMinutesOn } from "@/lib/booking-run";
 import { postReservationToSlack } from "@/lib/slack";
+import { sendGuestCancellationEmail } from "@/lib/email";
 import { dateOf, minutesOfDay, nowDateTime, toDateTime } from "@/lib/datetime";
 import {
   autoApproveMaxHours,
@@ -78,10 +79,11 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const reservation = updateReservationStatus(existing.id, "cancelled");
   if (!reservation) return jsonError(NOT_FOUND_MESSAGE, 404);
 
-  // No email: their own action, as with the emailed cancel link.
-  after(() =>
-    postReservationToSlack(reservation, "cancelled", boothName, "guest"),
-  );
+  // A receipt that also takes it off their calendar, as with the emailed link.
+  after(async () => {
+    await sendGuestCancellationEmail([reservation]);
+    await postReservationToSlack(reservation, "cancelled", boothName, "guest");
+  });
   return NextResponse.json({ ok: true, reservation });
 }
 
