@@ -850,6 +850,10 @@ describe("the booking in the booker's calendar", () => {
     await email.sendReservationEmail(RESERVATION, "confirmed");
     expect(sent().html).toContain("This email is a calendar invitation.");
     expect(sent().html).toContain("open the attached booking.ics.");
+    // Gmail asks before filing an invitation from a sender the reader never wrote to.
+    expect(sent().html).toContain(
+      "Gmail may ask before adding it the first time: choose Add to calendar.",
+    );
     expect(sent().html).not.toContain("calendar.google.com");
   });
 
@@ -897,6 +901,8 @@ describe("the booking in the booker's calendar", () => {
     expect(Number(field("SEQUENCE"))).toBeGreaterThan(confirmed);
     expect(sent().html).toContain("takes it off your calendar");
     expect(sent().html).not.toContain("calendar invitation");
+    // A withdrawal needs no click, so the Gmail hint is only on an invitation.
+    expect(sent().html).not.toContain("choose Add to calendar");
   });
 
   it("still sends the invitation when the admin writes the body", async () => {
@@ -919,6 +925,7 @@ describe("the booking in the booker's calendar", () => {
     expect(ics().match(/BEGIN:VEVENT/g)).toHaveLength(3);
     expect(ics()).toContain("UID:rs_2@scheduler.example.test");
     expect(sent().html).toContain("calendar invitation for all 3 dates");
+    expect(sent().html).toContain("choose Add to calendar.");
   });
 });
 

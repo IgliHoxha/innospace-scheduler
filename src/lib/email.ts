@@ -226,6 +226,10 @@ function seriesCancelButton(series: Series): string {
 
 const ICS_FILENAME = "booking.ics";
 
+// Gmail holds an invitation from a sender the reader never wrote to, and asks first.
+const GMAIL_ASKS =
+  "Gmail may ask before adding it the first time: choose Add to calendar.";
+
 const CALENDAR_STATUS: Record<EmailStatus, CalendarStatus> = {
   confirmed: "CONFIRMED",
   pending: "TENTATIVE",
@@ -284,8 +288,8 @@ function calendarParts(
     method === "CANCEL"
       ? `The attached ${ICS_FILENAME} takes it off your calendar.`
       : weekly
-        ? `This email is a calendar invitation for all ${dates.length} dates. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}.`
-        : `This email is a calendar invitation. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}.`;
+        ? `This email is a calendar invitation for all ${dates.length} dates. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}. ${GMAIL_ASKS}`
+        : `This email is a calendar invitation. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}. ${GMAIL_ASKS}`;
   return {
     html: `<p style="margin:18px 0 0;color:${COLORS.emailMuted};font-size:12px">${line}</p>`,
     attachment: {
