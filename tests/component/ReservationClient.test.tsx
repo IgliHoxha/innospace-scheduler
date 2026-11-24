@@ -108,6 +108,41 @@ describe("first load", () => {
     expect(form.alerts()).toEqual([]);
   });
 
+  // The reported case: cancelled on /bookings, then back on "/" within the edge's minute.
+  it("skips the edge's copy when this browser changed a booking on another page a moment ago", async () => {
+    localStorage.setItem("innospace.wroteAt", String(Date.now() - 5_000));
+    await ready();
+    expect(server.gets).toEqual([
+      { booth: "booth-1", date: DAYS[0], fresh: true },
+    ]);
+  });
+
+  it("takes the edge's copy again once that change is over a minute old", async () => {
+    localStorage.setItem("innospace.wroteAt", String(Date.now() - 61_000));
+    await ready();
+    expect(server.gets).toEqual([
+      { booth: "booth-1", date: DAYS[0], fresh: false },
+    ]);
+  });
+
+  // Back from /bookings can restore this page as it was left, board included.
+  it("asks for the board again when the browser restores the page from its history", async () => {
+    await ready();
+    localStorage.setItem("innospace.wroteAt", String(Date.now()));
+    const restored = new Event("pageshow") as PageTransitionEvent;
+    Object.defineProperty(restored, "persisted", { value: true });
+    window.dispatchEvent(restored);
+    await waitFor(() => expect(server.gets).toHaveLength(2));
+    expect(server.gets[1]).toEqual({
+      booth: "booth-1",
+      date: DAYS[0],
+      fresh: true,
+    });
+    // A first visit fires pageshow too, and must not load the board twice.
+    window.dispatchEvent(new Event("pageshow"));
+    expect(server.gets).toHaveLength(2);
+  });
+
   // Nothing merges classes at runtime, so two sizes on one field would both apply.
   it("gives each time field one height, width, padding and text size", async () => {
     await ready();

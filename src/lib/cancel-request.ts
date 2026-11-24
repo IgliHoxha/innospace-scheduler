@@ -1,3 +1,5 @@
+import { noteBoardWrite } from "./availability-url";
+
 /** Cancels as the emailed link does: why it failed, empty when it worked. */
 export async function cancelByToken(token: string): Promise<string> {
   try {
@@ -10,7 +12,10 @@ export async function cancelByToken(token: string): Promise<string> {
       ok?: boolean;
       error?: string;
     };
-    if (res.ok && json.ok) return "";
+    if (res.ok && json.ok) {
+      noteBoardWrite();
+      return "";
+    }
     return json.error || "Could not cancel that reservation.";
   } catch {
     return "Could not reach the server. Please try again.";

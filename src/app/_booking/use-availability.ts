@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { availabilityQuery, edgeMayBeStale } from "@/lib/availability-url";
+import {
+  availabilityQuery,
+  edgeMayBeStale,
+  lastBoardWrite,
+  noteBoardWrite,
+} from "@/lib/availability-url";
 import {
   markMine,
   readMine,
@@ -34,8 +39,6 @@ export function useAvailability(
   const [avail, setAvail] = useState<Availability | null>(null);
   const [loading, setLoading] = useState(false);
   const [mine, setMine] = useState<MineEntry[]>([]);
-  // When this browser last wrote, so later loads skip the edge's older copy.
-  const wroteAt = useRef(0);
   // A request id stops a slow response winning.
   const reqId = useRef(0);
 
@@ -45,7 +48,7 @@ export function useAvailability(
       const id = ++reqId.current;
       if (!keepPick) setLoading(true);
       // Another booth's cached board predates the write too, undoing its count.
-      const bust = fresh || edgeMayBeStale(Date.now(), wroteAt.current);
+      const bust = fresh || edgeMayBeStale(Date.now(), lastBoardWrite());
       try {
         const res = await fetch(
           `/api/availability?${availabilityQuery(boothId, date, bust ? Date.now() : undefined)}`,
@@ -89,9 +92,16 @@ export function useAvailability(
     [],
   );
 
-  const noteWrite = useCallback(() => {
-    wroteAt.current = Date.now();
+  // Back from /bookings restores this page as it was, so ask again.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) latest.current({ keepPick: true });
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
   }, []);
+
+  const noteWrite = useCallback(() => noteBoardWrite(), []);
 
   return { avail, loading, mine, setMine, load, reload, noteWrite };
 }

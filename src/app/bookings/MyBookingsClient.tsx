@@ -5,6 +5,7 @@ import { Pagination } from "@/components/Pagination";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
 import { TimePickerInput } from "@/components/ui/time-picker-input";
+import { noteBoardWrite } from "@/lib/availability-url";
 import {
   dateOf,
   formatDateLong,
@@ -303,6 +304,8 @@ export default function MyBookingsClient({
         error?: string;
       };
       if (!res.ok || !json.ok) return json.error || FAILED;
+      // A cancel or a new end changes the board "/" shows next.
+      noteBoardWrite();
       await load(board.page);
       return "";
     } catch {

@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EDGE_STALE_MS,
   availabilityQuery,
   countsForDate,
   edgeMayBeStale,
+  lastBoardWrite,
+  noteBoardWrite,
   reservationCountLabel,
 } from "@/lib/availability-url";
 import nextConfig from "../../next.config.mjs";
@@ -127,5 +129,52 @@ describe("availabilityQuery", () => {
     const p = parse(availabilityQuery("booth &1=x", "2026-07-16"));
     expect(p.get("booth")).toBe("booth &1=x");
     expect(availabilityQuery("booth &1=x", "2026-07-16")).toContain("%26");
+  });
+});
+
+describe("noteBoardWrite and lastBoardWrite", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const storage = () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => stored.get(k) ?? null,
+      setItem: (k: string, v: string) => void stored.set(k, v),
+    });
+    return stored;
+  };
+
+  // Shared by every page of the browser, so a cancel on /bookings reaches "/".
+  it("hands back the time of the last write, through localStorage", () => {
+    const stored = storage();
+    expect(lastBoardWrite()).toBe(0);
+    noteBoardWrite(1_700_000_000_000);
+    expect(stored.get("innospace.wroteAt")).toBe("1700000000000");
+    expect(lastBoardWrite()).toBe(1_700_000_000_000);
+  });
+
+  it("reads junk in the key as no write", () => {
+    storage().set("innospace.wroteAt", "soon");
+    expect(lastBoardWrite()).toBe(0);
+  });
+
+  it("neither throws nor remembers when storage is refused", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    });
+    expect(() => noteBoardWrite()).not.toThrow();
+    expect(lastBoardWrite()).toBe(0);
+  });
+
+  it("is 0 where there is no storage at all, as on the server", () => {
+    vi.stubGlobal("localStorage", undefined);
+    expect(lastBoardWrite()).toBe(0);
   });
 });

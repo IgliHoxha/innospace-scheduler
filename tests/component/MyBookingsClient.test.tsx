@@ -53,6 +53,7 @@ let listFails: boolean;
 let addresses: string[];
 
 beforeEach(() => {
+  localStorage.clear();
   pages = new Map();
   calls = [];
   replies = [];
@@ -320,6 +321,18 @@ describe("cancelling an upcoming booking", () => {
     expect(reads()).toEqual(["/api/me/reservations?page=2"]);
   });
 
+  // The board on "/" is edge-cached for a minute; this is how it knows to skip that copy.
+  it("tells the booking screen a booking changed, so its next board skips the edge's copy", async () => {
+    const { user } = mount(pageOf([booking({})]));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Yes, cancel" }));
+    await waitFor(() =>
+      expect(Number(localStorage.getItem("innospace.wroteAt"))).toBeGreaterThan(
+        0,
+      ),
+    );
+  });
+
   it("cancels a booking under way the same way, below its end time", async () => {
     const ongoing = booking({
       phase: "ongoing",
@@ -371,6 +384,7 @@ describe("cancelling an upcoming booking", () => {
       "A booking that is already over can't be cancelled.",
     );
     expect(reads()).toEqual([]);
+    expect(localStorage.getItem("innospace.wroteAt")).toBeNull();
   });
 
   it("says so when the server cannot be reached", async () => {

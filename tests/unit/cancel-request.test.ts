@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelByToken } from "@/lib/cancel-request";
 
 const reply = (status: number, body: unknown) =>
@@ -14,6 +14,16 @@ const answerWith = (res: Response | Error) => {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 };
+
+let stored: Map<string, string>;
+
+beforeEach(() => {
+  stored = new Map();
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => stored.get(k) ?? null,
+    setItem: (k: string, v: string) => void stored.set(k, v),
+  });
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -34,6 +44,16 @@ describe("cancelByToken", () => {
   it("reports nothing when the server cancelled it", async () => {
     answerWith(reply(200, { ok: true }));
     expect(await cancelByToken("tok-1")).toBe("");
+  });
+
+  // So the board "/" loads next skips the edge's copy that still holds it.
+  it("records that this browser changed a booking, on success only", async () => {
+    answerWith(reply(410, { ok: false, error: "That link has expired." }));
+    await cancelByToken("tok-1");
+    expect(stored.has("innospace.wroteAt")).toBe(false);
+    answerWith(reply(200, { ok: true }));
+    await cancelByToken("tok-1");
+    expect(Number(stored.get("innospace.wroteAt"))).toBeGreaterThan(0);
   });
 
   it("passes on the reason the server gave", async () => {
