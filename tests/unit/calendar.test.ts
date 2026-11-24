@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   escapeIcsText,
   foldIcsLine,
+  googleCalendarUrl,
   icsCalendar,
   sequenceOf,
   type CalendarEvent,
@@ -16,8 +17,6 @@ const EVENT: CalendarEvent = {
   description: "Your Booth 1 reservation.\nQuestions: +000 000",
   status: "CONFIRMED",
   sequence: 7,
-  organizer: { name: "Test Org", email: "hello@test.test" },
-  attendee: { name: "Ada Lovelace", email: "ada@example.com" },
 };
 const STAMP = new Date("2026-07-01T10:00:00.000Z");
 
@@ -92,16 +91,18 @@ describe("sequenceOf", () => {
 });
 
 describe("icsCalendar", () => {
-  it("wraps an invitation in a calendar with CRLF line ends", () => {
-    const ics = icsCalendar([EVENT], "REQUEST", STAMP);
+  it("wraps the events in a published calendar with CRLF line ends", () => {
+    const ics = icsCalendar([EVENT], STAMP);
     expect(ics.startsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n")).toBe(true);
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
     expect(ics.replace(/\r\n/g, "")).not.toMatch(/\n/);
-    expect(linesOf(ics)).toContain("METHOD:REQUEST");
+    // Published, never an invitation: that is what makes Gmail offer "Report spam".
+    expect(linesOf(ics)).toContain("METHOD:PUBLISH");
+    expect(ics).not.toMatch(/METHOD:(REQUEST|CANCEL)|ORGANIZER|ATTENDEE/);
   });
 
   it("carries the booking's times in UTC, its id, version and escaped text", () => {
-    const lines = linesOf(icsCalendar([EVENT], "REQUEST", STAMP));
+    const lines = linesOf(icsCalendar([EVENT], STAMP));
     expect(lines).toEqual(
       expect.arrayContaining([
         "UID:rs_1@scheduler.example.test",
@@ -117,50 +118,6 @@ describe("icsCalendar", () => {
     );
   });
 
-  // An invitation needs both: mail apps only file one with an organiser and the reader as a guest.
-  it("names the business as organiser and the booker as an accepted guest not asked to reply", () => {
-    const lines = linesOf(icsCalendar([EVENT], "REQUEST", STAMP));
-    expect(lines).toContain('ORGANIZER;CN="Test Org":mailto:hello@test.test');
-    expect(lines).toContain(
-      'ATTENDEE;CN="Ada Lovelace";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:ada@example.com',
-    );
-  });
-
-  it("keeps a name with a quote or a line break from breaking out of its parameter", () => {
-    const ics = icsCalendar(
-      [
-        {
-          ...EVENT,
-          attendee: { name: 'Ada "A"\nX:Y', email: "ada@example.com" },
-        },
-      ],
-      "REQUEST",
-      STAMP,
-    );
-    const attendee = linesOf(ics).find((l) => l.startsWith("ATTENDEE"))!;
-    expect(attendee).toBe(
-      'ATTENDEE;CN="Ada  A  X:Y";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:ada@example.com',
-    );
-  });
-
-  it("withdraws an entry with CANCEL, keeping its id", () => {
-    const lines = linesOf(
-      icsCalendar(
-        [{ ...EVENT, status: "CANCELLED", sequence: 9 }],
-        "CANCEL",
-        STAMP,
-      ),
-    );
-    expect(lines).toEqual(
-      expect.arrayContaining([
-        "METHOD:CANCEL",
-        "UID:rs_1@scheduler.example.test",
-        "STATUS:CANCELLED",
-        "SEQUENCE:9",
-      ]),
-    );
-  });
-
   it("holds one event per date of a series", () => {
     const ics = icsCalendar(
       [
@@ -172,7 +129,6 @@ describe("icsCalendar", () => {
           endsAt: "2026-07-23T11:00",
         },
       ],
-      "REQUEST",
       STAMP,
     );
     expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(2);
@@ -180,26 +136,50 @@ describe("icsCalendar", () => {
   });
 
   it("drops an event without valid times, and is empty when none is left", () => {
-    expect(icsCalendar([{ ...EVENT, startsAt: "" }], "REQUEST", STAMP)).toBe(
-      "",
-    );
+    expect(icsCalendar([{ ...EVENT, startsAt: "" }], STAMP)).toBe("");
     expect(
-      icsCalendar(
-        [EVENT, { ...EVENT, endsAt: "nope" }],
-        "REQUEST",
-        STAMP,
-      ).match(/BEGIN:VEVENT/g),
+      icsCalendar([EVENT, { ...EVENT, endsAt: "nope" }], STAMP).match(
+        /BEGIN:VEVENT/g,
+      ),
     ).toHaveLength(1);
   });
 
   it("folds a long description so no line runs past 75 octets", () => {
     const ics = icsCalendar(
       [{ ...EVENT, description: "word ".repeat(60) }],
-      "REQUEST",
       STAMP,
     );
     expect(ics.split("\r\n").every((l) => Buffer.byteLength(l) <= 75)).toBe(
       true,
     );
+  });
+});
+
+describe("googleCalendarUrl", () => {
+  const params = (url: string) => new URL(url).searchParams;
+
+  it("opens Google's add-event page with the booking filled in", () => {
+    const url = googleCalendarUrl(EVENT, "Europe/Tirane");
+    expect(url.startsWith("https://calendar.google.com/calendar/render?")).toBe(
+      true,
+    );
+    const p = params(url);
+    expect(p.get("action")).toBe("TEMPLATE");
+    expect(p.get("text")).toBe("Booth 1 at Test Org");
+    expect(p.get("location")).toBe("Test Org");
+    expect(p.get("details")).toBe(EVENT.description);
+    expect(p.has("recur")).toBe(false);
+  });
+
+  // Local time plus the zone, so the hour holds whatever zone the reader is in.
+  it("gives the space's wall-clock times and names its zone", () => {
+    const p = params(googleCalendarUrl(EVENT, "Europe/Tirane"));
+    expect(p.get("dates")).toBe("20260716T093000/20260716T110000");
+    expect(p.get("ctz")).toBe("Europe/Tirane");
+  });
+
+  it("makes a weekly series one repeating entry", () => {
+    const p = params(googleCalendarUrl(EVENT, "Europe/Tirane", 4));
+    expect(p.get("recur")).toBe("RRULE:FREQ=WEEKLY;COUNT=4");
   });
 });

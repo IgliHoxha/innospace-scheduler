@@ -60,13 +60,9 @@ type Sent = {
   attachments?: { filename: string; content: Buffer; contentType: string }[];
 };
 const sent = (call = 0) => send.mock.calls[call][0] as Sent;
-const icsOf = (call = 0) =>
-  sent(call).attachments![0].content.toString("utf8").replace(/\r\n /g, "");
-const field = (ics: string, name: string) =>
-  new RegExp(`^${name}:(.*)$`, "m").exec(ics.replace(/\r/g, ""))?.[1];
 
 describe("the confirmation a booking sends", () => {
-  it("carries the booking as a calendar invitation", async () => {
+  it("carries the booking as a plain calendar file and a Google Calendar button", async () => {
     const res = await book({});
     expect(res.status).toBe(201);
     const { id } = (await res.json()) as { id: string };
@@ -76,8 +72,10 @@ describe("the confirmation a booking sends", () => {
     const ics = file.content.toString("utf8").replace(/\r\n /g, "");
     expect(ics).toContain(`UID:${id}@scheduler.example.test`);
     expect(ics).toContain("STATUS:CONFIRMED");
-    expect(ics).toContain("METHOD:REQUEST");
-    expect(sent().html).toContain("This email is a calendar invitation.");
+    // A file, not an invitation, so Gmail shows no "Report spam" panel.
+    expect(file.contentType).toBe("application/ics");
+    expect(ics).toContain("METHOD:PUBLISH");
+    expect(sent().html).toContain("Add to Google Calendar");
   });
 
   it("holds every date of a weekly repeat", async () => {
@@ -116,39 +114,19 @@ describe("the admin cancelling it", () => {
     );
   }
 
-  it("emails a withdrawal of the same calendar entry, at a higher version", async () => {
+  it("emails no calendar data, only a reminder to delete the entry", async () => {
     const { id } = (await (await book({})).json()) as { id: string };
-    const invited = icsOf(0);
     expect((await cancel(id)).status).toBe(200);
     expect(send).toHaveBeenCalledTimes(2);
-    expect(sent(1).attachments![0].contentType).toBe(
-      "text/calendar; charset=utf-8; method=CANCEL",
-    );
-    const withdrawn = icsOf(1);
-    expect(field(withdrawn, "METHOD")).toBe("CANCEL");
-    expect(field(withdrawn, "STATUS")).toBe("CANCELLED");
-    expect(field(withdrawn, "UID")).toBe(field(invited, "UID"));
-    expect(Number(field(withdrawn, "SEQUENCE"))).toBeGreaterThan(
-      Number(field(invited, "SEQUENCE")),
-    );
-  });
-
-  it("withdraws only the date cancelled from a weekly series", async () => {
-    const res = await book({ repeatWeeks: 3 });
-    const { reservations } = (await res.json()) as {
-      reservations: { id: string }[];
-    };
-    await cancel(reservations[1].id);
-    const withdrawn = icsOf(1);
-    expect(withdrawn.match(/BEGIN:VEVENT/g)).toHaveLength(1);
-    expect(field(withdrawn, "UID")).toBe(
-      `${reservations[1].id}@scheduler.example.test`,
+    expect(sent(1).attachments).toBeUndefined();
+    expect(sent(1).html).toContain(
+      "If you added this booking to your calendar, delete it there",
     );
   });
 });
 
 describe("the guest cancelling it", () => {
-  it("emails a receipt that withdraws the same calendar entry", async () => {
+  it("emails a receipt with no calendar data, only a reminder to delete the entry", async () => {
     const booked = (await (await book({})).json()) as {
       id: string;
       cancelToken: string;
@@ -168,11 +146,9 @@ describe("the guest cancelling it", () => {
     expect(sent(1).subject).toBe(
       "Your Booth 1 reservation is cancelled for Thursday, 16 July 2026",
     );
-    const withdrawn = icsOf(1);
-    expect(field(withdrawn, "METHOD")).toBe("CANCEL");
-    expect(field(withdrawn, "UID")).toBe(field(icsOf(0), "UID"));
-    expect(Number(field(withdrawn, "SEQUENCE"))).toBeGreaterThan(
-      Number(field(icsOf(0), "SEQUENCE")),
+    expect(sent(1).attachments).toBeUndefined();
+    expect(sent(1).html).toContain(
+      "If you added this booking to your calendar, delete it there",
     );
   });
 });

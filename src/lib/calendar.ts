@@ -1,15 +1,7 @@
-// A booking as a calendar invitation: mail apps add it on arrival and withdraw it on a cancel.
+// A booking as a calendar file and a Google Calendar link; published, never an invitation.
 import { epochMsOf } from "./datetime";
 
-/** REQUEST adds or updates the entry; CANCEL withdraws it. */
-export type CalendarMethod = "REQUEST" | "CANCEL";
-
-export type CalendarStatus = "CONFIRMED" | "TENTATIVE" | "CANCELLED";
-
-export interface CalendarPerson {
-  name: string;
-  email: string;
-}
+export type CalendarStatus = "CONFIRMED" | "TENTATIVE";
 
 export interface CalendarEvent {
   /** Stable per booking, so a later email updates or withdraws the same entry. */
@@ -21,10 +13,8 @@ export interface CalendarEvent {
   location: string;
   description: string;
   status: CalendarStatus;
-  /** Rises with every change, or a calendar ignores the newer email as stale. */
+  /** Rises with every change, so an approval's file replaces the pending one it was opened over. */
   sequence: number;
-  organizer: CalendarPerson;
-  attendee: CalendarPerson;
 }
 
 // Counted from here, so the number stays small enough for every client's integer.
@@ -52,19 +42,6 @@ export function escapeIcsText(s: string): string {
     .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
     .replace(/\r?\n/g, "\\n");
-}
-
-/** A quoted parameter value, which may hold no quote and no control character at all. */
-function icsParam(s: string): string {
-  return `"${s.replace(/["\u0000-\u001f\u007f]/g, " ").trim()}"`;
-}
-
-function person(role: "ORGANIZER" | "ATTENDEE", p: CalendarPerson): string {
-  const extra =
-    role === "ATTENDEE"
-      ? ";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE"
-      : "";
-  return `${role};CN=${icsParam(p.name)}${extra}:mailto:${p.email}`;
 }
 
 const encoder = new TextEncoder();
@@ -99,7 +76,6 @@ const hasTimes = (e: CalendarEvent): boolean =>
 /** One VCALENDAR holding every event; empty string when none has valid times. */
 export function icsCalendar(
   events: readonly CalendarEvent[],
-  method: CalendarMethod,
   stamp: Date,
 ): string {
   const valid = events.filter(hasTimes);
@@ -109,7 +85,8 @@ export function icsCalendar(
     "VERSION:2.0",
     "PRODID:-//Innospace//Scheduler//EN",
     "CALSCALE:GREGORIAN",
-    `METHOD:${method}`,
+    // Published, not an invitation: an invitation from an unknown sender makes Gmail offer "Report spam".
+    "METHOD:PUBLISH",
   ];
   for (const e of valid) {
     lines.push(
@@ -123,12 +100,34 @@ export function icsCalendar(
       `LOCATION:${escapeIcsText(e.location)}`,
       `DESCRIPTION:${escapeIcsText(e.description)}`,
       `STATUS:${e.status}`,
-      person("ORGANIZER", e.organizer),
-      person("ATTENDEE", e.attendee),
       "TRANSP:OPAQUE",
       "END:VEVENT",
     );
   }
   lines.push("END:VCALENDAR");
   return `${lines.map(foldIcsLine).join("\r\n")}\r\n`;
+}
+
+/** "2026-07-16T09:30" to "20260716T093000", read in the zone the link names. */
+function localStamp(dt: string): string {
+  return `${dt.replace(/[-:]/g, "")}00`;
+}
+
+/** Google's own "add event" page; a weekly series becomes one repeating entry. */
+export function googleCalendarUrl(
+  e: CalendarEvent,
+  timeZone: string,
+  weeks = 1,
+): string {
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: e.title,
+    dates: `${localStamp(e.startsAt)}/${localStamp(e.endsAt)}`,
+    // Local times plus the zone, so a repeat keeps its hour across a clock change.
+    ctz: timeZone,
+    details: e.description,
+    location: e.location,
+  });
+  if (weeks > 1) params.set("recur", `RRULE:FREQ=WEEKLY;COUNT=${weeks}`);
+  return `https://calendar.google.com/calendar/render?${params}`;
 }

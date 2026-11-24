@@ -22,3 +22,9 @@ docs
 vitest.config.mts
 Makefile
 fly.toml*
+.prettierrc.json
+.prettierignore
+knip.json
+.gitguardian.yaml
+LICENSE
+NOTICE

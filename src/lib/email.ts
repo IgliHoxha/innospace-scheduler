@@ -5,10 +5,10 @@ import { boothName } from "./booths";
 import { epochMsOf } from "./datetime";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
 import {
+  googleCalendarUrl,
   icsCalendar,
   sequenceOf,
   type CalendarEvent,
-  type CalendarMethod,
   type CalendarStatus,
 } from "./calendar";
 import type { ContactInfo, Reservation } from "./types";
@@ -226,19 +226,17 @@ function seriesCancelButton(series: Series): string {
 
 const ICS_FILENAME = "booking.ics";
 
-// Gmail holds an invitation from a sender the reader never wrote to, and asks first.
-const GMAIL_ASKS =
-  "Gmail may ask before adding it the first time: choose Add to calendar.";
-
-const CALENDAR_STATUS: Record<EmailStatus, CalendarStatus> = {
+const CALENDAR_STATUS: Record<
+  Exclude<EmailStatus, "cancelled">,
+  CalendarStatus
+> = {
   confirmed: "CONFIRMED",
   pending: "TENTATIVE",
-  cancelled: "CANCELLED",
 };
 
 function calendarEvent(
   r: Reservation,
-  status: EmailStatus,
+  status: Exclude<EmailStatus, "cancelled">,
   contact: ContactInfo,
 ): CalendarEvent {
   const booth = boothName(r.boothId);
@@ -260,43 +258,53 @@ function calendarEvent(
     description: lines.join("\n"),
     status: CALENDAR_STATUS[status],
     sequence: sequenceOf(r.updatedAt),
-    organizer: { name: contact.org, email: contact.email },
-    attendee: {
-      name: r.fullName?.trim() || r.email || "",
-      email: r.email ?? "",
-    },
   };
 }
 
-/** The invitation, or its withdrawal on a cancel; nothing once the booking is over. */
+const finePrint = (text: string): string =>
+  `<p style="margin:18px 0 0;color:${COLORS.emailMuted};font-size:12px">${text}</p>`;
+
+/** The add-to-calendar button and file, or on a cancel a reminder to delete it; nothing once it is over. */
 function calendarParts(
   reservation: Reservation,
   status: EmailStatus,
   contact: ContactInfo,
   weekly: Series | undefined,
-): { html: string; attachment: Attachment } | null {
+): { html: string; attachment?: Attachment } | null {
   const dates = weekly ?? [reservation];
   const last = dates[dates.length - 1];
   if (!last.endsAt || !(epochMsOf(last.endsAt) > Date.now())) return null;
 
-  const method: CalendarMethod = status === "cancelled" ? "CANCEL" : "REQUEST";
+  // No calendar data on a cancel: Gmail would offer "Report spam" to anyone who never added it.
+  if (status === "cancelled") {
+    return {
+      html: finePrint(
+        "If you added this booking to your calendar, delete it there: this email can't remove it for you.",
+      ),
+    };
+  }
+
   const events = dates.map((r) => calendarEvent(r, status, contact));
-  const ics = icsCalendar(events, method, new Date());
+  const ics = icsCalendar(events, new Date());
   if (!ics) return null;
 
-  const line =
-    method === "CANCEL"
-      ? `The attached ${ICS_FILENAME} takes it off your calendar.`
-      : weekly
-        ? `This email is a calendar invitation for all ${dates.length} dates. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}. ${GMAIL_ASKS}`
-        : `This email is a calendar invitation. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}. ${GMAIL_ASKS}`;
+  // The process zone is the space's (TZ is set on the server), as for every stored time.
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const google = googleCalendarUrl(events[0], zone, dates.length);
+  const other = weekly
+    ? `For Apple Calendar, Outlook and others, open the attached ${ICS_FILENAME}: it holds all ${dates.length} dates.`
+    : `For Apple Calendar, Outlook and others, open the attached ${ICS_FILENAME}.`;
   return {
-    html: `<p style="margin:18px 0 0;color:${COLORS.emailMuted};font-size:12px">${line}</p>`,
+    html: `
+    <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
+      <a href="${escapeHtml(google)}" style="display:inline-block;background:${BRAND};color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Add to Google Calendar</a>
+      <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">${other}</p>
+    </div>`,
     attachment: {
       filename: ICS_FILENAME,
       content: Buffer.from(ics, "utf8"),
-      // The method in the type is what makes a mail app treat it as an invitation.
-      contentType: `text/calendar; charset=utf-8; method=${method}`,
+      // A plain file, not text/calendar: that type is what makes Gmail treat it as an invitation.
+      contentType: "application/ics",
     },
   };
 }
@@ -314,7 +322,7 @@ export async function sendReservationEmail(
   return deliver(reservation, status, customBody, series);
 }
 
-/** The booker cancelled it themselves: a receipt, and the dates taken off their calendar. */
+/** The booker cancelled it themselves: a receipt for every date it released. */
 export async function sendGuestCancellationEmail(
   /** Every date that cancel released, first to last. */
   cancelled: Series,
@@ -384,7 +392,7 @@ async function deliver(
           weekly,
         ),
       }),
-      ...(calendar ? { attachments: [calendar.attachment] } : {}),
+      ...(calendar?.attachment ? { attachments: [calendar.attachment] } : {}),
     });
   } catch (err) {
     console.error("[email] send threw:", err);

@@ -810,6 +810,12 @@ describe("the booking in the booker's calendar", () => {
     sent().attachments![0].content.toString("utf8").replace(/\r\n /g, "");
   const field = (name: string) =>
     new RegExp(`^${name}:(.*)$`, "m").exec(ics().replace(/\r/g, ""))?.[1];
+  const googleLink = () =>
+    new URL(
+      /href="(https:\/\/calendar\.google\.com\/[^"]+)"/
+        .exec(sent().html)![1]
+        .replace(/&amp;/g, "&"),
+    );
   const week = (n: number): Reservation => ({
     ...RESERVATION,
     id: `rs_${n}`,
@@ -825,52 +831,56 @@ describe("the booking in the booker's calendar", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("sends a confirmation as a calendar invitation", async () => {
+  // A plain file and a published event, so Gmail never shows its "Report spam" panel.
+  it("attaches the booking as a plain calendar file, not an invitation", async () => {
     await email.sendReservationEmail(
       { ...RESERVATION, note: "Client call" },
       "confirmed",
     );
     const [file] = sent().attachments!;
     expect(file.filename).toBe("booking.ics");
-    // The method in the type is what a mail app keys on to file it as an invitation.
-    expect(file.contentType).toBe(
-      "text/calendar; charset=utf-8; method=REQUEST",
-    );
-    expect(field("METHOD")).toBe("REQUEST");
+    expect(file.contentType).toBe("application/ics");
+    expect(field("METHOD")).toBe("PUBLISH");
+    expect(ics()).not.toMatch(/ORGANIZER|ATTENDEE/);
     expect(field("UID")).toBe("rs_1@scheduler.example.test");
     expect(field("SUMMARY")).toBe("Booth 1 at Test Org");
     expect(field("STATUS")).toBe("CONFIRMED");
     expect(ics()).toContain("Note: Client call");
-    expect(ics()).toContain('ORGANIZER;CN="Test Org":mailto:hello@test.test');
-    expect(ics()).toContain('ATTENDEE;CN="Ada";');
-    expect(ics()).toContain(":mailto:ada@example.com");
   });
 
-  it("says so in the email, and no longer offers a Google button", async () => {
+  it("offers a Google Calendar button and points everyone else at the file", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed");
-    expect(sent().html).toContain("This email is a calendar invitation.");
-    expect(sent().html).toContain("open the attached booking.ics.");
-    // Gmail asks before filing an invitation from a sender the reader never wrote to.
+    expect(sent().html).toContain("Add to Google Calendar");
     expect(sent().html).toContain(
-      "Gmail may ask before adding it the first time: choose Add to calendar.",
+      "For Apple Calendar, Outlook and others, open the attached booking.ics.",
     );
-    expect(sent().html).not.toContain("calendar.google.com");
+    expect(sent().html).not.toContain("calendar invitation");
+    expect(sent().html).not.toContain("Gmail may ask");
+    const link = googleLink();
+    expect(link.searchParams.get("text")).toBe("Booth 1 at Test Org");
+    expect(link.searchParams.get("dates")).toBe(
+      "20260716T093000/20260716T110000",
+    );
+    expect(link.searchParams.get("ctz")).toBe(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
   });
 
-  it("puts that line above the cancel link", async () => {
+  it("puts the calendar above the cancel link", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed");
     const html = sent().html;
-    expect(html.indexOf("calendar invitation")).toBeLessThan(
+    expect(html.indexOf("Add to Google Calendar")).toBeLessThan(
       html.indexOf("Cancel this reservation"),
     );
   });
 
-  it("marks a pending request tentative, and its approval replaces it", async () => {
+  it("marks a pending request tentative, and the approval's file outranks it", async () => {
     await email.sendReservationEmail(RESERVATION, "pending");
     expect(field("STATUS")).toBe("TENTATIVE");
-    expect(field("SUMMARY")).toBe("Booth 1 at Test Org (awaiting approval)");
+    expect(googleLink().searchParams.get("text")).toBe(
+      "Booth 1 at Test Org (awaiting approval)",
+    );
     const asked = Number(field("SEQUENCE"));
-
     await email.sendReservationEmail(
       { ...RESERVATION, updatedAt: "2026-07-02T09:00:00.000Z" },
       "confirmed",
@@ -880,52 +890,48 @@ describe("the booking in the booker's calendar", () => {
     expect(Number(field("SEQUENCE"))).toBeGreaterThan(asked);
   });
 
-  it("withdraws the entry when the admin cancels, under the same id and a higher version", async () => {
-    await email.sendReservationEmail(RESERVATION, "confirmed");
-    const confirmed = Number(field("SEQUENCE"));
+  // Calendar data on a cancel is what made Gmail show "Report spam" to people who never added it.
+  it("carries no calendar data on a cancellation, only a reminder to delete it", async () => {
     await email.sendReservationEmail(
-      {
-        ...RESERVATION,
-        status: "cancelled",
-        updatedAt: "2026-07-03T09:00:00.000Z",
-      },
+      { ...RESERVATION, status: "cancelled" },
       "cancelled",
       "Sorry, the booth is closed that day.",
     );
-    expect(sent().attachments![0].contentType).toBe(
-      "text/calendar; charset=utf-8; method=CANCEL",
+    expect(sent().attachments).toBeUndefined();
+    expect(sent().html).not.toContain("calendar.google.com");
+    expect(sent().html).toContain(
+      "If you added this booking to your calendar, delete it there: this email can't remove it for you.",
     );
-    expect(field("METHOD")).toBe("CANCEL");
-    expect(field("STATUS")).toBe("CANCELLED");
-    expect(field("UID")).toBe("rs_1@scheduler.example.test");
-    expect(Number(field("SEQUENCE"))).toBeGreaterThan(confirmed);
-    expect(sent().html).toContain("takes it off your calendar");
-    expect(sent().html).not.toContain("calendar invitation");
-    // A withdrawal needs no click, so the Gmail hint is only on an invitation.
-    expect(sent().html).not.toContain("choose Add to calendar");
   });
 
-  it("still sends the invitation when the admin writes the body", async () => {
+  it("still attaches the file when the admin writes the body", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed", "Approved!");
     expect(sent().attachments).toHaveLength(1);
   });
 
-  it("sends nothing for the calendar once the booking is over", async () => {
+  it("adds nothing about a calendar once the booking is over", async () => {
     vi.setSystemTime(new Date("2026-07-16T11:01:00"));
     await email.sendReservationEmail(RESERVATION, "confirmed");
     expect(sent().attachments).toBeUndefined();
+    expect(sent().html).not.toContain("calendar");
     await email.sendReservationEmail(RESERVATION, "cancelled");
-    expect(sent().attachments).toBeUndefined();
     expect(sent().html).not.toContain("calendar");
   });
 
-  it("invites to every date of a weekly series", async () => {
+  it("puts every date of a weekly series in the file and one repeat in the link", async () => {
     const series = [week(0), week(1), week(2)];
     await email.sendReservationEmail(series[0], "confirmed", undefined, series);
     expect(ics().match(/BEGIN:VEVENT/g)).toHaveLength(3);
     expect(ics()).toContain("UID:rs_2@scheduler.example.test");
-    expect(sent().html).toContain("calendar invitation for all 3 dates");
-    expect(sent().html).toContain("choose Add to calendar.");
+    expect(googleLink().searchParams.get("recur")).toBe(
+      "RRULE:FREQ=WEEKLY;COUNT=3",
+    );
+    expect(sent().html).toContain("it holds all 3 dates.");
+  });
+
+  it("escapes the Google link in the HTML", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sent().html).toMatch(/href="https:\/\/calendar[^"]*&amp;dates=/);
   });
 });
 
@@ -937,8 +943,6 @@ describe("the email a booker gets after cancelling it themselves", () => {
     attachments?: { content: Buffer; contentType: string }[];
   };
   const sent = () => send.mock.calls.at(-1)![0] as Sent;
-  const ics = () =>
-    sent().attachments![0].content.toString("utf8").replace(/\r\n /g, "");
   const week = (n: number): Reservation => ({
     ...RESERVATION,
     id: `rs_${n}`,
@@ -974,16 +978,14 @@ describe("the email a booker gets after cancelling it themselves", () => {
     expect(sent().html).not.toContain("/cancel?token=");
   });
 
-  it("takes the booking off their calendar", async () => {
+  it("carries no calendar data, only a reminder to delete it", async () => {
     await email.sendGuestCancellationEmail([
       { ...RESERVATION, status: "cancelled" },
     ]);
-    expect(sent().attachments![0].contentType).toBe(
-      "text/calendar; charset=utf-8; method=CANCEL",
+    expect(sent().attachments).toBeUndefined();
+    expect(sent().html).toContain(
+      "If you added this booking to your calendar, delete it there",
     );
-    expect(ics()).toContain("METHOD:CANCEL");
-    expect(ics()).toContain("UID:rs_1@scheduler.example.test");
-    expect(sent().html).toContain("takes it off your calendar");
   });
 
   it("covers every date a series cancel released in one email", async () => {
@@ -992,8 +994,8 @@ describe("the email a booker gets after cancelling it themselves", () => {
     expect(sent().subject).toBe(
       "Your Booth 1 weekly reservation is cancelled (2 dates)",
     );
-    expect(ics().match(/BEGIN:VEVENT/g)).toHaveLength(2);
-    expect(ics()).toContain("UID:rs_2@scheduler.example.test");
+    expect(sent().attachments).toBeUndefined();
+    expect(sent().html).toContain("Thursday, 23 July 2026");
   });
 
   it("sends nothing when the cancel released nothing", async () => {

@@ -107,14 +107,45 @@ describe("deciding whether a push needs a release", () => {
     ),
   );
 
-  it("leaves tests, docs and the workflow itself out of the comparison", () => {
+  it("leaves out every file the image never carries: tests, docs, the workflow and tool configs", () => {
     expect(skipped).toEqual([
       "tests",
       "docs",
       ".github",
       "*.md",
       "vitest.config.mts",
+      "Makefile",
+      "docker-compose.yml",
+      ".env*",
+      ".gitignore",
+      ".prettierrc.json",
+      ".prettierignore",
+      "knip.json",
+      ".gitguardian.yaml",
+      "LICENSE",
+      "NOTICE",
     ]);
+  });
+
+  // next build runs ESLint, so its config can fail the image: a change to it must release.
+  it("still releases on a change to anything the build reads", () => {
+    for (const path of [
+      "eslint.config.mjs",
+      "tsconfig.json",
+      "next.config.mjs",
+      "package.json",
+      "package-lock.json",
+      "Dockerfile",
+      ".dockerignore",
+      "fly.toml.example",
+    ]) {
+      expect(skipped).not.toContain(path);
+      expect(
+        ignored.includes(path) &&
+          path !== "Dockerfile" &&
+          path !== ".dockerignore",
+      ).toBe(false);
+    }
   });
 
   // A path skipped here but copied into the image would change production without a release.
@@ -169,7 +200,9 @@ describe("the restore point before a release", () => {
     ]);
     expect(decide).toContain('git diff --quiet "$live" HEAD -- $TOUCHES; then');
     expect(workflow).toContain("backup: ${{ steps.live.outputs.backup }}");
-    expect(step).toContain("NEEDED: ${{ needs.build.outputs.backup }}");
+    // A step-level skip, so a release that cannot touch the volume never loads the backup secrets.
+    expect(step).toContain("if: needs.build.outputs.backup != 'false'");
+    expect(step).not.toContain("NEEDED:");
   });
 
   // A second module opening the database would migrate unseen unless it joins the list.
@@ -188,15 +221,18 @@ describe("the restore point before a release", () => {
       'if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] && git diff --quiet "$live" HEAD -- $TOUCHES',
     );
     expect(decide).toMatch(/else\n\s+echo "backup=true" >> "\$GITHUB_OUTPUT"/);
-    expect(step).toContain('if [ "$NEEDED" = false ]; then');
+    // Only a plain "false" skips it, so an empty or missing answer still takes the backup.
+    expect(step).toContain("if: needs.build.outputs.backup != 'false'");
   });
 
-  it("comes before the release, and says so when none was needed", () => {
+  it("comes before the release, and shows as skipped when none was needed", () => {
     expect(workflow.indexOf("- name: Back up the database")).toBeGreaterThan(
       workflow.indexOf("deploy:\n"),
     );
-    expect(step).toContain("No restore point for this release");
-    expect(step.indexOf("No restore point")).toBeLessThan(
+    expect(workflow.indexOf("- name: Back up the database")).toBeLessThan(
+      workflow.indexOf("- run: flyctl deploy --image"),
+    );
+    expect(step.indexOf("if: needs.build.outputs.backup")).toBeLessThan(
       step.indexOf("backup-db.sh"),
     );
   });
