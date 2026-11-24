@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { adminToken, makeRequest, params, resetApp } from "../helpers/app";
+import {
+  adminToken,
+  makeRequest,
+  memberToken,
+  params,
+  resetApp,
+} from "../helpers/app";
 
 const BAD_ORIGIN = { origin: "https://evil.test" };
 
@@ -47,6 +53,16 @@ describe("origin gate on mutating handlers", () => {
   it("reservations DELETE is refused from a disallowed origin", async () => {
     const route = await import("@/app/api/reservations/route");
     await expectForbidden(await route.DELETE(req("DELETE", adminToken())));
+  });
+
+  it("a member's cancel and end change are refused from a disallowed origin", async () => {
+    const route = await import("@/app/api/me/reservations/[id]/route");
+    await expectForbidden(
+      await route.DELETE(req("DELETE", memberToken()), params({ id: "res-1" })),
+    );
+    await expectForbidden(
+      await route.PATCH(req("PATCH", memberToken()), params({ id: "res-1" })),
+    );
   });
 
   it("reservation PATCH is refused from a disallowed origin", async () => {

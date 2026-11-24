@@ -17,11 +17,12 @@ const ICON_BOOKED = ":calendar:";
 const ICON_WAITING = ":hourglass_flowing_sand:";
 // Not :x:, which is drawn edge to edge and looms beside the other two.
 const ICON_CANCELLED = ":small_red_triangle_down:";
+const ICON_CHANGED = ":pencil2:";
 
 export type CancelledBy = "guest" | "admin";
 
 /** An approval lands on "confirmed" too, so status alone cannot say. */
-export type SlackEvent = EmailStatus | "approved";
+export type SlackEvent = EmailStatus | "approved" | "endChanged";
 
 // One place for icon and wording, so they cannot describe different events.
 function headline(
@@ -33,6 +34,13 @@ function headline(
       icon: ICON_CANCELLED,
       title: `Reservation cancelled by ${actor ?? "the guest"}`,
       lead: "Cancelled",
+    };
+  // Only the booker can move their end, from the booking screen.
+  if (event === "endChanged")
+    return {
+      icon: ICON_CHANGED,
+      title: `End time changed by ${actor ?? "the guest"}`,
+      lead: "End time changed",
     };
   if (event === "pending")
     return {

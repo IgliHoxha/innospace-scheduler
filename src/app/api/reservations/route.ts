@@ -2,7 +2,6 @@ import { NextRequest, NextResponse, after } from "next/server";
 import {
   createReservationSeries,
   discardReservation,
-  heldRangesForEmail,
   queryReservations,
   deleteReservations,
   SlotUnavailableError,
@@ -36,11 +35,11 @@ import {
   minReservationMinutes,
   stepMinutes,
 } from "@/lib/schedule";
+import { runMinutesOn } from "@/lib/booking-run";
 import {
   isDateTime,
   minutesOfDay,
   durationMinutes,
-  shiftDate,
   toDateTime,
   nowDateTime,
   epochMsOf,
@@ -57,12 +56,10 @@ import { postReservationToSlack } from "@/lib/slack";
 import { notifyNewReservation } from "@/lib/telegram";
 import {
   approvalRequiredFor,
-  dayEndMinute,
   END_BEFORE_START_MESSAGE,
   meetsMinDuration,
   noteRequiredFor,
   offGridMessage,
-  runTotalMinutes,
   TIME_PASSED_MESSAGE,
   tooShortMessage,
 } from "@/lib/reservation-rules";
@@ -101,33 +98,6 @@ function timesProblem(startsAt: string, endsAt: string): string {
     return tooShortMessage(minReservationMinutes());
   if (startsAt <= nowDateTime()) return TIME_PASSED_MESSAGE;
   return "";
-}
-
-/** The back-to-back run on each date, or a split stay would dodge the limits. */
-function runMinutesOn(
-  dates: readonly string[],
-  email: string,
-  startMin: number,
-  endMin: number,
-): number[] {
-  const heldOn = (day: string, offsetMin: number) =>
-    heldRangesForEmail(email, day).map((h) => ({
-      start: minutesOfDay(h.startsAt) + offsetMin,
-      end: minutesOfDay(h.endsAt) + offsetMin,
-    }));
-  // Shifted by the last bookable minute, not 24h, so the dead step is no gap.
-  const dayReach = dayEndMinute(stepMinutes());
-  // Each date is judged on its own day, since a run is what sits around it.
-  return dates.map((day) => {
-    // No closing time, so a run can cross midnight and both neighbours count.
-    const held = [
-      ...heldOn(shiftDate(day, -1), -dayReach),
-      ...heldOn(day, 0),
-      ...heldOn(shiftDate(day, 1), dayReach),
-    ];
-    // One sitting spans the shortest bookable gap: nobody could take it.
-    return runTotalMinutes(startMin, endMin, held, minReservationMinutes());
-  });
 }
 
 /** What is wrong with the note for a run this long, empty when nothing is. */

@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import {
   RESERVATION_STATUSES,
   ACTIVE_STATUSES,
+  isActiveStatus,
   type ActiveStatus,
   type CountedReservationPage,
   type Reservation,
@@ -110,6 +111,10 @@ function getDb(): Database.Database {
   // SQLite folds only A-Z, so search folds through JS, where Ç and Ë fold too.
   db.function("fold", { deterministic: true }, (v: unknown) =>
     foldForSearch(v == null ? "" : String(v)),
+  );
+  // One mailbox, one owner, so a member sees what they booked under any spelling of it.
+  db.function("canon", { deterministic: true }, (v: unknown) =>
+    canonicalEmail(v == null ? "" : String(v)),
   );
   initSchema(db);
   _db = db;
@@ -291,28 +296,35 @@ export function heldRangesForEmail(email: string, date: string): BookedRange[] {
   return rows.filter(heldBy(canonicalEmail(email))).map(toRange);
 }
 
-// Must run inside a transaction, so the check and the insert cannot be split.
-function insertIfFree(r: Reservation): void {
+// Must run inside a transaction; `exceptId` lets an edited booking not clash with itself.
+function assertFree(
+  r: Pick<Reservation, "boothId" | "startsAt" | "endsAt" | "email">,
+  exceptId: string,
+): void {
   // Half-open, so edges do not clash; the day bound skips older history.
   const dayStart = startOfDay(r.startsAt!.slice(0, 10));
   const clash = prep(
     `SELECT 1 FROM reservations
-       WHERE boothId = ? AND status IN (${ACTIVE_LIST})
+       WHERE boothId = ? AND status IN (${ACTIVE_LIST}) AND id != ?
          AND startsAt >= ? AND startsAt < ? AND endsAt > ?
        LIMIT 1`,
-  ).get(r.boothId, dayStart, r.endsAt, r.startsAt);
+  ).get(r.boothId, exceptId, dayStart, r.endsAt, r.startsAt);
   if (clash) throw new SlotUnavailableError();
   // One person cannot hold two booths at once, keyed on their mailbox.
   if (r.email) {
     const want = canonicalEmail(r.email);
     const overlapping = prep(
       `SELECT email FROM reservations
-         WHERE status IN (${ACTIVE_LIST})
+         WHERE status IN (${ACTIVE_LIST}) AND id != ?
            AND startsAt >= ? AND startsAt < ? AND endsAt > ?`,
-    ).all(dayStart, r.endsAt, r.startsAt) as Row[];
+    ).all(exceptId, dayStart, r.endsAt, r.startsAt) as Row[];
     const selfClash = overlapping.some(heldBy(want));
     if (selfClash) throw new UserBusyError();
   }
+}
+
+function insertIfFree(r: Reservation): void {
+  assertFree(r, r.id);
   insert(r);
 }
 
@@ -410,4 +422,41 @@ export function updateReservationStatus(
     "UPDATE reservations SET status = ?, updatedAt = ? WHERE id = ? RETURNING *",
   ).get(status, new Date().toISOString(), id) as Row | undefined;
   return row ? fromRow(row) : null;
+}
+
+/** What this mailbox booked: everything not yet over, then the latest past ones. */
+export function reservationsForEmail(
+  email: string,
+  now: string,
+  pastLimit: number,
+): { current: Reservation[]; past: Reservation[] } {
+  const want = canonicalEmail(email);
+  const current = prep(
+    `SELECT * FROM reservations
+       WHERE canon(email) = ? AND status != 'deleted' AND endsAt > ?
+       ORDER BY startsAt`,
+  ).all(want, now) as Row[];
+  const past = prep(
+    `SELECT * FROM reservations
+       WHERE canon(email) = ? AND status != 'deleted' AND endsAt <= ?
+       ORDER BY startsAt DESC LIMIT ?`,
+  ).all(want, now, pastLimit) as Row[];
+  return { current: current.map(fromRow), past: past.map(fromRow) };
+}
+
+/** Moves an active booking's end, checked against every other booking; null if gone or inactive. */
+export function updateReservationEnd(
+  id: string,
+  endsAt: string,
+): Reservation | null {
+  const tx = getDb().transaction((): Reservation | null => {
+    const before = getReservation(id);
+    if (!before || !isActiveStatus(before.status)) return null;
+    assertFree({ ...before, endsAt }, id);
+    const row = prep(
+      `UPDATE reservations SET endsAt = ?, updatedAt = ? WHERE id = ? RETURNING *`,
+    ).get(endsAt, new Date().toISOString(), id) as Row | undefined;
+    return row ? fromRow(row) : null;
+  });
+  return tx();
 }

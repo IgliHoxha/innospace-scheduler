@@ -94,3 +94,29 @@ describe("the user menu", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });
+
+describe("my bookings in the menu", () => {
+  it("is offered only when the page hands it an action", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<UserMenu username="Ada Admin" />);
+    expect((await open(user)).textContent).not.toContain("My bookings");
+    unmount();
+    render(<UserMenu username="Ada Lovelace" onMyBookings={() => {}} />);
+    const items = [...(await open(user)).querySelectorAll("button")].map(
+      (b) => b.textContent,
+    );
+    // Above sign out, so the red action stays last.
+    expect(items).toEqual(["My bookings", "Sign out"]);
+  });
+
+  it("runs the action and closes the menu, without signing out", async () => {
+    const user = userEvent.setup();
+    const onMyBookings = vi.fn();
+    render(<UserMenu username="Ada Lovelace" onMyBookings={onMyBookings} />);
+    await open(user);
+    await user.click(screen.getByRole("button", { name: "My bookings" }));
+    expect(onMyBookings).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(sent).toEqual([]);
+  });
+});

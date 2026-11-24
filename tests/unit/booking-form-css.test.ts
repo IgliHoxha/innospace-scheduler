@@ -69,3 +69,33 @@ describe("the repeat dropdown", () => {
     expect(css).not.toMatch(/\.guest-field select/);
   });
 });
+
+describe("the my bookings dialog", () => {
+  it("scrolls inside the window instead of running off it", () => {
+    expect(css).toMatch(
+      /\.my-bookings-modal \{[^}]*max-height: calc\(100vh - 40px\);\s*overflow-y: auto;/,
+    );
+  });
+
+  it("marks the booking under way in the brand colour", () => {
+    expect(css).toMatch(
+      /\.my-booking\.ongoing \{\s*border-color: var\(--brand\);/,
+    );
+  });
+
+  it("keeps a note's line breaks and wraps a long word", () => {
+    expect(css).toMatch(
+      /\.my-booking-note \{\s*white-space: pre-wrap;\s*overflow-wrap: anywhere;/,
+    );
+  });
+
+  it("writes a status phrase in sentence case", () => {
+    expect(css).toMatch(/\.my-booking \.badge \{\s*text-transform: none;/);
+  });
+
+  it("keeps sign out red but an ordinary menu item plain", () => {
+    expect(css).toMatch(
+      /\.user-dropdown-item\.plain \{\s*color: var\(--text\);/,
+    );
+  });
+});

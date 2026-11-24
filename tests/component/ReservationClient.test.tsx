@@ -5,6 +5,7 @@ import {
   fireEvent,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -20,10 +21,22 @@ import {
 vi.mock("next/script", () => ({ default: () => null }));
 // Only what the screen hands it is of interest here; the menu has its own test.
 vi.mock("@/components/Topbar", () => ({
-  Topbar: (p: { username?: string; email?: string; signOutTo?: string }) => (
-    <div data-testid="topbar">
-      {[p.username, p.email, p.signOutTo].join("|")}
-    </div>
+  Topbar: (p: {
+    username?: string;
+    email?: string;
+    signOutTo?: string;
+    onMyBookings?: () => void;
+  }) => (
+    <>
+      <div data-testid="topbar">
+        {[p.username, p.email, p.signOutTo].join("|")}
+      </div>
+      {p.onMyBookings && (
+        <button type="button" onClick={p.onMyBookings}>
+          My bookings
+        </button>
+      )}
+    </>
   ),
 }));
 vi.mock("@/components/SiteFooter", () => ({ SiteFooter: () => null }));
@@ -899,6 +912,50 @@ describe("signed in with Google", () => {
     await user.click(document.body);
     expect(repeatOptions()).toEqual([]);
     expect(repeat()?.value).toBe("Every week for 2 weeks");
+  });
+
+  it("offers my bookings, and a cancel there frees the slot on the board", async () => {
+    server.taken = () =>
+      server.myWrites.length
+        ? []
+        : [{ start: "09:00", end: "10:00", label: "Booked" }];
+    server.member = member;
+    server.myBookings = [
+      {
+        id: "r9",
+        boothName: "Booth 1",
+        startsAt: `${DAYS[0]}T09:00`,
+        endsAt: `${DAYS[0]}T10:00`,
+        status: "confirmed",
+        phase: "upcoming",
+        createdAt: "2026-07-10T08:00:00.000Z",
+      },
+    ];
+    const { user } = mountForm({ maxRepeatWeeks: 8 });
+    await waitFor(() => expect(form.pick()).toBe("10:00-11:00"));
+    await user.click(screen.getByRole("button", { name: "My bookings" }));
+    const dialog = screen.getByRole("dialog", { name: "My bookings" });
+    await user.click(
+      await within(dialog).findByRole("button", { name: "Cancel" }),
+    );
+    const gets = server.gets.length;
+    await user.click(
+      within(dialog).getByRole("button", { name: "Yes, cancel" }),
+    );
+    await waitFor(() => expect(server.gets.length).toBeGreaterThan(gets));
+    expect(server.myWrites).toEqual([
+      { method: "DELETE", path: "/api/me/reservations/r9" },
+    ]);
+    expect(server.gets.at(-1)).toMatchObject({ booth: "booth-1", fresh: true });
+    // The pick the person had stays put while the board refreshes.
+    expect(form.pick()).toBe("10:00-11:00");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("offers a guest no my bookings", async () => {
+    await ready();
+    expect(screen.queryByRole("button", { name: "My bookings" })).toBeNull();
   });
 
   it("gives a guest no menu in the top bar", async () => {

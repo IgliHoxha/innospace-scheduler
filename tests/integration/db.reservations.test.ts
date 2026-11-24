@@ -847,3 +847,98 @@ describe("queryReservations page size", () => {
     expect(db.queryReservations({ pageSize: 1000 }).pageSize).toBe(100);
   });
 });
+
+describe("a member's own bookings", () => {
+  const NOW = at("12:00");
+
+  it("lists what is not over in start order, then the past newest first", async () => {
+    const later = await reserve("15:00", "16:00");
+    const now = await reserve("11:30", "12:30", { boothId: "booth-2" });
+    const early = await reserve("08:00", "09:00");
+    const earlier = await reserve("06:00", "07:00");
+    const { current, past } = db.reservationsForEmail(
+      "ada@example.com",
+      NOW,
+      20,
+    );
+    expect(current.map((r) => r.id)).toEqual([now.id, later.id]);
+    expect(past.map((r) => r.id)).toEqual([early.id, earlier.id]);
+  });
+
+  it("matches the mailbox, not the spelling, and nobody else's", async () => {
+    const own = await reserve("15:00", "16:00", {
+      email: "a.da+desk@gmail.com",
+    });
+    await reserve("17:00", "18:00", { email: "grace@example.com" });
+    const { current } = db.reservationsForEmail("ADA@googlemail.com", NOW, 20);
+    expect(current.map((r) => r.id)).toEqual([own.id]);
+  });
+
+  it("keeps a cancelled booking but never a deleted one", async () => {
+    const kept = await reserve("15:00", "16:00");
+    const gone = await reserve("17:00", "18:00");
+    db.updateReservationStatus(kept.id, "cancelled");
+    db.updateReservationStatus(gone.id, "deleted");
+    const { current } = db.reservationsForEmail("ada@example.com", NOW, 20);
+    expect(current.map((r) => [r.id, r.status])).toEqual([
+      [kept.id, "cancelled"],
+    ]);
+  });
+
+  it("caps the past at the limit it is given", async () => {
+    await reserve("06:00", "07:00");
+    await reserve("08:00", "09:00");
+    const { past } = db.reservationsForEmail("ada@example.com", NOW, 1);
+    expect(past.map((r) => r.startsAt)).toEqual([at("08:00")]);
+  });
+});
+
+describe("updateReservationEnd", () => {
+  it("moves the end and stamps the change", async () => {
+    const r = await reserve("10:00", "11:00");
+    const moved = db.updateReservationEnd(r.id, at("11:30"));
+    expect(moved?.endsAt).toBe(at("11:30"));
+    expect(moved!.updatedAt >= r.updatedAt).toBe(true);
+    expect(db.getReservation(r.id)?.endsAt).toBe(at("11:30"));
+  });
+
+  it("does not clash with the booking it is moving", async () => {
+    const r = await reserve("10:00", "11:00");
+    expect(db.updateReservationEnd(r.id, at("10:30"))?.endsAt).toBe(
+      at("10:30"),
+    );
+  });
+
+  it("refuses to run into the next booking on the booth, changing nothing", async () => {
+    const r = await reserve("10:00", "11:00");
+    await reserve("11:30", "12:00", { email: "grace@example.com" });
+    expect(() => db.updateReservationEnd(r.id, at("11:45"))).toThrow(
+      db.SlotUnavailableError,
+    );
+    expect(db.getReservation(r.id)?.endsAt).toBe(at("11:00"));
+  });
+
+  it("may end exactly where the next booking starts", async () => {
+    const r = await reserve("10:00", "11:00");
+    await reserve("11:30", "12:00", { email: "grace@example.com" });
+    expect(db.updateReservationEnd(r.id, at("11:30"))?.endsAt).toBe(
+      at("11:30"),
+    );
+  });
+
+  it("refuses to overlap the same person's booking on another booth", async () => {
+    const r = await reserve("10:00", "11:00");
+    await reserve("11:15", "12:00", { boothId: "booth-2" });
+    expect(() => db.updateReservationEnd(r.id, at("11:30"))).toThrow(
+      db.UserBusyError,
+    );
+  });
+
+  it("returns null for a cancelled or missing booking", async () => {
+    const r = await reserve("10:00", "11:00");
+    db.updateReservationStatus(r.id, "cancelled");
+    expect(db.updateReservationEnd(r.id, at("11:30"))).toBeNull();
+    expect(db.updateReservationEnd("nope", at("11:30"))).toBeNull();
+    expect(db.getReservation(r.id)?.endsAt).toBe(at("11:00"));
+  });
+});

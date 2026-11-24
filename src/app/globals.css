@@ -265,6 +265,113 @@ button {
   background: #fef2f2;
 }
 
+/* Sign out stays red; an ordinary item reads as one. */
+.user-dropdown-item.plain {
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.user-dropdown-item.plain:hover {
+  background: #f4f6f8;
+}
+
+.my-bookings-modal {
+  position: relative;
+  max-width: 560px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.my-bookings-group h3 {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.my-bookings-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.my-booking {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+/* The one under way is the one with something to decide, so it stands out. */
+.my-booking.ongoing {
+  border-color: var(--brand);
+  background: #f3fbfa;
+}
+
+.my-booking.past,
+.my-booking.past .my-booking-facts dd {
+  color: var(--muted);
+}
+
+/* The dashboard capitalises a one-word status; these are phrases, so sentence case. */
+.my-booking .badge {
+  text-transform: none;
+}
+
+.my-booking-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Label and value side by side, so four facts stay four short lines. */
+.my-booking-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.my-booking-facts dt {
+  color: var(--muted);
+}
+
+.my-booking-facts dd {
+  margin: 0;
+  color: var(--text);
+}
+
+/* A note is the booker's own words, so its line breaks are kept and a long word wraps. */
+.my-booking-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.my-booking-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.my-booking-actions .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.my-booking-ask {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .topbar-right {
   display: flex;
   align-items: center;
