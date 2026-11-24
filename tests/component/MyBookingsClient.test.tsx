@@ -362,6 +362,8 @@ describe("moving the end of a booking under way", () => {
 
   it("opens on the current end with Save off until it changes", () => {
     mount(pageOf([ongoing()]));
+    // In the scope that gives the fields a solid border, and the small size.
+    expect(field("hours").closest(".tp-scope.my-booking-end")).not.toBeNull();
     expect([field("hours").value, field("minutes").value]).toEqual([
       "12",
       "30",

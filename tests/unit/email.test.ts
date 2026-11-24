@@ -83,6 +83,38 @@ describe("email logo", () => {
     expect(svg).not.toContain("prefers-color-scheme");
   });
 
+  it("writes the business name in black in the footer, before its website link", async () => {
+    vi.stubEnv("BUSINESS_NAME", "Innospace Tirana");
+    expect(await reservationHtml()).toContain(
+      '<span style="color:#000000">Innospace Tirana</span> · <a href="https://test.test"',
+    );
+  });
+
+  it("credits Stack Rover in the footer, as the website does, with its mark and link", async () => {
+    const html = await reservationHtml();
+    expect(html).toContain(
+      '<span style="float:right"><a href="https://stackrover.tech"',
+    );
+    expect(html).toContain(
+      '<img src="https://scheduler.example.test/stackrover-mark.png?v=1" alt="" width="22" height="22"',
+    );
+    expect(html).toContain(
+      'Created by <span style="font-size:13px;font-weight:700;color:#000000">stackrover.tech</span>',
+    );
+  });
+
+  // Most mail apps will not draw an SVG image, so the credit's mark ships as a PNG.
+  it("ships the credit mark as a real PNG", () => {
+    const png = readFileSync(
+      join(process.cwd(), "public", "stackrover-mark.png"),
+    );
+    expect(png.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(png.readUInt32BE(16)).toBe(88);
+    expect(png.readUInt32BE(20)).toBe(88);
+  });
+
   it("builds the header without a table, so the card is not split", async () => {
     const html = await reservationHtml();
     expect(html).not.toContain("<table");
@@ -193,9 +225,10 @@ describe("cancel link", () => {
     );
   });
 
-  it("inks the button label neutral", async () => {
+  // Red, like the app's own cancel actions, so it reads as the one that undoes the booking.
+  it("draws the cancel button solid red with a white label", async () => {
     expect(await reservationHtml()).toContain(
-      "color:#000000;text-decoration:none",
+      "background:#b91c1c;border:1px solid #b91c1c;color:#ffffff;text-decoration:none",
     );
   });
 });
@@ -335,6 +368,31 @@ describe("linkified body", () => {
     expect(htmlOf()).toContain(
       '<a href="tel:+355692192666" style="color:#25bdad">+355 69 219 2666</a>',
     );
+  });
+
+  // Same number as the phone line, but opened in WhatsApp, which wants bare digits.
+  it("links the number on the WhatsApp line to WhatsApp, not the dialler", async () => {
+    await email.sendReservationEmail(
+      RESERVATION,
+      "confirmed",
+      "Phone: +355 69 219 2666\nWhatsApp: +355 69 219 2666",
+    );
+    const html = htmlOf();
+    expect(html).toContain(
+      'Phone: <a href="tel:+355692192666" style="color:#25bdad">+355 69 219 2666</a>',
+    );
+    expect(html).toContain(
+      'WhatsApp: <a href="https://wa.me/355692192666" style="color:#25bdad">+355 69 219 2666</a>',
+    );
+  });
+
+  it("closes every email with the WhatsApp line under the phone", async () => {
+    vi.stubEnv("BUSINESS_PHONE", "+355 69 219 2666");
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    const html = htmlOf();
+    expect(html).toContain('href="https://wa.me/355692192666"');
+    expect(html.indexOf("Phone:")).toBeLessThan(html.indexOf("WhatsApp:"));
+    expect(html.indexOf("WhatsApp:")).toBeLessThan(html.indexOf("Email:"));
   });
 
   it("leaves years, prices and street numbers alone", async () => {
@@ -569,7 +627,9 @@ describe("escaping the env-supplied copy", () => {
     vi.stubEnv("BUSINESS_NAME", 'Smith & Sons <"Tirana">');
     const html = await reservationHtml();
     expect(html).toContain('alt="Smith &amp; Sons &lt;&quot;Tirana&quot;&gt;"');
-    expect(html).toContain("Smith &amp; Sons &lt;&quot;Tirana&quot;&gt; · <a");
+    expect(html).toContain(
+      "Smith &amp; Sons &lt;&quot;Tirana&quot;&gt;</span> · <a",
+    );
     expect(html).not.toContain("Smith & Sons");
   });
 
@@ -613,18 +673,47 @@ describe("escaping the env-supplied copy", () => {
   });
 });
 
+// The inbox shows the app's name, never the bare sending address.
+describe("the sender", () => {
+  const sentFrom = () => send.mock.calls.at(-1)![0].from as string;
+
+  it("puts the app's name in front of a bare EMAIL_FROM", async () => {
+    vi.stubEnv("EMAIL_FROM", "scheduler@innospacetirana.com");
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sentFrom()).toBe(
+      "Innospace Scheduler <scheduler@innospacetirana.com>",
+    );
+  });
+
+  it("ignores spaces around the address", async () => {
+    vi.stubEnv("EMAIL_FROM", "  scheduler@innospacetirana.com ");
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sentFrom()).toBe(
+      "Innospace Scheduler <scheduler@innospacetirana.com>",
+    );
+  });
+
+  it("leaves an EMAIL_FROM that already names itself as it is", async () => {
+    vi.stubEnv("EMAIL_FROM", "Front Desk <desk@innospacetirana.com>");
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sentFrom()).toBe("Front Desk <desk@innospacetirana.com>");
+  });
+});
+
 // A reply follows Reply-To, so the sender mailbox never has to be read.
 describe("the reply address", () => {
   const sentReplyTo = (call: number = 0) =>
     send.mock.calls[call][0].replyTo as string | undefined;
 
-  it("sends every status with EMAIL_REPLY_TO as the Reply-To, from EMAIL_FROM unchanged", async () => {
+  it("sends every status with EMAIL_REPLY_TO as the Reply-To, from EMAIL_FROM", async () => {
     vi.stubEnv("EMAIL_REPLY_TO", "info@example.test");
     for (const status of ["confirmed", "pending", "cancelled"] as const) {
       send.mockClear();
       await email.sendReservationEmail(RESERVATION, status);
       expect(sentReplyTo()).toBe("info@example.test");
-      expect(send.mock.calls[0][0].from).toBe("onboarding@resend.dev");
+      expect(send.mock.calls[0][0].from).toBe(
+        "Innospace Scheduler <onboarding@resend.dev>",
+      );
     }
   });
 
@@ -711,19 +800,16 @@ describe("the accent rule under the header", () => {
   });
 });
 
-describe("adding the booking to a calendar", () => {
+describe("the booking in the booker's calendar", () => {
   type Sent = {
     html: string;
     attachments?: { filename: string; content: Buffer; contentType: string }[];
   };
   const sent = () => send.mock.calls.at(-1)![0] as Sent;
-  const ics = () => sent().attachments![0].content.toString("utf8");
-  const googleLink = () =>
-    new URL(
-      /href="(https:\/\/calendar\.google\.com\/[^"]+)"/
-        .exec(sent().html)![1]
-        .replace(/&amp;/g, "&"),
-    );
+  const ics = () =>
+    sent().attachments![0].content.toString("utf8").replace(/\r\n /g, "");
+  const field = (name: string) =>
+    new RegExp(`^${name}:(.*)$`, "m").exec(ics().replace(/\r/g, ""))?.[1];
   const week = (n: number): Reservation => ({
     ...RESERVATION,
     id: `rs_${n}`,
@@ -739,85 +825,99 @@ describe("adding the booking to a calendar", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("attaches an .ics of the booking to a confirmation", async () => {
+  it("sends a confirmation as a calendar invitation", async () => {
     await email.sendReservationEmail(
       { ...RESERVATION, note: "Client call" },
       "confirmed",
     );
     const [file] = sent().attachments!;
     expect(file.filename).toBe("booking.ics");
+    // The method in the type is what a mail app keys on to file it as an invitation.
     expect(file.contentType).toBe(
-      "text/calendar; charset=utf-8; method=PUBLISH",
+      "text/calendar; charset=utf-8; method=REQUEST",
     );
-    const text = ics().replace(/\r\n /g, "");
-    expect(text).toContain("UID:rs_1@scheduler.example.test");
-    expect(text).toContain("SUMMARY:Booth 1 at Test Org");
-    expect(text).toContain("STATUS:CONFIRMED");
-    expect(text).toContain("Note: Client call");
-    expect(text).toContain("Questions: +000 000\\, hello@test.test");
+    expect(field("METHOD")).toBe("REQUEST");
+    expect(field("UID")).toBe("rs_1@scheduler.example.test");
+    expect(field("SUMMARY")).toBe("Booth 1 at Test Org");
+    expect(field("STATUS")).toBe("CONFIRMED");
+    expect(ics()).toContain("Note: Client call");
+    expect(ics()).toContain('ORGANIZER;CN="Test Org":mailto:hello@test.test');
+    expect(ics()).toContain('ATTENDEE;CN="Ada";');
+    expect(ics()).toContain(":mailto:ada@example.com");
   });
 
-  it("offers a Google Calendar button and points everyone else at the file", async () => {
+  it("says so in the email, and no longer offers a Google button", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed");
-    expect(sent().html).toContain("Add to Google Calendar");
+    expect(sent().html).toContain("This email is a calendar invitation.");
     expect(sent().html).toContain("open the attached booking.ics.");
-    const link = googleLink();
-    expect(link.searchParams.get("text")).toBe("Booth 1 at Test Org");
-    expect(link.searchParams.get("dates")).toBe(
-      "20260716T093000/20260716T110000",
-    );
-    expect(link.searchParams.get("ctz")).toBe(
-      Intl.DateTimeFormat().resolvedOptions().timeZone,
-    );
+    expect(sent().html).not.toContain("calendar.google.com");
   });
 
-  it("puts the calendar above the cancel link", async () => {
+  it("puts that line above the cancel link", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed");
     const html = sent().html;
-    expect(html.indexOf("Add to Google Calendar")).toBeLessThan(
+    expect(html.indexOf("calendar invitation")).toBeLessThan(
       html.indexOf("Cancel this reservation"),
     );
   });
 
-  it("marks a pending request tentative, in the file and the title", async () => {
+  it("marks a pending request tentative, and its approval replaces it", async () => {
     await email.sendReservationEmail(RESERVATION, "pending");
-    expect(ics()).toContain("STATUS:TENTATIVE");
-    expect(googleLink().searchParams.get("text")).toBe(
-      "Booth 1 at Test Org (awaiting approval)",
+    expect(field("STATUS")).toBe("TENTATIVE");
+    expect(field("SUMMARY")).toBe("Booth 1 at Test Org (awaiting approval)");
+    const asked = Number(field("SEQUENCE"));
+
+    await email.sendReservationEmail(
+      { ...RESERVATION, updatedAt: "2026-07-02T09:00:00.000Z" },
+      "confirmed",
     );
+    expect(field("STATUS")).toBe("CONFIRMED");
+    expect(field("UID")).toBe("rs_1@scheduler.example.test");
+    expect(Number(field("SEQUENCE"))).toBeGreaterThan(asked);
   });
 
-  it("still adds it when the admin writes the body", async () => {
+  it("withdraws the entry when the admin cancels, under the same id and a higher version", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    const confirmed = Number(field("SEQUENCE"));
+    await email.sendReservationEmail(
+      {
+        ...RESERVATION,
+        status: "cancelled",
+        updatedAt: "2026-07-03T09:00:00.000Z",
+      },
+      "cancelled",
+      "Sorry, the booth is closed that day.",
+    );
+    expect(sent().attachments![0].contentType).toBe(
+      "text/calendar; charset=utf-8; method=CANCEL",
+    );
+    expect(field("METHOD")).toBe("CANCEL");
+    expect(field("STATUS")).toBe("CANCELLED");
+    expect(field("UID")).toBe("rs_1@scheduler.example.test");
+    expect(Number(field("SEQUENCE"))).toBeGreaterThan(confirmed);
+    expect(sent().html).toContain("takes it off your calendar");
+    expect(sent().html).not.toContain("calendar invitation");
+  });
+
+  it("still sends the invitation when the admin writes the body", async () => {
     await email.sendReservationEmail(RESERVATION, "confirmed", "Approved!");
     expect(sent().attachments).toHaveLength(1);
   });
 
-  it("adds nothing to a cancellation", async () => {
-    await email.sendReservationEmail(RESERVATION, "cancelled");
-    expect(sent().attachments).toBeUndefined();
-    expect(sent().html).not.toContain("calendar.google.com");
-  });
-
-  it("adds nothing once the booking is over", async () => {
+  it("sends nothing for the calendar once the booking is over", async () => {
     vi.setSystemTime(new Date("2026-07-16T11:01:00"));
     await email.sendReservationEmail(RESERVATION, "confirmed");
     expect(sent().attachments).toBeUndefined();
-    expect(sent().html).not.toContain("Add to Google Calendar");
+    await email.sendReservationEmail(RESERVATION, "cancelled");
+    expect(sent().attachments).toBeUndefined();
+    expect(sent().html).not.toContain("calendar");
   });
 
-  it("puts every date of a weekly series in the file and one repeat in the link", async () => {
+  it("invites to every date of a weekly series", async () => {
     const series = [week(0), week(1), week(2)];
     await email.sendReservationEmail(series[0], "confirmed", undefined, series);
     expect(ics().match(/BEGIN:VEVENT/g)).toHaveLength(3);
     expect(ics()).toContain("UID:rs_2@scheduler.example.test");
-    expect(googleLink().searchParams.get("recur")).toBe(
-      "RRULE:FREQ=WEEKLY;COUNT=3",
-    );
-    expect(sent().html).toContain("it holds all 3 dates.");
-  });
-
-  it("escapes the link in the HTML", async () => {
-    await email.sendReservationEmail(RESERVATION, "confirmed");
-    expect(sent().html).toMatch(/href="https:\/\/calendar[^"]*&amp;dates=/);
+    expect(sent().html).toContain("calendar invitation for all 3 dates");
   });
 });

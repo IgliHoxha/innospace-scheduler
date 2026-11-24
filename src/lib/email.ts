@@ -4,13 +4,20 @@ import { createCancelToken, createSeriesCancelToken } from "./auth";
 import { boothName } from "./booths";
 import { epochMsOf } from "./datetime";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
-import { googleCalendarUrl, icsCalendar, type CalendarEvent } from "./calendar";
+import {
+  icsCalendar,
+  sequenceOf,
+  type CalendarEvent,
+  type CalendarMethod,
+  type CalendarStatus,
+} from "./calendar";
 import type { ContactInfo, Reservation } from "./types";
 import {
   emailBodyText,
   emailHeading,
   emailPreheader,
   emailSubject,
+  WHATSAPP_LABEL,
   type EmailStatus,
   type Series,
 } from "./templates";
@@ -33,6 +40,19 @@ const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
   return `${baseUrl()}/logo-mark.svg?v=${LOGO_VERSION}`;
+}
+
+// A PNG, not the website's inline SVG: most mail apps will not draw an SVG image.
+const CREDIT_MARK_VERSION = "1";
+const CREDIT_URL = "https://stackrover.tech";
+
+function creditMarkUrl(): string {
+  return `${baseUrl()}/stackrover-mark.png?v=${CREDIT_MARK_VERSION}`;
+}
+
+// The website footer's "Created by" pill, floated right since the email holds no table.
+function creditPill(): string {
+  return `<a href="${CREDIT_URL}" style="display:inline-block;padding:4px 12px 4px 4px;border-radius:9999px;background:#f6f5f6;border:1px solid #e2dfe2;color:${INK};text-decoration:none;font-size:12px;line-height:22px;white-space:nowrap"><img src="${escapeHtml(creditMarkUrl())}" alt="" width="22" height="22" style="width:22px;height:22px;vertical-align:middle;border:0;margin-right:8px" /><span style="vertical-align:middle">Created by <span style="font-size:13px;font-weight:700;color:${INK}">stackrover.tech</span></span></a>`;
 }
 
 // 329x308 artwork scaled to 32px tall; CSS-less clients need the attributes.
@@ -60,8 +80,13 @@ function client(): Resend | null {
   return _resend;
 }
 
+// What the inbox shows as the sender, in place of the bare address.
+const SENDER_NAME = "Innospace Scheduler";
+
+/** EMAIL_FROM with the app's name in front, unless it already carries a name of its own. */
 function from(): string {
-  return requireEnv("EMAIL_FROM");
+  const address = requireEnv("EMAIL_FROM").trim();
+  return address.includes("<") ? address : `${SENDER_NAME} <${address}>`;
 }
 
 // Where a reply lands instead of the sender; unset keeps the sender replyable.
@@ -90,12 +115,22 @@ function textToHtml(text: string): string {
         .replace(/\n/g, "<br/>")
         .replace(
           LINKABLE,
-          (match, url?: string, mail?: string, phone?: string) => {
+          (
+            match: string,
+            url: string | undefined,
+            mail: string | undefined,
+            phone: string | undefined,
+            at: number,
+            line: string,
+          ) => {
             const link = (href: string, label: string) =>
               `<a href="${href}" style="color:${BRAND}">${label}</a>`;
             if (url) return link(url, url);
             if (mail) return link(`mailto:${mail}`, mail);
             // tel: wants digits only; the visible text keeps its spacing.
+            // The same number, opened in WhatsApp rather than dialled.
+            if (phone && line.slice(0, at).endsWith(`${WHATSAPP_LABEL} `))
+              return link(`https://wa.me/${phone.replace(/\D/g, "")}`, phone);
             if (phone)
               return link(`tel:${phone.replace(/[^\d+]/g, "")}`, phone);
             return match;
@@ -142,8 +177,9 @@ function shell(opts: {
         <h1 style="margin:0 0 16px;color:${accent};font-size:22px">${heading}</h1>
         ${bodyHtml}
       </div>
-      <div style="padding:16px 28px;background:${COLORS.footerBg};border-top:1px solid ${COLORS.divider};color:${COLORS.footerText};font-size:12px">
-        ${escapeHtml(org)}${footerLink}
+      <div style="padding:14px 28px;background:${COLORS.footerBg};border-top:1px solid ${COLORS.divider};color:${COLORS.footerText};font-size:12px;line-height:32px;overflow:hidden">
+        <span style="float:right">${creditPill()}</span>
+        <span style="color:${INK}">${escapeHtml(org)}</span>${footerLink}
       </div>
     </div>
   </div>`;
@@ -153,7 +189,7 @@ function cancelBlock(token: string, label: string, note: string): string {
   const link = `${baseUrl()}/cancel?token=${encodeURIComponent(token)}`;
   return `
     <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
-      <a href="${escapeHtml(link)}" style="display:inline-block;border:1px solid ${COLORS.border};color:${INK};text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">${label}</a>
+      <a href="${escapeHtml(link)}" style="display:inline-block;background:${COLORS.statusCancelled};border:1px solid ${COLORS.statusCancelled};color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">${label}</a>
       <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">${note}</p>
     </div>`;
 }
@@ -188,15 +224,20 @@ function seriesCancelButton(series: Series): string {
 
 const ICS_FILENAME = "booking.ics";
 
+const CALENDAR_STATUS: Record<EmailStatus, CalendarStatus> = {
+  confirmed: "CONFIRMED",
+  pending: "TENTATIVE",
+  cancelled: "CANCELLED",
+};
+
 function calendarEvent(
   r: Reservation,
   status: EmailStatus,
   contact: ContactInfo,
 ): CalendarEvent {
-  const tentative = status === "pending";
   const booth = boothName(r.boothId);
   const lines = [
-    tentative
+    status === "pending"
       ? `Your ${booth} request at ${contact.org}, awaiting approval. The slot is held for you meanwhile.`
       : `Your ${booth} reservation at ${contact.org}.`,
     ...(r.note?.trim() ? [`Note: ${r.note.trim()}`] : []),
@@ -208,45 +249,48 @@ function calendarEvent(
     uid: `${r.id}@${new URL(baseUrl()).hostname}`,
     startsAt: r.startsAt ?? "",
     endsAt: r.endsAt ?? "",
-    title: `${booth} at ${contact.org}${tentative ? " (awaiting approval)" : ""}`,
+    title: `${booth} at ${contact.org}${status === "pending" ? " (awaiting approval)" : ""}`,
     location: contact.org,
     description: lines.join("\n"),
-    tentative,
+    status: CALENDAR_STATUS[status],
+    sequence: sequenceOf(r.updatedAt),
+    organizer: { name: contact.org, email: contact.email },
+    attendee: {
+      name: r.fullName?.trim() || r.email || "",
+      email: r.email ?? "",
+    },
   };
 }
 
-/** The add-to-calendar button and the .ics it points to, or nothing once there is nothing ahead. */
+/** The invitation, or its withdrawal on a cancel; nothing once the booking is over. */
 function calendarParts(
   reservation: Reservation,
   status: EmailStatus,
   contact: ContactInfo,
   weekly: Series | undefined,
 ): { html: string; attachment: Attachment } | null {
-  if (status === "cancelled") return null;
   const dates = weekly ?? [reservation];
   const last = dates[dates.length - 1];
   if (!last.endsAt || !(epochMsOf(last.endsAt) > Date.now())) return null;
 
+  const method: CalendarMethod = status === "cancelled" ? "CANCEL" : "REQUEST";
   const events = dates.map((r) => calendarEvent(r, status, contact));
-  const ics = icsCalendar(events, new Date());
+  const ics = icsCalendar(events, method, new Date());
   if (!ics) return null;
 
-  // The process zone is the space's (TZ is set on the server), as for every stored time.
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const google = googleCalendarUrl(events[0], zone, dates.length);
-  const other = weekly
-    ? `For Apple Calendar, Outlook and others, open the attached ${ICS_FILENAME}: it holds all ${dates.length} dates.`
-    : `For Apple Calendar, Outlook and others, open the attached ${ICS_FILENAME}.`;
+  const line =
+    method === "CANCEL"
+      ? `The attached ${ICS_FILENAME} takes it off your calendar.`
+      : weekly
+        ? `This email is a calendar invitation for all ${dates.length} dates. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}.`
+        : `This email is a calendar invitation. Most mail apps add it on their own; if yours doesn't, open the attached ${ICS_FILENAME}.`;
   return {
-    html: `
-    <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
-      <a href="${escapeHtml(google)}" style="display:inline-block;background:${BRAND};color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Add to Google Calendar</a>
-      <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">${other}</p>
-    </div>`,
+    html: `<p style="margin:18px 0 0;color:${COLORS.emailMuted};font-size:12px">${line}</p>`,
     attachment: {
       filename: ICS_FILENAME,
       content: Buffer.from(ics, "utf8"),
-      contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+      // The method in the type is what makes a mail app treat it as an invitation.
+      contentType: `text/calendar; charset=utf-8; method=${method}`,
     },
   };
 }

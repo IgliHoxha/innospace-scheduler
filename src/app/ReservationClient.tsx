@@ -242,6 +242,8 @@ export default function ReservationClient({
     repeatWeeks,
   });
   const refusal = verdictFor(refused, attempt);
+  // A refusal's reload can make the form reach the same verdict; say it once.
+  const serverSays = refusal || error;
   // Outlives typing in the note box, which does not change the attempt.
   const demanded = verdictFor(noteDemands, attempt);
   const noteNeeded = mustNote || !!demanded;
@@ -620,7 +622,9 @@ export default function ReservationClient({
 
         {signInNotice && <p className="error">{signInNotice}</p>}
         {problem && <p className="error">{problem}</p>}
-        {(refusal || error) && <p className="error">{refusal || error}</p>}
+        {serverSays && serverSays !== problem && (
+          <p className="error">{serverSays}</p>
+        )}
         {success && <p className="success">{success}</p>}
 
         <ReserveBar

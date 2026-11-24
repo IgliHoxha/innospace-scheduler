@@ -425,6 +425,35 @@ describe("a refused pick", () => {
   });
 });
 
+describe("a start that passes while Reserve is pressed", () => {
+  // The refusal's reload moves "now" past the pick, so the form reaches the same verdict.
+  it("says it has passed once, not once for the server and again for the form", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    server.replies.push({
+      status: 400,
+      body: { ok: false, error: "That time has already passed." },
+    });
+    server.earliest = "09:30";
+    await user.click(form.reserve());
+    await waitFor(() => expect(server.gets.at(-1)?.fresh).toBe(true));
+    await waitFor(() =>
+      expect(form.alerts()).toEqual(["That time has already passed."]),
+    );
+    expect(form.reserve().disabled).toBe(true);
+  });
+
+  it("still shows both when the server and the form disagree", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    server.replies.push(reply.clash);
+    server.earliest = "09:30";
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.alerts()).toHaveLength(2));
+    expect(form.alerts()).toContain("That time has already passed.");
+  });
+});
+
 describe("a booking that goes through", () => {
   it("sends the slot and the booker, confirms, and starts over", async () => {
     const { user } = await ready();

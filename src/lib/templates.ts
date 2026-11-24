@@ -130,6 +130,9 @@ function detailLines(
   ];
 }
 
+/** The mailer links a number after this label to WhatsApp instead of the phone. */
+export const WHATSAPP_LABEL = "WhatsApp:";
+
 // The one sign-off every email closes with; EMAIL_SIGNOFF_NAME carries the org.
 export function signOff(contact: ContactInfo): string[] {
   return [
@@ -137,6 +140,7 @@ export function signOff(contact: ContactInfo): string[] {
     contact.name,
     "",
     `Phone: ${contact.phone}`,
+    `${WHATSAPP_LABEL} ${contact.phone}`,
     `Email: ${contact.email}`,
   ];
 }

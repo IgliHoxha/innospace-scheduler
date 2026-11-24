@@ -137,12 +137,13 @@ describe("email copy", () => {
 });
 
 describe("contact footer", () => {
-  it("signOff is the canonical closing: Best regards, name, phone, email", () => {
+  it("signOff is the canonical closing: Best regards, name, phone, WhatsApp, email", () => {
     expect(t.signOff(contact)).toEqual([
       "Best regards,",
       "Alex",
       "",
       "Phone: +000 1",
+      "WhatsApp: +000 1",
       "Email: hi@test.co",
     ]);
   });
@@ -158,6 +159,7 @@ describe("contact footer", () => {
       expect(body).toContain("Best regards,");
       expect(body).toContain("Alex");
       expect(body).toContain("Phone: +000 1");
+      expect(body).toContain("WhatsApp: +000 1");
       expect(body).toContain("Email: hi@test.co");
     }
   });
@@ -380,6 +382,7 @@ describe("the whole email body, line for line", () => {
         "Alex",
         "",
         "Phone: +000 1",
+        "WhatsApp: +000 1",
         "Email: hi@test.co",
       ].join("\n"),
     );
@@ -403,6 +406,7 @@ describe("the whole email body, line for line", () => {
           "Alex",
           "",
           "Phone: +000 1",
+          "WhatsApp: +000 1",
           "Email: hi@test.co",
         ].join("\n"),
       );
@@ -427,6 +431,7 @@ describe("the whole email body, line for line", () => {
         "Alex",
         "",
         "Phone: +000 1",
+        "WhatsApp: +000 1",
         "Email: hi@test.co",
       ].join("\n"),
     );
@@ -450,6 +455,7 @@ describe("the whole email body, line for line", () => {
           "Alex",
           "",
           "Phone: +000 1",
+          "WhatsApp: +000 1",
           "Email: hi@test.co",
         ].join("\n"),
       );
@@ -471,6 +477,7 @@ describe("the whole email body, line for line", () => {
         "Alex",
         "",
         "Phone: +000 1",
+        "WhatsApp: +000 1",
         "Email: hi@test.co",
       ].join("\n"),
     );
@@ -491,6 +498,7 @@ describe("the whole email body, line for line", () => {
         "Alex",
         "",
         "Phone: +000 1",
+        "WhatsApp: +000 1",
         "Email: hi@test.co",
       ].join("\n"),
     );

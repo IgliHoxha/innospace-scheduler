@@ -163,7 +163,7 @@ function EndEditor({
   return (
     <div className="my-booking-actions">
       <span className="my-booking-ask">Ends at</span>
-      <div className="tp-inputs">
+      <div className="tp-scope tp-inputs my-booking-end">
         <TimePickerInput
           picker="hours"
           id={`${fieldId}-hours`}

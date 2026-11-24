@@ -132,6 +132,7 @@ const letter = (hello: string, what: string) =>
     "Test Signer",
     "",
     "Phone: +000 000",
+    "WhatsApp: +000 000",
     "Email: hello@test.test",
   ].join("\n");
 
