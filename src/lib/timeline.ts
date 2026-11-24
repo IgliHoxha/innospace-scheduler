@@ -348,6 +348,25 @@ export function seedGap(
   return gaps[0] ?? null;
 }
 
+/** Quick lengths offered beside the time fields, in minutes. */
+const LENGTH_PRESETS = [15, 30, 45] as const;
+
+/** Each preset's end from this start, null where it would run into a booking or the day's end. */
+export function presetEnds(
+  startMin: number,
+  gaps: readonly { from: number; to: number }[],
+  stepMin: number,
+  minDurationMin: number,
+): { minutes: number; end: number | null }[] {
+  const gap = gaps.find((g) => startMin >= g.from && startMin < g.to);
+  return LENGTH_PRESETS.filter(
+    (m) => m >= minDurationMin && m % stepMin === 0,
+  ).map((minutes) => ({
+    minutes,
+    end: gap && startMin + minutes <= gap.to ? startMin + minutes : null,
+  }));
+}
+
 /** Null when the start landed in no free stretch. */
 export function endForStart(
   startMin: number,

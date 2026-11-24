@@ -383,6 +383,18 @@ button {
   white-space: nowrap;
 }
 
+/* Same bottom margin as the pill, so both centre on the input boxes. */
+.length-presets {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.length-presets .chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .time-field {
   display: flex;
   flex-direction: column;
@@ -805,21 +817,83 @@ button {
   box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
 }
 
-/* The repeat picker sits beside the inputs, so it wears their box. */
-.guest-field select {
-  padding: 10px 12px;
+/* .card scrolls sideways for the dashboard table, which would clip the dropdown's list. */
+.card.repeat-card {
+  overflow: visible;
+}
+
+/* The innospace-hub dropdown: its .control box, chevron and floating list. */
+.combo {
+  position: relative;
+}
+
+.combo .combo-input {
+  width: 100%;
+  padding: 9px 36px 9px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   font: inherit;
   font-size: 14px;
   color: var(--text);
-  background: var(--card);
+  background: #fff;
+  outline: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
 }
 
-.guest-field select:focus {
-  outline: none;
+.combo .combo-input:focus {
+  cursor: text;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.18);
+  box-shadow: 0 0 0 3px rgba(37, 189, 173, 0.15);
+}
+
+.combo-chevron {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.combo-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 264px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(82, 69, 82, 0.16);
+}
+
+.combo-option {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+/* One highlight for arrow keys and pointer alike, so Enter takes the row that looks picked. */
+.combo-option.is-active {
+  background: rgba(37, 189, 173, 0.14);
+}
+
+.combo-option[aria-selected="true"] {
+  font-weight: 600;
+}
+
+.combo-empty {
+  padding: 10px;
+  font-size: 14px;
+  color: var(--muted);
 }
 
 /* The mark keeps its own colours: the ghost button must not tint it. */

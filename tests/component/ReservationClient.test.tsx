@@ -714,7 +714,15 @@ describe("signed in with Google", () => {
   const labels = () =>
     [...document.querySelectorAll(".field-label")].map((l) => l.textContent);
   const repeat = () =>
-    document.getElementById("repeatWeeks") as HTMLSelectElement | null;
+    document.getElementById("repeatWeeks") as HTMLInputElement | null;
+  const repeatOptions = () =>
+    screen.queryAllByRole("option").map((o) => o.textContent);
+
+  /** Opens the dropdown and clicks the row, the way a person picks. */
+  async function chooseRepeat(user: User, label: string) {
+    await user.click(repeat()!);
+    await user.click(screen.getByRole("option", { name: label }));
+  }
 
   async function readyAsMember(props = {}) {
     server.member = member;
@@ -759,12 +767,18 @@ describe("signed in with Google", () => {
 
   it("offers a weekly repeat, says so in the summary, and sends the count", async () => {
     const { user } = await readyAsMember();
-    expect(repeat()?.value).toBe("1");
-    expect([...repeat()!.options].map((o) => o.textContent)).toEqual([
+    expect(repeat()?.value).toBe("Just this once");
+    expect(repeatOptions()).toEqual([]);
+    await user.click(repeat()!);
+    expect(repeatOptions()).toEqual([
       "Just this once",
       ...[2, 3, 4, 5, 6, 7, 8].map((n) => `Every week for ${n} weeks`),
     ]);
-    await user.selectOptions(repeat()!, "3");
+    await user.click(
+      screen.getByRole("option", { name: "Every week for 3 weeks" }),
+    );
+    expect(repeat()?.value).toBe("Every week for 3 weeks");
+    expect(repeatOptions()).toEqual([]);
     expect(document.querySelector(".reserve-summary")?.textContent).toContain(
       "every week for 3 weeks",
     );
@@ -816,7 +830,7 @@ describe("signed in with Google", () => {
       [`booth-1|${DAYS[0]}T09:00`, "tok-1"],
     ]);
     // Back to a single booking, so the next press cannot repeat by accident.
-    expect(repeat()?.value).toBe("1");
+    expect(repeat()?.value).toBe("Just this once");
   });
 
   it("sends no count for a single booking", async () => {
@@ -828,7 +842,7 @@ describe("signed in with Google", () => {
 
   it("lets a refusal of a repeat expire when the count changes", async () => {
     const { user } = await readyAsMember();
-    await user.selectOptions(repeat()!, "2");
+    await chooseRepeat(user, "Every week for 2 weeks");
     server.replies.push({
       status: 409,
       body: {
@@ -843,9 +857,48 @@ describe("signed in with Google", () => {
       ]),
     );
     expect(form.reserve().disabled).toBe(true);
-    await user.selectOptions(repeat()!, "1");
+    await chooseRepeat(user, "Just this once");
     expect(form.alerts()).toEqual([]);
     expect(form.reserve().disabled).toBe(false);
+  });
+
+  it("picks a repeat from the keyboard: arrows to open and move, Enter to take", async () => {
+    const { user } = await readyAsMember();
+    await user.click(repeat()!);
+    await user.keyboard("{Escape}");
+    expect(repeatOptions()).toEqual([]);
+    await user.keyboard("{ArrowDown}");
+    expect(repeat()?.getAttribute("aria-expanded")).toBe("true");
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(repeat()?.value).toBe("Every week for 3 weeks");
+    expect(repeatOptions()).toEqual([]);
+    expect(document.querySelector(".reserve-summary")?.textContent).toContain(
+      "every week for 3 weeks",
+    );
+  });
+
+  it("narrows the list to what is typed, and leaves the count on Escape", async () => {
+    const { user } = await readyAsMember();
+    await user.click(repeat()!);
+    await user.keyboard("5");
+    expect(repeatOptions()).toEqual(["Every week for 5 weeks"]);
+    await user.keyboard("x");
+    expect(repeatOptions()).toEqual([]);
+    expect(screen.getByRole("listbox").textContent).toBe(
+      "Nothing matches that.",
+    );
+    await user.keyboard("{Escape}");
+    expect(repeat()?.value).toBe("Just this once");
+  });
+
+  it("closes the list on a click elsewhere, keeping the count", async () => {
+    const { user } = await readyAsMember();
+    await chooseRepeat(user, "Every week for 2 weeks");
+    await user.click(repeat()!);
+    expect(repeatOptions()).toHaveLength(8);
+    await user.click(document.body);
+    expect(repeatOptions()).toEqual([]);
+    expect(repeat()?.value).toBe("Every week for 2 weeks");
   });
 
   it("gives a guest no menu in the top bar", async () => {
@@ -1119,5 +1172,57 @@ describe("the clock beside the time fields", () => {
     expect(clock.getAttribute("stroke")).toBe("currentColor");
     expect(clock.querySelector("circle")?.getAttribute("r")).toBe("10");
     expect(clock.querySelector("path")?.getAttribute("d")).toBe("M12 6v6l4 2");
+  });
+});
+
+describe("the quick length buttons", () => {
+  const length = (minutes: number) =>
+    screen.getByRole<HTMLButtonElement>("button", { name: `${minutes} min` });
+
+  it("sets the end that long after the start, leaving the start alone", async () => {
+    const { user } = await ready();
+    await user.click(length(30));
+    expect(form.pick()).toBe("09:00-09:30");
+    expect(length(30).getAttribute("aria-pressed")).toBe("true");
+    expect(length(15).getAttribute("aria-pressed")).toBe("false");
+    await user.click(length(15));
+    expect(form.pick()).toBe("09:00-09:15");
+    await user.click(length(45));
+    expect(form.pick()).toBe("09:00-09:45");
+  });
+
+  it("books the length it set", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    await user.click(length(45));
+    await user.click(form.reserve());
+    await waitFor(() => expect(server.posts).toHaveLength(1));
+    expect(server.posts[0]).toMatchObject({ start: "09:00", end: "09:45" });
+  });
+
+  it("follows a moved start", async () => {
+    const { user } = await ready();
+    await user.click(document.getElementById("start-hours")!);
+    await user.keyboard("{ArrowUp}");
+    expect(form.pick()).toBe("10:00-11:00");
+    await user.click(length(15));
+    expect(form.pick()).toBe("10:00-10:15");
+  });
+
+  it("is off for a length that would run into the next booking", async () => {
+    server.taken = () => [{ start: "09:30", end: "10:00", label: "Booked" }];
+    mountForm();
+    await waitFor(() => expect(form.pick()).toBe("09:00-09:30"));
+    expect(length(15).disabled).toBe(false);
+    expect(length(30).disabled).toBe(false);
+    expect(length(45).disabled).toBe(true);
+  });
+
+  it("offers only lengths a booking may have", async () => {
+    mountForm({ minReservationMinutes: 30 });
+    await waitFor(() => expect(form.pick()).not.toBeNull());
+    expect(screen.queryByRole("button", { name: "15 min" })).toBeNull();
+    expect(length(30)).toBeTruthy();
+    expect(length(45)).toBeTruthy();
   });
 });

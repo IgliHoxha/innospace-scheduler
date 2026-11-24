@@ -8,6 +8,7 @@ import DayTimeline from "./DayTimeline";
 import { BoothGrid } from "./_booking/BoothGrid";
 import { DateChips, type DateOption } from "./_booking/DateChips";
 import { GuestCard, type GuestErrors } from "./_booking/GuestCard";
+import { LengthPresets } from "./_booking/LengthPresets";
 import { RepeatCard } from "./_booking/RepeatCard";
 import { ReserveBar } from "./_booking/ReserveBar";
 import { TimeCard } from "./_booking/TimeCard";
@@ -40,6 +41,7 @@ import {
   endForStart,
   findFreeGaps,
   isDayOver,
+  presetEnds,
   seedGap,
   suggestedEndMin,
   wantedStartMin,
@@ -505,6 +507,22 @@ export default function ReservationClient({
                   <span className="duration-pill">
                     {formatDuration(duration)}
                   </span>
+                )}
+
+                {startMin != null && (
+                  <LengthPresets
+                    presets={presetEnds(
+                      startMin,
+                      freeGaps,
+                      stepMinutes,
+                      minReservationMinutes,
+                    )}
+                    current={duration}
+                    onPick={(endAt) => {
+                      setEnd(minutesToTime(endAt));
+                      setError("");
+                    }}
+                  />
                 )}
               </div>
 

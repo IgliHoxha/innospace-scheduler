@@ -80,6 +80,27 @@ export function ClockIcon() {
   );
 }
 
+/** Lucide's chevron-down, the mark the hub's dropdowns carry. */
+export function ChevronDownIcon() {
+  return (
+    <svg
+      className="combo-chevron"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 /** WhatsApp's own mark: recognised faster than the word next to it. */
 export function WhatsAppIcon() {
   return (

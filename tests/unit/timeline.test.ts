@@ -13,6 +13,7 @@ import {
   hourMarkMinutes,
   isDayOver,
   pickTagPlacement,
+  presetEnds,
   roomFor,
   scrollToShow,
   seedGap,
@@ -87,6 +88,64 @@ describe("suggestedEndMin", () => {
 
   it("returns null when even the minimum does not fit", () => {
     expect(suggestedEndMin(600, 620, 30, 60)).toBeNull();
+  });
+});
+
+describe("presetEnds", () => {
+  // 09:00-12:00 free, 12:00-14:00 taken, 14:00-15:00 free.
+  const gaps = [
+    { from: 540, to: 720 },
+    { from: 840, to: 900 },
+  ];
+  const ends = (start: number, step = 5, min = 15) =>
+    presetEnds(start, gaps, step, min).map((p) => [p.minutes, p.end]);
+
+  it("offers 15, 30 and 45 minutes from the start", () => {
+    expect(ends(600)).toEqual([
+      [15, 615],
+      [30, 630],
+      [45, 645],
+    ]);
+  });
+
+  it("refuses a length that would run into the next booking", () => {
+    expect(ends(690)).toEqual([
+      [15, 705],
+      [30, 720],
+      [45, null],
+    ]);
+  });
+
+  it("ends exactly on the booking's start, since ranges are half-open", () => {
+    expect(ends(675)).toEqual([
+      [15, 690],
+      [30, 705],
+      [45, 720],
+    ]);
+  });
+
+  it("measures from the stretch the start is in, not the first one", () => {
+    expect(ends(860)).toEqual([
+      [15, 875],
+      [30, 890],
+      [45, null],
+    ]);
+  });
+
+  it("refuses every length for a start inside a reservation", () => {
+    expect(ends(780)).toEqual([
+      [15, null],
+      [30, null],
+      [45, null],
+    ]);
+  });
+
+  it("drops a length under the minimum booking", () => {
+    expect(ends(600, 5, 30).map(([m]) => m)).toEqual([30, 45]);
+  });
+
+  it("drops a length off the step grid", () => {
+    expect(ends(600, 10).map(([m]) => m)).toEqual([30]);
   });
 });
 

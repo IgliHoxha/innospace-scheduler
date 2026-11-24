@@ -25,10 +25,47 @@ describe("who's booking: name and email", () => {
   });
 });
 
+describe("the quick length buttons", () => {
+  it("sit in a row lifted like the duration pill", () => {
+    expect(css).toMatch(
+      /\.length-presets \{\s*display: flex;\s*gap: 6px;\s*margin-bottom: 6px;/,
+    );
+  });
+
+  it("fade a length that is not free", () => {
+    expect(css).toMatch(
+      /\.length-presets \.chip:disabled \{\s*opacity: 0\.4;\s*cursor: not-allowed;/,
+    );
+  });
+});
+
 describe("a board that could not be loaded", () => {
   it("sets the message and its retry button side by side", () => {
     expect(css).toMatch(
       /\.load-failed \{\s*display: flex;\s*align-items: center;\s*gap: 12px;/,
     );
+  });
+});
+
+describe("the repeat dropdown", () => {
+  it("floats its list over the page below the field", () => {
+    expect(css).toMatch(
+      /\.combo-list \{\s*position: absolute;\s*z-index: 30;\s*top: calc\(100% \+ 4px\);/,
+    );
+  });
+
+  it("leaves room on the right for the chevron, which a click passes through", () => {
+    expect(css).toMatch(
+      /\.combo \.combo-input \{[^}]*padding: 9px 36px 9px 12px;/,
+    );
+    expect(css).toMatch(/\.combo-chevron \{[^}]*pointer-events: none;/);
+  });
+
+  it("lets the list spill out of its card instead of being clipped", () => {
+    expect(css).toMatch(/\.card\.repeat-card \{\s*overflow: visible;/);
+  });
+
+  it("keeps no style for the native select it replaced", () => {
+    expect(css).not.toMatch(/\.guest-field select/);
   });
 });
