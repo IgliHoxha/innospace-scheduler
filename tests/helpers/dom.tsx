@@ -77,10 +77,7 @@ export function fakeServer() {
     member: null as { name: string; email: string } | null,
     /** How many times the form asked /api/me. */
     whoAsked: 0,
-    /** What /api/me/reservations lists for the signed-in member. */
-    myBookings: [] as Record<string, unknown>[],
-    /** Every cancel or end change sent from the my bookings dialog. */
-    myWrites: [] as { method: string; path: string }[],
+
     /** /api/me rejects like a lost connection. */
     meFails: false,
     /** Used up in order; once empty, `otherwise` answers. */
@@ -113,18 +110,6 @@ export function fakeServer() {
         server.whoAsked += 1;
         if (server.meFails) throw new TypeError("Failed to fetch");
         return json(200, { ok: true, member: server.member });
-      }
-      if (u.pathname.startsWith("/api/me/reservations")) {
-        const method = init?.method ?? "GET";
-        if (method !== "GET")
-          server.myWrites.push({ method, path: u.pathname });
-        return json(200, {
-          ok: true,
-          now: "2026-07-16T12:00",
-          stepMinutes: 5,
-          minMinutes: 15,
-          bookings: server.myBookings,
-        });
       }
       if (u.pathname === "/api/availability") {
         const booth = u.searchParams.get("booth") ?? "";

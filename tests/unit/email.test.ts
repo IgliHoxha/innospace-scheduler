@@ -710,3 +710,114 @@ describe("the accent rule under the header", () => {
     expect(html).not.toContain("padding:22px 28px;border-bottom");
   });
 });
+
+describe("adding the booking to a calendar", () => {
+  type Sent = {
+    html: string;
+    attachments?: { filename: string; content: Buffer; contentType: string }[];
+  };
+  const sent = () => send.mock.calls.at(-1)![0] as Sent;
+  const ics = () => sent().attachments![0].content.toString("utf8");
+  const googleLink = () =>
+    new URL(
+      /href="(https:\/\/calendar\.google\.com\/[^"]+)"/
+        .exec(sent().html)![1]
+        .replace(/&amp;/g, "&"),
+    );
+  const week = (n: number): Reservation => ({
+    ...RESERVATION,
+    id: `rs_${n}`,
+    seriesId: "series-1",
+    startsAt: `2026-07-${16 + 7 * n}T09:30`,
+    endsAt: `2026-07-${16 + 7 * n}T11:00`,
+  });
+
+  beforeEach(() => {
+    send.mockClear();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-16T08:00:00"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("attaches an .ics of the booking to a confirmation", async () => {
+    await email.sendReservationEmail(
+      { ...RESERVATION, note: "Client call" },
+      "confirmed",
+    );
+    const [file] = sent().attachments!;
+    expect(file.filename).toBe("booking.ics");
+    expect(file.contentType).toBe(
+      "text/calendar; charset=utf-8; method=PUBLISH",
+    );
+    const text = ics().replace(/\r\n /g, "");
+    expect(text).toContain("UID:rs_1@scheduler.example.test");
+    expect(text).toContain("SUMMARY:Booth 1 at Test Org");
+    expect(text).toContain("STATUS:CONFIRMED");
+    expect(text).toContain("Note: Client call");
+    expect(text).toContain("Questions: +000 000\\, hello@test.test");
+  });
+
+  it("offers a Google Calendar button and points everyone else at the file", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sent().html).toContain("Add to Google Calendar");
+    expect(sent().html).toContain("open the attached booking.ics.");
+    const link = googleLink();
+    expect(link.searchParams.get("text")).toBe("Booth 1 at Test Org");
+    expect(link.searchParams.get("dates")).toBe(
+      "20260716T093000/20260716T110000",
+    );
+    expect(link.searchParams.get("ctz")).toBe(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
+  });
+
+  it("puts the calendar above the cancel link", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    const html = sent().html;
+    expect(html.indexOf("Add to Google Calendar")).toBeLessThan(
+      html.indexOf("Cancel this reservation"),
+    );
+  });
+
+  it("marks a pending request tentative, in the file and the title", async () => {
+    await email.sendReservationEmail(RESERVATION, "pending");
+    expect(ics()).toContain("STATUS:TENTATIVE");
+    expect(googleLink().searchParams.get("text")).toBe(
+      "Booth 1 at Test Org (awaiting approval)",
+    );
+  });
+
+  it("still adds it when the admin writes the body", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed", "Approved!");
+    expect(sent().attachments).toHaveLength(1);
+  });
+
+  it("adds nothing to a cancellation", async () => {
+    await email.sendReservationEmail(RESERVATION, "cancelled");
+    expect(sent().attachments).toBeUndefined();
+    expect(sent().html).not.toContain("calendar.google.com");
+  });
+
+  it("adds nothing once the booking is over", async () => {
+    vi.setSystemTime(new Date("2026-07-16T11:01:00"));
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sent().attachments).toBeUndefined();
+    expect(sent().html).not.toContain("Add to Google Calendar");
+  });
+
+  it("puts every date of a weekly series in the file and one repeat in the link", async () => {
+    const series = [week(0), week(1), week(2)];
+    await email.sendReservationEmail(series[0], "confirmed", undefined, series);
+    expect(ics().match(/BEGIN:VEVENT/g)).toHaveLength(3);
+    expect(ics()).toContain("UID:rs_2@scheduler.example.test");
+    expect(googleLink().searchParams.get("recur")).toBe(
+      "RRULE:FREQ=WEEKLY;COUNT=3",
+    );
+    expect(sent().html).toContain("it holds all 3 dates.");
+  });
+
+  it("escapes the link in the HTML", async () => {
+    await email.sendReservationEmail(RESERVATION, "confirmed");
+    expect(sent().html).toMatch(/href="https:\/\/calendar[^"]*&amp;dates=/);
+  });
+});

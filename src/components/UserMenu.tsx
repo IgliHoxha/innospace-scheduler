@@ -12,7 +12,7 @@ export function UserMenu({
   username,
   email,
   signOutTo = "/login",
-  onMyBookings,
+  myBookingsHref,
 }: {
   username: string;
   /** Shown under the name for a Google member; the admin has none to show. */
@@ -20,7 +20,7 @@ export function UserMenu({
   /** Where sign-out lands: the admin's login, or the booking screen for a member. */
   signOutTo?: string;
   /** Offered to a signed-in member only, who has bookings of their own. */
-  onMyBookings?: () => void;
+  myBookingsHref?: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -59,16 +59,10 @@ export function UserMenu({
             <strong>{username}</strong>
             {email && <span className="user-email">{email}</span>}
           </div>
-          {onMyBookings && (
-            <button
-              className="user-dropdown-item plain"
-              onClick={() => {
-                setMenuOpen(false);
-                onMyBookings();
-              }}
-            >
+          {myBookingsHref && (
+            <a className="user-dropdown-item plain" href={myBookingsHref}>
               My bookings
-            </button>
+            </a>
           )}
           <button
             className="user-dropdown-item"

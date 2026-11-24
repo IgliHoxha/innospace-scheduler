@@ -70,10 +70,14 @@ describe("the repeat dropdown", () => {
   });
 });
 
-describe("the my bookings dialog", () => {
-  it("scrolls inside the window instead of running off it", () => {
+describe("the my bookings page", () => {
+  it("keeps the list to a reading column", () => {
+    expect(css).toMatch(/\.my-bookings \{\s*max-width: 720px;/);
+  });
+
+  it("lets the menu's link look like its buttons", () => {
     expect(css).toMatch(
-      /\.my-bookings-modal \{[^}]*max-height: calc\(100vh - 40px\);\s*overflow-y: auto;/,
+      /\.user-dropdown-item\.plain \{\s*display: block;\s*box-sizing: border-box;\s*color: var\(--text\);\s*text-decoration: none;/,
     );
   });
 
@@ -91,11 +95,5 @@ describe("the my bookings dialog", () => {
 
   it("writes a status phrase in sentence case", () => {
     expect(css).toMatch(/\.my-booking \.badge \{\s*text-transform: none;/);
-  });
-
-  it("keeps sign out red but an ordinary menu item plain", () => {
-    expect(css).toMatch(
-      /\.user-dropdown-item\.plain \{\s*color: var\(--text\);/,
-    );
   });
 });

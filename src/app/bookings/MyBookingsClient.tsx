@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { Pagination } from "@/components/Pagination";
+import { SiteFooter } from "@/components/SiteFooter";
+import { Topbar } from "@/components/Topbar";
 import { TimePickerInput } from "@/components/ui/time-picker-input";
 import {
   dateOf,
@@ -19,15 +22,12 @@ import {
   earliestEndMin,
   type BookingPhase,
   type MyBooking,
+  type MyBookingsPage,
 } from "@/lib/my-bookings";
+import { pageCount } from "@/lib/pagination";
 import { dayEndMinute, offGridMessage } from "@/lib/reservation-rules";
 
-interface Board {
-  now: string;
-  stepMinutes: number;
-  minMinutes: number;
-  bookings: MyBooking[];
-}
+type Board = MyBookingsPage;
 
 /** Sends one change; resolves to the refusal to show, or "" once it went through. */
 type Send = (id: string, init: RequestInit) => Promise<string>;
@@ -247,44 +247,49 @@ function BookingRow({
 }
 
 /** A signed-in member's own bookings: cancel what is ahead, move the end of what is under way, read the rest. */
-export function MyBookings({
-  onClose,
-  onChanged,
+export default function MyBookingsClient({
+  name,
+  email,
+  initial,
 }: {
-  onClose: () => void;
-  /** A cancel or a new end frees or takes time on the board behind. */
-  onChanged: () => void;
+  name: string;
+  email: string;
+  /** Page the server already rendered, so the list shows without a round trip. */
+  initial: MyBookingsPage;
 }) {
-  const [board, setBoard] = useState<Board | null>(null);
+  const [board, setBoard] = useState<Board>(initial);
+  const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
+  const load = async (page: number): Promise<boolean> => {
+    setLoading(true);
     setFailed(false);
     try {
-      const res = await fetch("/api/me/reservations", { cache: "no-store" });
+      const res = await fetch(`/api/me/reservations?page=${page}`, {
+        cache: "no-store",
+      });
       const json = (await res.json()) as Board & { ok?: boolean };
       if (!res.ok || !json.ok) throw new Error("refused");
       setBoard(json);
+      // In the address bar, so a reload or a shared link opens on the same page.
+      window.history.replaceState(
+        null,
+        "",
+        json.page > 1 ? `/bookings?page=${json.page}` : "/bookings",
+      );
+      return true;
     } catch {
       setFailed(true);
+      return false;
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Through a ref, or every parent render would rerun this and steal focus.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && onCloseRef.current();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  const turnTo = async (page: number) => {
+    if (await load(page)) listRef.current?.scrollIntoView?.({ block: "start" });
+  };
 
   const send: Send = async (id, init) => {
     try {
@@ -297,8 +302,7 @@ export function MyBookings({
         error?: string;
       };
       if (!res.ok || !json.ok) return json.error || FAILED;
-      onChanged();
-      await load();
+      await load(board.page);
       return "";
     } catch {
       return OFFLINE;
@@ -306,58 +310,80 @@ export function MyBookings({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="presentation">
-      <div
-        className="modal my-bookings-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="my-bookings-title"
-      >
-        <button
-          type="button"
-          className="modal-close"
-          aria-label="Close"
-          onClick={onClose}
-          ref={closeRef}
-        >
-          ×
-        </button>
-        <h2 id="my-bookings-title">My bookings</h2>
+    <>
+      <Topbar
+        brandHref="/"
+        brandLabel="Innospace Scheduler"
+        username={name}
+        email={email}
+        signOutTo="/"
+        myBookingsHref="/bookings"
+      />
 
-        {failed ? (
+      <div className="container" ref={listRef}>
+        <div className="page-head">
+          <a className="back-link" href="/">
+            ‹ Reserve a booth
+          </a>
+          <h1 className="page-title">My bookings</h1>
+          <p className="page-subtitle">
+            Cancel a booking that hasn&apos;t started, change the end time of
+            one that&apos;s under way, and look back at the ones that are over.
+          </p>
+        </div>
+
+        {failed && (
           <div className="load-failed">
             <span className="muted">Couldn&apos;t load your bookings.</span>
-            <button type="button" className="btn ghost sm" onClick={load}>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={() => load(board.page)}
+            >
               Try again
             </button>
           </div>
-        ) : !board ? (
-          <p className="muted">Loading your bookings…</p>
-        ) : board.bookings.length === 0 ? (
-          <p className="muted">You have no bookings yet.</p>
+        )}
+
+        {board.total === 0 ? (
+          <div className="card empty">
+            You have no bookings yet. <a href="/">Reserve a booth</a>
+          </div>
         ) : (
-          GROUPS.map(({ phase, title }) => {
-            const rows = board.bookings.filter((b) => b.phase === phase);
-            if (rows.length === 0) return null;
-            return (
-              <section key={phase} className="my-bookings-group">
-                <h3>{title}</h3>
-                <ul>
-                  {rows.map((b) => (
-                    <BookingRow
-                      key={b.id}
-                      booking={b}
-                      board={board}
-                      send={send}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })
+          <div className="my-bookings" aria-busy={loading}>
+            {GROUPS.map(({ phase, title }) => {
+              const rows = board.bookings.filter((b) => b.phase === phase);
+              if (rows.length === 0) return null;
+              return (
+                <section key={phase} className="my-bookings-group">
+                  <h2>{title}</h2>
+                  <ul>
+                    {rows.map((b) => (
+                      <BookingRow
+                        key={b.id}
+                        booking={b}
+                        board={board}
+                        send={send}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+            <Pagination
+              page={board.page}
+              totalPages={pageCount(board.total, board.pageSize)}
+              total={board.total}
+              pageSize={board.pageSize}
+              shown={board.bookings.length}
+              loading={loading}
+              onPage={turnTo}
+            />
+          </div>
         )}
       </div>
-    </div>
+
+      <SiteFooter />
+    </>
   );
 }

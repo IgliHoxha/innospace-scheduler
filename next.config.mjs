@@ -46,6 +46,8 @@ const nextConfig = {
       { source: "/dashboard/:path*", headers: noStore },
       { source: "/login", headers: noStore },
       { source: "/cancel/:path*", headers: noStore },
+      // Names the member and lists their bookings, so never a shared copy.
+      { source: "/bookings", headers: noStore },
       { source: "/api/login", headers: noStore },
       // Session-specific, and "/" is cached, so this is where the form asks.
       { source: "/api/me", headers: noStore },

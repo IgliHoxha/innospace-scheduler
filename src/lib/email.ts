@@ -1,10 +1,11 @@
-import { Resend } from "resend";
+import { Resend, type Attachment } from "resend";
 import { COLORS } from "../../tailwind.config";
 import { createCancelToken, createSeriesCancelToken } from "./auth";
 import { boothName } from "./booths";
 import { epochMsOf } from "./datetime";
 import { getContactFromEnv, optionalEnv, requireEnv } from "./env-app";
-import type { Reservation } from "./types";
+import { googleCalendarUrl, icsCalendar, type CalendarEvent } from "./calendar";
+import type { ContactInfo, Reservation } from "./types";
 import {
   emailBodyText,
   emailHeading,
@@ -185,6 +186,71 @@ function seriesCancelButton(series: Series): string {
   );
 }
 
+const ICS_FILENAME = "booking.ics";
+
+function calendarEvent(
+  r: Reservation,
+  status: EmailStatus,
+  contact: ContactInfo,
+): CalendarEvent {
+  const tentative = status === "pending";
+  const booth = boothName(r.boothId);
+  const lines = [
+    tentative
+      ? `Your ${booth} request at ${contact.org}, awaiting approval. The slot is held for you meanwhile.`
+      : `Your ${booth} reservation at ${contact.org}.`,
+    ...(r.note?.trim() ? [`Note: ${r.note.trim()}`] : []),
+    `Questions: ${contact.phone}, ${contact.email}`,
+    contact.url,
+  ];
+  return {
+    // The app's host, so ids from another system can never collide with these.
+    uid: `${r.id}@${new URL(baseUrl()).hostname}`,
+    startsAt: r.startsAt ?? "",
+    endsAt: r.endsAt ?? "",
+    title: `${booth} at ${contact.org}${tentative ? " (awaiting approval)" : ""}`,
+    location: contact.org,
+    description: lines.join("\n"),
+    tentative,
+  };
+}
+
+/** The add-to-calendar button and the .ics it points to, or nothing once there is nothing ahead. */
+function calendarParts(
+  reservation: Reservation,
+  status: EmailStatus,
+  contact: ContactInfo,
+  weekly: Series | undefined,
+): { html: string; attachment: Attachment } | null {
+  if (status === "cancelled") return null;
+  const dates = weekly ?? [reservation];
+  const last = dates[dates.length - 1];
+  if (!last.endsAt || !(epochMsOf(last.endsAt) > Date.now())) return null;
+
+  const events = dates.map((r) => calendarEvent(r, status, contact));
+  const ics = icsCalendar(events, new Date());
+  if (!ics) return null;
+
+  // The process zone is the space's (TZ is set on the server), as for every stored time.
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const google = googleCalendarUrl(events[0], zone, dates.length);
+  const other = weekly
+    ? `For Apple Calendar, Outlook and others, open the attached ${ICS_FILENAME}: it holds all ${dates.length} dates.`
+    : `For Apple Calendar, Outlook and others, open the attached ${ICS_FILENAME}.`;
+  return {
+    html: `
+    <div style="margin:26px 0 0;padding:18px 0 0;border-top:1px solid ${COLORS.divider}">
+      <a href="${escapeHtml(google)}" style="display:inline-block;background:${BRAND};color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px">Add to Google Calendar</a>
+      <p style="margin:10px 0 0;color:${COLORS.emailMuted};font-size:12px">${other}</p>
+    </div>`,
+    attachment: {
+      filename: ICS_FILENAME,
+      content: Buffer.from(ics, "utf8"),
+      contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+    },
+  };
+}
+
 /** "skipped" is nothing attempted; only "failed" means a refused send. */
 export type EmailOutcome = "sent" | "skipped" | "failed";
 
@@ -213,6 +279,7 @@ export async function sendReservationEmail(
       : weekly
         ? seriesCancelButton(weekly)
         : cancelButton(reservation);
+  const calendar = calendarParts(reservation, status, contact, weekly);
 
   // The SDK reports refusals in the resolved value, so inspect the result.
   let result: { error?: unknown } | undefined;
@@ -225,7 +292,7 @@ export async function sendReservationEmail(
       html: shell({
         accent: ACCENT[status],
         heading: emailHeading(status),
-        bodyHtml: textToHtml(body) + cancel,
+        bodyHtml: textToHtml(body) + (calendar?.html ?? "") + cancel,
         org: contact.org,
         url: contact.url,
         // Not the edited body: a custom one could open with anything.
@@ -237,6 +304,7 @@ export async function sendReservationEmail(
           weekly,
         ),
       }),
+      ...(calendar ? { attachments: [calendar.attachment] } : {}),
     });
   } catch (err) {
     console.error("[email] send threw:", err);

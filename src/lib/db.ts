@@ -424,24 +424,29 @@ export function updateReservationStatus(
   return row ? fromRow(row) : null;
 }
 
-/** What this mailbox booked: everything not yet over, then the latest past ones. */
+/** One page of what this mailbox booked: everything not yet over by start, then the past newest first. */
 export function reservationsForEmail(
   email: string,
   now: string,
-  pastLimit: number,
-): { current: Reservation[]; past: Reservation[] } {
+  page: number,
+  pageSize: number,
+): { reservations: Reservation[]; total: number } {
   const want = canonicalEmail(email);
-  const current = prep(
+  const total = (
+    prep(
+      `SELECT COUNT(*) AS n FROM reservations WHERE canon(email) = ? AND status != 'deleted'`,
+    ).get(want) as { n: number }
+  ).n;
+  // The CASE is null for every past row, so they fall through to newest first.
+  const rows = prep(
     `SELECT * FROM reservations
-       WHERE canon(email) = ? AND status != 'deleted' AND endsAt > ?
-       ORDER BY startsAt`,
-  ).all(want, now) as Row[];
-  const past = prep(
-    `SELECT * FROM reservations
-       WHERE canon(email) = ? AND status != 'deleted' AND endsAt <= ?
-       ORDER BY startsAt DESC LIMIT ?`,
-  ).all(want, now, pastLimit) as Row[];
-  return { current: current.map(fromRow), past: past.map(fromRow) };
+       WHERE canon(email) = ? AND status != 'deleted'
+       ORDER BY (endsAt <= ?) ASC,
+                CASE WHEN endsAt > ? THEN startsAt END ASC,
+                startsAt DESC
+       LIMIT ? OFFSET ?`,
+  ).all(want, now, now, pageSize, (page - 1) * pageSize) as Row[];
+  return { reservations: rows.map(fromRow), total };
 }
 
 /** Moves an active booking's end, checked against every other booking; null if gone or inactive. */

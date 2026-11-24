@@ -4,7 +4,7 @@ export function Topbar({
   username,
   email,
   signOutTo,
-  onMyBookings,
+  myBookingsHref,
   brandHref = "/dashboard",
   brandLabel = "Scheduler dashboard",
 }: {
@@ -12,7 +12,7 @@ export function Topbar({
   username?: string;
   email?: string;
   signOutTo?: string;
-  onMyBookings?: () => void;
+  myBookingsHref?: string;
   brandHref?: string;
   brandLabel?: string;
 }) {
@@ -30,7 +30,7 @@ export function Topbar({
               username={username}
               email={email}
               signOutTo={signOutTo}
-              onMyBookings={onMyBookings}
+              myBookingsHref={myBookingsHref}
             />
           </div>
         ) : null}

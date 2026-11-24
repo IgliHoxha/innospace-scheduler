@@ -9,7 +9,6 @@ import { BoothGrid } from "./_booking/BoothGrid";
 import { DateChips, type DateOption } from "./_booking/DateChips";
 import { GuestCard, type GuestErrors } from "./_booking/GuestCard";
 import { LengthPresets } from "./_booking/LengthPresets";
-import { MyBookings } from "./_booking/MyBookings";
 import { RepeatCard } from "./_booking/RepeatCard";
 import { ReserveBar } from "./_booking/ReserveBar";
 import { TimeCard } from "./_booking/TimeCard";
@@ -133,7 +132,6 @@ export default function ReservationClient({
     fullName: "",
     email: "",
   });
-  const [showMine, setShowMine] = useState(false);
   // Shown as a red field only, so every failing field is held.
   const [guestErrors, setGuestErrors] = useState<GuestErrors>({});
 
@@ -443,19 +441,8 @@ export default function ReservationClient({
         username={member?.name}
         email={member?.email}
         signOutTo="/"
-        onMyBookings={member ? () => setShowMine(true) : undefined}
+        myBookingsHref={member ? "/bookings" : undefined}
       />
-
-      {showMine && (
-        <MyBookings
-          onClose={() => setShowMine(false)}
-          onChanged={() => {
-            setSuccess(null);
-            noteWrite();
-            reload({ fresh: true, keepPick: true });
-          }}
-        />
-      )}
 
       {/* Click, not pointerdown: a finger that only scrolls must not load the check. */}
       <div

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UserMenu } from "@/components/UserMenu";
@@ -96,27 +102,21 @@ describe("the user menu", () => {
 });
 
 describe("my bookings in the menu", () => {
-  it("is offered only when the page hands it an action", async () => {
+  it("links a member to their bookings page, above sign out", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<UserMenu username="Ada Admin" />);
     expect((await open(user)).textContent).not.toContain("My bookings");
     unmount();
-    render(<UserMenu username="Ada Lovelace" onMyBookings={() => {}} />);
-    const items = [...(await open(user)).querySelectorAll("button")].map(
-      (b) => b.textContent,
-    );
+    render(<UserMenu username="Ada Lovelace" myBookingsHref="/bookings" />);
+    const menu = await open(user);
+    const link = within(menu).getByRole("link", { name: "My bookings" });
+    expect(link.getAttribute("href")).toBe("/bookings");
     // Above sign out, so the red action stays last.
-    expect(items).toEqual(["My bookings", "Sign out"]);
-  });
-
-  it("runs the action and closes the menu, without signing out", async () => {
-    const user = userEvent.setup();
-    const onMyBookings = vi.fn();
-    render(<UserMenu username="Ada Lovelace" onMyBookings={onMyBookings} />);
-    await open(user);
-    await user.click(screen.getByRole("button", { name: "My bookings" }));
-    expect(onMyBookings).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(
+      [...menu.querySelectorAll(".user-dropdown-item")].map(
+        (i) => i.textContent,
+      ),
+    ).toEqual(["My bookings", "Sign out"]);
     expect(sent).toEqual([]);
   });
 });

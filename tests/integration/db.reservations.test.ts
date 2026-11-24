@@ -850,19 +850,27 @@ describe("queryReservations page size", () => {
 
 describe("a member's own bookings", () => {
   const NOW = at("12:00");
+  const ids = (page = 1, size = 20, email = "ada@example.com") =>
+    db
+      .reservationsForEmail(email, NOW, page, size)
+      .reservations.map((r) => r.id);
 
-  it("lists what is not over in start order, then the past newest first", async () => {
+  it("puts what is not over first by start, then the past newest first", async () => {
     const later = await reserve("15:00", "16:00");
     const now = await reserve("11:30", "12:30", { boothId: "booth-2" });
     const early = await reserve("08:00", "09:00");
     const earlier = await reserve("06:00", "07:00");
-    const { current, past } = db.reservationsForEmail(
-      "ada@example.com",
-      NOW,
-      20,
-    );
-    expect(current.map((r) => r.id)).toEqual([now.id, later.id]);
-    expect(past.map((r) => r.id)).toEqual([early.id, earlier.id]);
+    expect(ids()).toEqual([now.id, later.id, early.id, earlier.id]);
+  });
+
+  it("counts every booking, and pages through them in that order", async () => {
+    const a = await reserve("15:00", "16:00");
+    const b = await reserve("17:00", "18:00");
+    const c = await reserve("08:00", "09:00");
+    expect(db.reservationsForEmail("ada@example.com", NOW, 1, 2).total).toBe(3);
+    expect(ids(1, 2)).toEqual([a.id, b.id]);
+    expect(ids(2, 2)).toEqual([c.id]);
+    expect(ids(3, 2)).toEqual([]);
   });
 
   it("matches the mailbox, not the spelling, and nobody else's", async () => {
@@ -870,8 +878,8 @@ describe("a member's own bookings", () => {
       email: "a.da+desk@gmail.com",
     });
     await reserve("17:00", "18:00", { email: "grace@example.com" });
-    const { current } = db.reservationsForEmail("ADA@googlemail.com", NOW, 20);
-    expect(current.map((r) => r.id)).toEqual([own.id]);
+    expect(ids(1, 20, "ADA@googlemail.com")).toEqual([own.id]);
+    expect(db.reservationsForEmail("ada@gmail.com", NOW, 1, 20).total).toBe(1);
   });
 
   it("keeps a cancelled booking but never a deleted one", async () => {
@@ -879,17 +887,16 @@ describe("a member's own bookings", () => {
     const gone = await reserve("17:00", "18:00");
     db.updateReservationStatus(kept.id, "cancelled");
     db.updateReservationStatus(gone.id, "deleted");
-    const { current } = db.reservationsForEmail("ada@example.com", NOW, 20);
-    expect(current.map((r) => [r.id, r.status])).toEqual([
+    const { reservations, total } = db.reservationsForEmail(
+      "ada@example.com",
+      NOW,
+      1,
+      20,
+    );
+    expect(reservations.map((r) => [r.id, r.status])).toEqual([
       [kept.id, "cancelled"],
     ]);
-  });
-
-  it("caps the past at the limit it is given", async () => {
-    await reserve("06:00", "07:00");
-    await reserve("08:00", "09:00");
-    const { past } = db.reservationsForEmail("ada@example.com", NOW, 1);
-    expect(past.map((r) => r.startsAt)).toEqual([at("08:00")]);
+    expect(total).toBe(1);
   });
 });
 

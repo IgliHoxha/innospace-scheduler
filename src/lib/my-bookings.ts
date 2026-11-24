@@ -26,6 +26,21 @@ export interface MyBooking {
   note?: string;
 }
 
+// Ten cards fill a screen or two; the dashboard's 25 rows are one line each.
+export const MY_BOOKINGS_PAGE_SIZE = 10;
+
+/** What the /bookings page shows, and what its API answers for any page. */
+export interface MyBookingsPage {
+  /** The server's clock, so the page sorts bookings as the routes will judge them. */
+  now: string;
+  stepMinutes: number;
+  minMinutes: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  bookings: MyBooking[];
+}
+
 export function canCancel(b: Pick<MyBooking, "status" | "phase">): boolean {
   return isActiveStatus(b.status) && b.phase === "upcoming";
 }

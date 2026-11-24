@@ -267,7 +267,10 @@ button {
 
 /* Sign out stays red; an ordinary item reads as one. */
 .user-dropdown-item.plain {
+  display: block;
+  box-sizing: border-box;
   color: var(--text);
+  text-decoration: none;
   border-bottom: 1px solid var(--border);
 }
 
@@ -275,14 +278,25 @@ button {
   background: #f4f6f8;
 }
 
-.my-bookings-modal {
-  position: relative;
-  max-width: 560px;
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
+.back-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.my-bookings-group h3 {
+.back-link:hover {
+  color: var(--brand-dark);
+}
+
+/* A reading column: cards wider than this only stretch the label-value gap. */
+.my-bookings {
+  max-width: 720px;
+}
+
+.my-bookings-group h2 {
   margin: 18px 0 8px;
   font-size: 12px;
   font-weight: 600;
@@ -301,9 +315,10 @@ button {
 }
 
 .my-booking {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
+  background: var(--card);
   font-size: 14px;
 }
 

@@ -57,8 +57,12 @@ const seed = (
     status,
   );
 
-const getList = (token?: string) =>
-  list.GET(makeRequest("/api/me/reservations", { token }));
+const getList = (token?: string, page?: number) =>
+  list.GET(
+    makeRequest(`/api/me/reservations${page ? `?page=${page}` : ""}`, {
+      token,
+    }),
+  );
 
 const call = (
   method: "DELETE" | "PATCH",
@@ -81,7 +85,10 @@ const json = (res: Response) =>
   }>;
 
 describe("GET /api/me/reservations", () => {
-  it("lists the member's bookings by phase, with the facts the dialog shows", async () => {
+  const ids = (body: { bookings: { id: string }[] }) =>
+    body.bookings.map((b) => b.id);
+
+  it("lists the member's bookings by phase, with the facts the page shows", async () => {
     const past = await seed("08:00", "09:00", { note: "  standup  " });
     const now = await seed("11:30", "12:30");
     const later = await seed("15:00", "16:00", { boothId: "booth-2" });
@@ -96,6 +103,9 @@ describe("GET /api/me/reservations", () => {
       now: at("12:02"),
       stepMinutes: 5,
       minMinutes: 15,
+      page: 1,
+      pageSize: 10,
+      total: 3,
     });
     expect(
       body.bookings.map((b: { id: string; phase: string }) => [b.id, b.phase]),
@@ -117,6 +127,46 @@ describe("GET /api/me/reservations", () => {
     expect(body.bookings[0]).not.toHaveProperty("note");
     // Nothing that names the booker goes back: the session already knows them.
     expect(body.bookings[0]).not.toHaveProperty("email");
+  });
+
+  it("pages ten at a time", async () => {
+    // Twelve past hours, so the order is simply newest first.
+    const made = [];
+    for (let h = 0; h < 12; h++) {
+      made.push(
+        await seed(
+          `${String(h).padStart(2, "0")}:00`,
+          `${String(h).padStart(2, "0")}:30`,
+        ),
+      );
+    }
+    const newestFirst = made.map((r) => r.id).reverse();
+    const first = await (await getList(ADA)).json();
+    expect(ids(first)).toEqual(newestFirst.slice(0, 10));
+    expect(first.total).toBe(12);
+    const second = await (await getList(ADA, 2)).json();
+    expect(second.page).toBe(2);
+    expect(ids(second)).toEqual(newestFirst.slice(10));
+  });
+
+  it("lands a page past the end on the last one, and a junk page on the first", async () => {
+    await seed("15:00", "16:00");
+    for (const asked of [9, 2]) {
+      const body = await (await getList(ADA, asked)).json();
+      expect(body.page).toBe(1);
+      expect(body.bookings).toHaveLength(1);
+    }
+    for (const junk of ["0", "-3", "1.5", "abc"]) {
+      const res = await list.GET(
+        makeRequest(`/api/me/reservations?page=${junk}`, { token: ADA }),
+      );
+      expect((await res.json()).page).toBe(1);
+    }
+  });
+
+  it("answers an empty first page for a member with no bookings", async () => {
+    const body = await (await getList(GRACE)).json();
+    expect(body).toMatchObject({ page: 1, total: 0, bookings: [] });
   });
 
   it("refuses a guest, the admin and a forged cookie", async () => {

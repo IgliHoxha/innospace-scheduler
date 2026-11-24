@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import nextConfig from "../../next.config.mjs";
 import {
   canCancel,
   canChangeEnd,
@@ -73,5 +74,18 @@ describe("longStayMessage", () => {
       "A stay of 2 hours or more needs admin approval, so it can't be extended here. Reserve the extra time from the form instead.",
     );
     expect(longStayMessage(2, false)).toContain("needs a note");
+  });
+});
+
+// "/" is edge-cached for everyone, so anything naming a member must say no-store.
+describe("caching of the member's pages", () => {
+  it("never lets a cache keep the bookings page or its API", async () => {
+    const rules = await nextConfig.headers!();
+    const noStore = (source: string) =>
+      rules
+        .find((r) => r.source === source)
+        ?.headers.find((h) => h.key === "Cache-Control")?.value;
+    expect(noStore("/bookings")).toBe("no-store");
+    expect(noStore("/api/me/:path*")).toBe("no-store");
   });
 });
