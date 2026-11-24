@@ -35,11 +35,13 @@ describe("phaseOf", () => {
 });
 
 describe("what a member may do", () => {
-  it("cancels only an active booking that has not started", () => {
+  it("cancels an active booking until it is over, one under way included", () => {
     expect(canCancel({ status: "confirmed", phase: "upcoming" })).toBe(true);
     expect(canCancel({ status: "pending", phase: "upcoming" })).toBe(true);
+    expect(canCancel({ status: "confirmed", phase: "ongoing" })).toBe(true);
+    expect(canCancel({ status: "pending", phase: "ongoing" })).toBe(true);
     expect(canCancel({ status: "cancelled", phase: "upcoming" })).toBe(false);
-    expect(canCancel({ status: "confirmed", phase: "ongoing" })).toBe(false);
+    expect(canCancel({ status: "cancelled", phase: "ongoing" })).toBe(false);
     expect(canCancel({ status: "confirmed", phase: "past" })).toBe(false);
   });
 

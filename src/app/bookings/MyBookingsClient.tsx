@@ -232,7 +232,6 @@ function BookingRow({
           </>
         )}
       </dl>
-      {canCancel(booking) && <CancelAction booking={booking} send={send} />}
       {canChangeEnd(booking) && (
         // Keyed on the end, so a saved change reseeds the fields.
         <EndEditor
@@ -242,6 +241,8 @@ function BookingRow({
           send={send}
         />
       )}
+      {/* After the end editor, so a booking under way reads: move the end, or drop it. */}
+      {canCancel(booking) && <CancelAction booking={booking} send={send} />}
     </li>
   );
 }
@@ -327,7 +328,7 @@ export default function MyBookingsClient({
           </a>
           <h1 className="page-title">My bookings</h1>
           <p className="page-subtitle">
-            Cancel a booking that hasn&apos;t started, change the end time of
+            Cancel a booking that isn&apos;t over yet, change the end time of
             one that&apos;s under way, and look back at the ones that are over.
           </p>
         </div>

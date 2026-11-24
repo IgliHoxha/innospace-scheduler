@@ -210,8 +210,8 @@ describe("DELETE /api/me/reservations/[id]", () => {
   });
 
   it("emails nothing when the cancel is refused", async () => {
-    const started = await seed("11:30", "12:30");
-    await call("DELETE", started.id, ADA);
+    const over = await seed("08:00", "09:00");
+    await call("DELETE", over.id, ADA);
     const theirs = await seed("15:00", "16:00", { email: "grace@example.com" });
     await call("DELETE", theirs.id, ADA);
     expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
@@ -229,19 +229,30 @@ describe("DELETE /api/me/reservations/[id]", () => {
     expect(db.getReservation(r.id)?.status).toBe("cancelled");
   });
 
-  it("refuses a booking already under way or over", async () => {
-    for (const [s, e] of [
-      ["11:30", "12:30"],
-      ["08:00", "09:00"],
-    ]) {
-      const r = await seed(s, e);
-      const res = await call("DELETE", r.id, ADA);
-      expect(res.status).toBe(400);
-      expect((await json(res)).error).toBe(
-        "A booking that has already started can't be cancelled.",
-      );
-      expect(db.getReservation(r.id)?.status).toBe("confirmed");
-    }
+  it("cancels a booking under way, freeing the rest of its time", async () => {
+    const r = await seed("11:30", "12:30");
+    const res = await call("DELETE", r.id, ADA);
+    expect(res.status).toBe(200);
+    expect(db.getReservation(r.id)?.status).toBe("cancelled");
+    expect(db.reservedRanges("booth-1", D)).toEqual([]);
+    expect(email.sendGuestCancellationEmail).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a booking that is already over", async () => {
+    const r = await seed("08:00", "09:00");
+    const res = await call("DELETE", r.id, ADA);
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toBe(
+      "A booking that is already over can't be cancelled.",
+    );
+    expect(db.getReservation(r.id)?.status).toBe("confirmed");
+  });
+
+  // Half-open: at its end minute it is already over.
+  it("refuses at the very minute it ends", async () => {
+    vi.setSystemTime(new Date(`${D}T12:30:00`));
+    const r = await seed("11:30", "12:30");
+    expect((await call("DELETE", r.id, ADA)).status).toBe(400);
   });
 
   it("answers 409 for one already cancelled", async () => {

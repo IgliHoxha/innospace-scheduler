@@ -31,7 +31,7 @@ import {
   tooShortMessage,
 } from "@/lib/reservation-rules";
 import {
-  CANCEL_STARTED_MESSAGE,
+  CANCEL_OVER_MESSAGE,
   END_NOT_LATER_MESSAGE,
   END_ONLY_ONGOING_MESSAGE,
   longStayMessage,
@@ -60,7 +60,7 @@ function ownBooking(member: Member, id: string): Reservation | null {
   return canonicalEmail(r.email) === canonicalEmail(member.email) ? r : null;
 }
 
-/** Cancels a booking that has not started yet. */
+/** Cancels a booking that is not over yet, one under way included. */
 export async function DELETE(req: NextRequest, { params }: Params) {
   const member = guard(req);
   if (member instanceof NextResponse) return member;
@@ -70,10 +70,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!isActiveStatus(existing.status)) {
     return jsonError(NOT_ACTIVE_MESSAGE, 409);
   }
-  if (
-    phaseOf(existing.startsAt!, existing.endsAt!, nowDateTime()) !== "upcoming"
-  ) {
-    return jsonError(CANCEL_STARTED_MESSAGE, 400);
+  if (phaseOf(existing.startsAt!, existing.endsAt!, nowDateTime()) === "past") {
+    return jsonError(CANCEL_OVER_MESSAGE, 400);
   }
 
   const reservation = updateReservationStatus(existing.id, "cancelled");

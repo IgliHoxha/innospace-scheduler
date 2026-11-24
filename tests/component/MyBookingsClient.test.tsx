@@ -165,6 +165,10 @@ describe("the my bookings page", () => {
     expect(
       within(row("Booth 1")).getByRole("button", { name: "Save" }),
     ).toBeTruthy();
+    // Under way, it can still be dropped: the rest of its time frees up.
+    expect(
+      within(row("Booth 1")).getByRole("button", { name: "Cancel" }),
+    ).toBeTruthy();
     expect(
       within(row("Booth 2")).getByRole("button", { name: "Cancel" }),
     ).toBeTruthy();
@@ -316,6 +320,34 @@ describe("cancelling an upcoming booking", () => {
     expect(reads()).toEqual(["/api/me/reservations?page=2"]);
   });
 
+  it("cancels a booking under way the same way, below its end time", async () => {
+    const ongoing = booking({
+      phase: "ongoing",
+      startsAt: at("11:30"),
+      endsAt: at("12:30"),
+    });
+    const { user } = mount(pageOf([ongoing]));
+    const li = row("Booth 1");
+    // The end editor first, then the way to drop it.
+    const actions = [...li.querySelectorAll("button")].map(
+      (b) => b.textContent,
+    );
+    expect(actions).toEqual(["Save", "Cancel"]);
+    await user.click(within(li).getByRole("button", { name: "Cancel" }));
+    pages.set(1, pageOf([{ ...ongoing, status: "cancelled" }]));
+    await user.click(screen.getByRole("button", { name: "Yes, cancel" }));
+    await waitFor(() =>
+      expect(row("Booth 1").querySelector(".badge")?.textContent).toBe(
+        "Cancelled",
+      ),
+    );
+    expect(writes()).toEqual([
+      { url: "/api/me/reservations/r1", method: "DELETE", body: undefined },
+    ]);
+    // Cancelled, it is no longer under way: nothing left to edit.
+    expect(within(row("Booth 1")).queryAllByRole("button")).toEqual([]);
+  });
+
   it("keeps the booking on 'Keep it'", async () => {
     const { user } = mount(pageOf([booking({})]));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -329,14 +361,14 @@ describe("cancelling an upcoming booking", () => {
       status: 400,
       body: {
         ok: false,
-        error: "A booking that has already started can't be cancelled.",
+        error: "A booking that is already over can't be cancelled.",
       },
     });
     const { user } = mount(pageOf([booking({})]));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await user.click(screen.getByRole("button", { name: "Yes, cancel" }));
     expect((await within(row("Booth 1")).findByRole("alert")).textContent).toBe(
-      "A booking that has already started can't be cancelled.",
+      "A booking that is already over can't be cancelled.",
     );
     expect(reads()).toEqual([]);
   });

@@ -41,8 +41,9 @@ export interface MyBookingsPage {
   bookings: MyBooking[];
 }
 
+/** Until it is over: a booking under way can be dropped too, freeing the rest of its time. */
 export function canCancel(b: Pick<MyBooking, "status" | "phase">): boolean {
-  return isActiveStatus(b.status) && b.phase === "upcoming";
+  return isActiveStatus(b.status) && b.phase !== "past";
 }
 
 export function canChangeEnd(b: Pick<MyBooking, "status" | "phase">): boolean {
@@ -63,8 +64,8 @@ export function earliestEndMin(
 // One wording for the refusals the dialog and the routes both give.
 export const NOT_FOUND_MESSAGE = "That booking was not found.";
 export const NOT_ACTIVE_MESSAGE = "That booking is no longer active.";
-export const CANCEL_STARTED_MESSAGE =
-  "A booking that has already started can't be cancelled.";
+export const CANCEL_OVER_MESSAGE =
+  "A booking that is already over can't be cancelled.";
 export const END_ONLY_ONGOING_MESSAGE =
   "Only a booking that is under way can change its end time.";
 export const END_NOT_LATER_MESSAGE = "The new end time must be later than now.";
