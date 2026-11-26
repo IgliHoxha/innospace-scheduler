@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "Meeting-booth scheduler for Innospace Tirana.",
   robots: { index: false, follow: false },
   icons: { icon: "/favicon.png", apple: "/favicon.png" },
+  // Chrome's translator reads this one; the attribute on <html> covers Safari and the rest.
+  other: { google: "notranslate" },
 };
 
 export default function RootLayout({
@@ -25,7 +27,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={ibmPlexSans.variable}>
+    // A page translator swaps text React later replaces, which crashes the whole screen.
+    <html
+      lang="en"
+      translate="no"
+      className={`${ibmPlexSans.variable} notranslate`}
+    >
       <body>{children}</body>
     </html>
   );

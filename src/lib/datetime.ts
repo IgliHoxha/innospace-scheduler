@@ -85,9 +85,18 @@ export function todayYMD(): string {
 }
 
 /** Same format as startsAt, so the two compare as plain text. */
+export function dateTimeOf(d: Date): string {
+  return `${ymd(d)}T${timeOfDate(d)}`;
+}
+
 export function nowDateTime(): string {
-  const now = new Date();
-  return `${ymd(now)}T${timeOfDate(now)}`;
+  return dateTimeOf(new Date());
+}
+
+/** Whole minutes on this device's wall clock, counted so that two readings subtract across midnight. */
+export function localMinutes(epochMs: number): number {
+  const offsetMs = new Date(epochMs).getTimezoneOffset() * 60_000;
+  return Math.floor((epochMs - offsetMs) / 60_000);
 }
 
 const MONTHS = [

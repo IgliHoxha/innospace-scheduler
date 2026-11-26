@@ -461,31 +461,139 @@ describe("a refused pick", () => {
 });
 
 describe("a start that passes while Reserve is pressed", () => {
-  // The refusal's reload moves "now" past the pick, so the form reaches the same verdict.
-  it("says it has passed once, not once for the server and again for the form", async () => {
+  const passed = {
+    status: 400,
+    body: { ok: false, error: "That time has already passed." },
+  };
+
+  // The refusal's reload moves "now" past the pick, so the pick follows it.
+  it("moves the start to the board's new first minute, length kept, and says to press again", async () => {
     const { user } = await ready();
     await fillGuest(user);
-    server.replies.push({
-      status: 400,
-      body: { ok: false, error: "That time has already passed." },
-    });
+    server.replies.push(passed);
     server.earliest = "09:30";
     await user.click(form.reserve());
-    await waitFor(() => expect(server.gets.at(-1)?.fresh).toBe(true));
-    await waitFor(() =>
-      expect(form.alerts()).toEqual(["That time has already passed."]),
-    );
-    expect(form.reserve().disabled).toBe(true);
+    await waitFor(() => expect(form.pick()).toBe("09:30-10:30"));
+    expect(form.alerts()).toEqual([
+      "That time has already passed. The start is now 09:30: press Reserve again.",
+    ]);
+    expect(form.reserve().disabled).toBe(false);
+
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).toContain("Reserved Booth 1"));
+    expect(server.posts.at(-1)).toMatchObject({ start: "09:30", end: "10:30" });
   });
 
-  it("still shows both when the server and the form disagree", async () => {
+  it("keeps the server's own reason when it refused for something else", async () => {
     const { user } = await ready();
     await fillGuest(user);
     server.replies.push(reply.clash);
     server.earliest = "09:30";
     await user.click(form.reserve());
-    await waitFor(() => expect(form.alerts()).toHaveLength(2));
-    expect(form.alerts()).toContain("That time has already passed.");
+    await waitFor(() =>
+      expect(form.alerts()).toEqual([
+        "That overlaps an existing reservation. The start is now 09:30: press Reserve again.",
+      ]),
+    );
+  });
+
+  it("stays put and says it has passed, once, when the new first minute is taken", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    server.replies.push(passed);
+    server.earliest = "09:30";
+    server.taken = () => [
+      { start: "09:30", end: "11:00", label: "09:30 - 11:00" },
+    ];
+    await user.click(form.reserve());
+    await waitFor(() => expect(server.gets.at(-1)?.fresh).toBe(true));
+    await waitFor(() =>
+      expect(form.alerts()).toEqual(["That time has already passed."]),
+    );
+    expect(form.pick()).toBe("09:00-10:00");
+    expect(form.reserve().disabled).toBe(true);
+  });
+});
+
+describe("the clock moving while the form is open", () => {
+  const clock = (hhmmss: string) =>
+    vi.setSystemTime(new Date(`${DAYS[0]}T${hhmmss}`));
+  // What the minute timer does, and what a phone does on coming back from its lock screen.
+  const tick = (hhmmss: string) => {
+    clock(hhmmss);
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    clock("12:02:30");
+    server.earliest = "12:05";
+  });
+  afterEach(() => vi.useRealTimers());
+
+  async function open() {
+    const view = mountForm();
+    await waitFor(() => expect(form.pick()).toBe("12:05-13:05"));
+    return view;
+  }
+
+  it("moves a start the clock overtook to the next step, keeping the length chosen", async () => {
+    const { user } = await open();
+    await user.click(document.getElementById("end-minutes")!);
+    await user.keyboard("35");
+    expect(form.pick()).toBe("12:05-13:35");
+
+    // Its own minute is still offered, as a page opened now would offer it.
+    tick("12:05:40");
+    expect(form.pick()).toBe("12:05-13:35");
+
+    tick("12:06:00");
+    expect(form.pick()).toBe("12:10-13:40");
+    expect(form.alerts()).toEqual([]);
+    expect(form.reserve().disabled).toBe(false);
+  });
+
+  it("books the times on screen after the move", async () => {
+    const { user } = await open();
+    await fillGuest(user);
+    tick("12:11:00");
+    expect(form.pick()).toBe("12:15-13:15");
+    await user.click(form.reserve());
+    await waitFor(() => expect(form.banner()).toContain("Reserved Booth 1"));
+    expect(server.posts.at(-1)).toMatchObject({ start: "12:15", end: "13:15" });
+  });
+
+  it("leaves a start that is still ahead where the person put it", async () => {
+    await open();
+    pickHour("15:00", "16:00");
+    tick("12:31:00");
+    expect(form.pick()).toBe("15:00-16:00");
+  });
+
+  it("switches off the hours the clock has passed", async () => {
+    await open();
+    expect(form.hour("13:00", "14:00").disabled).toBe(false);
+    tick("13:01:00");
+    expect(form.hour("13:00", "14:00").disabled).toBe(true);
+    expect(form.pick()).toBe("13:05-14:05");
+  });
+
+  it("stops the moved pick at the next booking", async () => {
+    server.taken = () => [
+      { start: "13:00", end: "14:00", label: "13:00 - 14:00" },
+    ];
+    const view = mountForm();
+    await waitFor(() => expect(form.pick()).toBe("12:05-13:00"));
+    tick("12:06:00");
+    expect(form.pick()).toBe("12:10-13:00");
+    view.unmount();
+  });
+
+  it("never moves another day's board", async () => {
+    server.earliest = "00:00";
+    await ready();
+    tick("12:31:00");
+    expect(form.pick()).toBe("09:00-10:00");
   });
 });
 

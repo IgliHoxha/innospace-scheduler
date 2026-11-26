@@ -5,6 +5,7 @@ import {
   lastBoardWrite,
   noteBoardWrite,
 } from "@/lib/availability-url";
+import { localMinutes } from "@/lib/datetime";
 import {
   markMine,
   readMine,
@@ -20,6 +21,8 @@ export interface Availability {
   /** Active reservations per booth; absent on a copy cached before a deploy. */
   counts?: Record<string, number>;
   earliest: string;
+  /** This device's clock when the board arrived, so "earliest" can move with it. */
+  loadedAtMin: number;
 }
 
 export interface LoadOptions {
@@ -57,7 +60,7 @@ export function useAvailability(
         );
         const json = (await res.json()) as { ok: boolean } & Omit<
           Availability,
-          "reserved"
+          "reserved" | "loadedAtMin"
         > & { reserved: BoardSlot[] };
         if (id !== reqId.current) return;
         const owned = readMine();
@@ -67,6 +70,7 @@ export function useAvailability(
             ? {
                 ...json,
                 reserved: markMine(json.reserved, owned, boothId, date),
+                loadedAtMin: localMinutes(Date.now()),
               }
             : null,
         );

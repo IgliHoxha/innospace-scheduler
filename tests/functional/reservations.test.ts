@@ -516,6 +516,42 @@ describe("POST /api/reservations - slot validation", () => {
     expect(res.status).toBe(400);
     expect((await json(res)).error).toContain("already passed");
   });
+  // The form opens on the next step, and typing a name on a phone outlasts it.
+  it("books a start whose step is still under way", async () => {
+    expect((await post({ ...ok, start: "12:00", end: "13:00" })).status).toBe(
+      201,
+    );
+    vi.setSystemTime(new Date(`${DAY}T12:04:59`));
+    const res = await post({
+      ...ok,
+      boothId: "booth-2",
+      start: "12:00",
+      end: "13:00",
+      email: "grace@example.com",
+    });
+    expect(res.status).toBe(201);
+    expect(db.reservedRanges("booth-2", DAY)).toEqual([
+      { startsAt: `${DAY}T12:00`, endsAt: `${DAY}T13:00` },
+    ]);
+  });
+  it("400 once that step is over, and for the step before now", async () => {
+    const passed = async (start: string) => {
+      const res = await post({ ...ok, start, end: "13:00" });
+      return [res.status, (await json(res)).error];
+    };
+    expect(await passed("11:55")).toEqual([
+      400,
+      "That time has already passed.",
+    ]);
+    vi.setSystemTime(new Date(`${DAY}T12:05:00`));
+    expect(await passed("12:00")).toEqual([
+      400,
+      "That time has already passed.",
+    ]);
+    expect((await post({ ...ok, start: "12:05", end: "13:00" })).status).toBe(
+      201,
+    );
+  });
   it("400 when a note is required (>= 2h) but missing", async () => {
     const res = await post({ ...ok, end: "16:00" });
     expect(res.status).toBe(400);

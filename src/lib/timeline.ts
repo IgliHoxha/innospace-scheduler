@@ -348,6 +348,39 @@ export function seedGap(
   return gaps[0] ?? null;
 }
 
+/** Today's first reservable minute, moved on by every step the clock crossed since the board loaded. */
+export function liveEarliestMin(
+  earliestMin: number,
+  loadedAtMin: number,
+  nowMin: number,
+  stepMin: number,
+): number {
+  // Midnight is another day's board (or today's first minute), which no clock moves.
+  if (earliestMin <= 0) return earliestMin;
+  const ceil = (m: number) => Math.ceil(m / stepMin) * stepMin;
+  return earliestMin + Math.max(0, ceil(nowMin) - ceil(loadedAtMin));
+}
+
+/** Where a pick the clock overtook moves to, its length kept; null when it stays put. */
+export function slidePick(
+  pick: { from: number; to: number },
+  wasEarliestMin: number,
+  earliestMin: number,
+  gaps: readonly { from: number; to: number }[],
+): { from: number; to: number | null } | null {
+  // Only a start that was bookable until now: an earlier one is the person's own edit.
+  if (pick.from < wasEarliestMin || pick.from >= earliestMin) return null;
+  // Taken from the new first minute on, there is nowhere to slide to.
+  const gap = gaps.find((g) => g.from === earliestMin);
+  if (!gap) return null;
+  const length = pick.to - pick.from;
+  // A half-typed end has no length to carry, so it is left to its field.
+  return {
+    from: earliestMin,
+    to: length > 0 ? Math.min(gap.to, earliestMin + length) : null,
+  };
+}
+
 /** Quick lengths offered beside the time fields, in minutes. */
 const LENGTH_PRESETS = [15, 30, 45] as const;
 

@@ -13,6 +13,7 @@ import { RepeatCard } from "./_booking/RepeatCard";
 import { ReserveBar } from "./_booking/ReserveBar";
 import { TimeCard } from "./_booking/TimeCard";
 import { useAvailability } from "./_booking/use-availability";
+import { useClockMinutes } from "./_booking/use-clock";
 import { useMember } from "./_booking/use-member";
 import { useTurnstile } from "./_booking/use-turnstile";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -34,15 +35,21 @@ import {
   verdictFor,
   withVerdict,
 } from "@/lib/booking-check";
-import { bookedMessage, bookingWhen } from "@/lib/booking-messages";
+import {
+  bookedMessage,
+  bookingWhen,
+  startMovedMessage,
+} from "@/lib/booking-messages";
 import { countsForDate } from "@/lib/availability-url";
 import { heldRangesFor, rememberMine, slotKey } from "@/lib/mine";
 import {
   endForStart,
   findFreeGaps,
   isDayOver,
+  liveEarliestMin,
   presetEnds,
   seedGap,
+  slidePick,
   suggestedEndMin,
   wantedStartMin,
 } from "@/lib/timeline";
@@ -187,6 +194,17 @@ export default function ReservationClient({
   // No opening hours: the day runs to the last grid step a booking may end on.
   const dayEnd = dayEndMinute(stepMinutes);
 
+  // "Now" keeps moving while the form is filled in, so the board's first minute moves with it.
+  const nowMin = useClockMinutes();
+  const earliestMin = avail
+    ? liveEarliestMin(
+        timeToMinutes(avail.earliest),
+        avail.loadedAtMin,
+        nowMin,
+        stepMinutes,
+      )
+    : 0;
+
   // Reservable free stretches; with none, the picker gives way to the reason.
   const freeGaps = useMemo(() => {
     if (!avail) return [];
@@ -195,13 +213,12 @@ export default function ReservationClient({
         start: timeToMinutes(b.start),
         end: timeToMinutes(b.end),
       })),
-      timeToMinutes(avail.earliest),
+      earliestMin,
       dayEnd,
       minReservationMinutes,
     );
-  }, [avail, dayEnd, minReservationMinutes]);
+  }, [avail, earliestMin, dayEnd, minReservationMinutes]);
 
-  const earliestMin = avail ? timeToMinutes(avail.earliest) : 0;
   const noTimeLeft = !!avail && freeGaps.length === 0;
   const dayIsOver =
     !!avail && isDayOver(earliestMin, dayEnd, minReservationMinutes);
@@ -242,6 +259,27 @@ export default function ReservationClient({
     repeatWeeks,
   });
   const refusal = verdictFor(refused, attempt);
+
+  // Adjusted while rendering, not in an effect: a start the clock overtook follows it, as a reload would.
+  const [seenEarliest, setSeenEarliest] = useState(earliestMin);
+  if (earliestMin !== seenEarliest) {
+    setSeenEarliest(earliestMin);
+    const moved =
+      startMin != null && endMin != null
+        ? slidePick(
+            { from: startMin, to: endMin },
+            seenEarliest,
+            earliestMin,
+            freeGaps,
+          )
+        : null;
+    if (moved) {
+      setStart(minutesToTime(moved.from));
+      if (moved.to != null) setEnd(minutesToTime(moved.to));
+      // Reserve was just refused for the old start: say why the times changed.
+      if (refusal) setError(startMovedMessage(refusal, moved.from));
+    }
+  }
   // A refusal's reload can make the form reach the same verdict; say it once.
   const serverSays = refusal || error;
   // Outlives typing in the note box, which does not change the attempt.
@@ -530,7 +568,7 @@ export default function ReservationClient({
               </div>
 
               <DayTimeline
-                earliest={avail.earliest}
+                earliest={minutesToTime(earliestMin)}
                 reserved={avail.reserved}
                 selection={start && end ? { start, end } : null}
                 step={stepMinutes}

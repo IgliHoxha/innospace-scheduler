@@ -266,3 +266,24 @@ describe("dates that cannot be parsed", () => {
     }
   });
 });
+
+describe("the clock helpers", () => {
+  it("writes a Date in the format bookings are stored in", () => {
+    expect(t.dateTimeOf(new Date(2026, 6, 16, 9, 5, 59))).toBe(
+      "2026-07-16T09:05",
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 6, 16, 23, 59, 30));
+    expect(t.nowDateTime()).toBe("2026-07-16T23:59");
+  });
+
+  it("counts whole wall-clock minutes, so two readings subtract", () => {
+    const at = (h: number, m: number, s = 0, day = 16) =>
+      t.localMinutes(new Date(2026, 6, day, h, m, s).getTime());
+    expect(at(9, 5, 59) - at(9, 5, 0)).toBe(0);
+    expect(at(9, 6) - at(9, 5, 59)).toBe(1);
+    expect(at(0, 2, 0, 17) - at(23, 58)).toBe(4);
+    // Aligned to the wall clock, so a step boundary is a multiple of the step.
+    expect(at(9, 5) % 5).toBe(0);
+  });
+});

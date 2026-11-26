@@ -1,4 +1,4 @@
-import { formatDateLong } from "./datetime";
+import { formatDateLong, minutesToTime } from "./datetime";
 import { repeatLabel } from "./recurrence";
 
 export interface BookingWhen {
@@ -27,4 +27,9 @@ export function bookedMessage(o: {
   }
   const held = o.repeatWeeks > 1 ? "The slots are" : "The slot is";
   return `Request submitted: ${o.when}. Reservations over ${o.autoApproveMaxHours} hours need admin approval - we'll email you once it's reviewed. ${held} held for you meanwhile.`;
+}
+
+/** A refusal whose start has since been moved on, so the person knows to press again. */
+export function startMovedMessage(refusal: string, startMin: number): string {
+  return `${refusal} The start is now ${minutesToTime(startMin)}: press Reserve again.`;
 }

@@ -41,7 +41,7 @@ import {
   minutesOfDay,
   durationMinutes,
   toDateTime,
-  nowDateTime,
+  dateTimeOf,
   epochMsOf,
 } from "@/lib/datetime";
 import { createCancelToken, createSeriesCancelToken } from "@/lib/auth";
@@ -96,7 +96,9 @@ function timesProblem(startsAt: string, endsAt: string): string {
   const minutes = durationMinutes(startsAt, endsAt);
   if (!meetsMinDuration(minutes, minReservationMinutes()))
     return tooShortMessage(minReservationMinutes());
-  if (startsAt <= nowDateTime()) return TIME_PASSED_MESSAGE;
+  // Bookable until its step is over, so filling in the form cannot outrun the slot it opened on.
+  const stepOver = dateTimeOf(new Date(Date.now() - stepMinutes() * 60_000));
+  if (startsAt <= stepOver) return TIME_PASSED_MESSAGE;
   return "";
 }
 

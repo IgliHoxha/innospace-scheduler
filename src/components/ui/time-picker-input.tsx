@@ -65,8 +65,18 @@ const TimePickerInput = React.forwardRef<
       [date, picker],
     );
 
+    // What this field's own typing leads to; anything else on show came from outside.
+    const typedRef = React.useRef(shown);
+
+    // The time moved under a focused field (the clock, the day bar): show it, not the stale draft.
+    if (draft !== null && shown !== typedRef.current) setDraft(null);
+
     const commit = (digits: string) => {
-      if (digits) setDate(setDateByType(new Date(date), digits, picker));
+      const next = digits
+        ? setDateByType(new Date(date), digits, picker)
+        : date;
+      typedRef.current = getDateByType(next, picker);
+      if (digits) setDate(next);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

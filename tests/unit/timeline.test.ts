@@ -12,11 +12,13 @@ import {
   hourCells,
   hourMarkMinutes,
   isDayOver,
+  liveEarliestMin,
   pickTagPlacement,
   presetEnds,
   roomFor,
   scrollToShow,
   seedGap,
+  slidePick,
   suggestedEndMin,
   tickMinutes,
   wantedStartMin,
@@ -1186,5 +1188,100 @@ describe("grabAnchor", () => {
       const moving = press + offsetMin;
       expect([anchorMin, moving].sort((a, b) => a - b)).toEqual([600, 660]);
     }
+  });
+});
+
+describe("liveEarliestMin", () => {
+  // Minutes on the device's clock: 1000 is 16:40, loaded at 16:37.
+  const live = (now: number, loaded = 997, earliest = 1000) =>
+    liveEarliestMin(earliest, loaded, now, 5);
+
+  it("is the board's own answer until the clock passes a step", () => {
+    expect(live(997)).toBe(1000);
+    expect(live(999)).toBe(1000);
+    // On the step itself the server still offers it, so the board does too.
+    expect(live(1000)).toBe(1000);
+  });
+
+  it("moves on a step once that step is under way, as a fresh board would", () => {
+    expect(live(1001)).toBe(1005);
+    expect(live(1005)).toBe(1005);
+    expect(live(1006)).toBe(1010);
+    expect(live(1061)).toBe(1065);
+  });
+
+  it("counts from where the board was loaded, on a step or between two", () => {
+    expect(live(1000, 1000)).toBe(1000);
+    expect(live(1001, 1000)).toBe(1005);
+    expect(live(1004, 1001, 1005)).toBe(1005);
+    expect(live(1006, 1001, 1005)).toBe(1010);
+  });
+
+  it("never moves another day's board, which opens at midnight", () => {
+    expect(live(5000, 997, 0)).toBe(0);
+  });
+
+  it("never moves backwards when the device's clock is set back", () => {
+    expect(live(900)).toBe(1000);
+  });
+
+  it("carries on past midnight, where the day then reads as over", () => {
+    expect(live(1441, 1436, 1440)).toBe(1445);
+  });
+});
+
+describe("slidePick", () => {
+  const open = [{ from: 1005, to: 1435 }];
+
+  it("moves a start the clock overtook to the new first minute, length kept", () => {
+    expect(slidePick({ from: 1000, to: 1090 }, 1000, 1005, open)).toEqual({
+      from: 1005,
+      to: 1095,
+    });
+  });
+
+  it("leaves a start that is still ahead", () => {
+    expect(slidePick({ from: 1005, to: 1065 }, 1000, 1005, open)).toBeNull();
+    expect(slidePick({ from: 1200, to: 1260 }, 1000, 1005, open)).toBeNull();
+  });
+
+  // Typed into the past on purpose or half-typed: the form says so, nothing moves it.
+  it("leaves a start that had already passed before this tick", () => {
+    expect(slidePick({ from: 600, to: 660 }, 1000, 1005, open)).toBeNull();
+  });
+
+  it("stops the moved pick at the next booking", () => {
+    expect(
+      slidePick({ from: 1000, to: 1090 }, 1000, 1005, [
+        { from: 1005, to: 1060 },
+      ]),
+    ).toEqual({ from: 1005, to: 1060 });
+  });
+
+  it("stays put when the new first minute is taken", () => {
+    expect(
+      slidePick({ from: 1000, to: 1090 }, 1000, 1005, [
+        { from: 1100, to: 1435 },
+      ]),
+    ).toBeNull();
+    expect(slidePick({ from: 1000, to: 1090 }, 1000, 1005, [])).toBeNull();
+  });
+
+  it("moves the start alone while the end is half-typed", () => {
+    expect(slidePick({ from: 1000, to: 60 }, 1000, 1005, open)).toEqual({
+      from: 1005,
+      to: null,
+    });
+  });
+
+  it("follows a board that jumped several steps at once", () => {
+    expect(
+      slidePick({ from: 1000, to: 1060 }, 1000, 1030, [
+        { from: 1030, to: 1435 },
+      ]),
+    ).toEqual({
+      from: 1030,
+      to: 1090,
+    });
   });
 });

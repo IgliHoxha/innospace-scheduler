@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bookedMessage, bookingWhen } from "@/lib/booking-messages";
+import {
+  bookedMessage,
+  bookingWhen,
+  startMovedMessage,
+} from "@/lib/booking-messages";
 
 const ONE = {
   boothName: "Booth 2",
@@ -47,6 +51,14 @@ describe("bookedMessage", () => {
   it("holds every date of a pending series", () => {
     expect(bookedMessage({ ...base, pending: true, repeatWeeks: 3 })).toMatch(
       /The slots are held for you meanwhile\.$/,
+    );
+  });
+});
+
+describe("startMovedMessage", () => {
+  it("keeps the server's reason and names the new start", () => {
+    expect(startMovedMessage("That time has already passed.", 570)).toBe(
+      "That time has already passed. The start is now 09:30: press Reserve again.",
     );
   });
 });
