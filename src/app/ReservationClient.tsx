@@ -139,6 +139,8 @@ export default function ReservationClient({
     fullName: "",
     email: "",
   });
+  // A time is typed hour first, so it is judged aloud only once the typing pauses or moves on.
+  const [typingTime, setTypingTime] = useState(false);
   // Shown as a red field only, so every failing field is held.
   const [guestErrors, setGuestErrors] = useState<GuestErrors>({});
 
@@ -248,6 +250,9 @@ export default function ReservationClient({
   const { mustNote, needsApproval: willNeedApproval } = check;
   // Not live: the picker re-seeds, so it would scold a range nobody chose.
   const problem = isBlocking(check) ? check.problem : "";
+
+  // Reserve is held at once; the message and the bar's wording wait for the typing to finish.
+  const saidProblem = typingTime ? "" : problem;
 
   // What the server judged, so its verdict expires once any of it changes.
   const attempt = attemptKey({
@@ -530,6 +535,7 @@ export default function ReservationClient({
                   <TimeRangePicker
                     value={start && end ? { from: start, to: end } : null}
                     onChange={editRange}
+                    onEditing={setTypingTime}
                     defaultRange={{
                       from: minutesToTime(seed.from),
                       to: minutesToTime(
@@ -659,7 +665,7 @@ export default function ReservationClient({
         )}
 
         {signInNotice && <p className="error">{signInNotice}</p>}
-        {problem && <p className="error">{problem}</p>}
+        {saidProblem && <p className="error">{saidProblem}</p>}
         {serverSays && serverSays !== problem && (
           <p className="error">{serverSays}</p>
         )}
@@ -667,7 +673,7 @@ export default function ReservationClient({
 
         <ReserveBar
           summary={
-            start && end && !problem
+            start && end && !saidProblem
               ? { booth: selectedBooth?.name, day: dateLabel, start, end }
               : null
           }

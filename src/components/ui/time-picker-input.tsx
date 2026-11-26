@@ -71,12 +71,16 @@ const TimePickerInput = React.forwardRef<
     // The time moved under a focused field (the clock, the day bar): show it, not the stale draft.
     if (draft !== null && shown !== typedRef.current) setDraft(null);
 
+    // A lone digit not yet a time, with the value it was typed over so a moved time voids it.
+    const pendingRef = React.useRef<{ digits: string; over: string } | null>(
+      null,
+    );
+
     const commit = (digits: string) => {
-      const next = digits
-        ? setDateByType(new Date(date), digits, picker)
-        : date;
+      const next = setDateByType(new Date(date), digits, picker);
       typedRef.current = getDateByType(next, picker);
-      if (digits) setDate(next);
+      pendingRef.current = null;
+      setDate(next);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,14 +92,28 @@ const TimePickerInput = React.forwardRef<
       );
       freshRef.current = false;
       setDraft(digits);
-      commit(digits);
-      if (isCompleteEntry(digits, picker)) onRightFocus?.();
+      if (isCompleteEntry(digits, picker)) {
+        commit(digits);
+        onRightFocus?.();
+        return;
+      }
+      // "1" on the way to "18" is no time yet: it waits for its second digit, or for the field to be left.
+      typedRef.current = shown;
+      pendingRef.current = digits ? { digits, over: shown } : null;
+    };
+
+    /** Leaving the field settles a lone digit as typed: "7" is 07. */
+    const settle = () => {
+      const pending = pendingRef.current;
+      if (pending && pending.over === shown) commit(pending.digits);
+      pendingRef.current = null;
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
         setDraft(null);
+        pendingRef.current = null;
         freshRef.current = true; // the stepped value is the one a digit replaces
         setDate(
           setDateByType(
@@ -143,6 +161,7 @@ const TimePickerInput = React.forwardRef<
         }}
         // Drop the draft so a partial entry renders back zero-padded.
         onBlur={(e) => {
+          settle();
           setDraft(null);
           onBlur?.(e);
         }}

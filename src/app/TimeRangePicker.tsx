@@ -11,6 +11,9 @@ export interface TimeRange {
   to: string;
 }
 
+// How long after the last keystroke a typed time counts as finished, and may be judged.
+export const TYPING_PAUSE_MS = 1500;
+
 function toDate(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
   const d = new Date(2000, 0, 1);
@@ -23,11 +26,14 @@ export default function TimeRangePicker({
   value,
   onChange,
   defaultRange,
+  onEditing,
 }: {
   value: TimeRange | null;
   onChange: (range: TimeRange) => void;
   /** The range the fields open on: a real free slot, never a clash. */
   defaultRange: TimeRange;
+  /** True while a time is being typed: from each keystroke until a pause, or the caret leaving the fields. */
+  onEditing?: (editing: boolean) => void;
 }) {
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
@@ -43,6 +49,26 @@ export default function TimeRangePicker({
     onChangeRef.current({ from: defaultRange.from, to: defaultRange.to });
   }, [defaultRange.from, defaultRange.to, value]);
 
+  const onEditingRef = React.useRef(onEditing);
+  onEditingRef.current = onEditing;
+  const quietTimer = React.useRef(0);
+
+  /** The typing is over: the pause ran out, the caret left, or the fields are gone. */
+  const stopEditing = React.useCallback(() => {
+    window.clearTimeout(quietTimer.current);
+    onEditingRef.current?.(false);
+  }, []);
+
+  // Each keystroke restarts the wait, so the hour and its minutes are judged as one time.
+  const keepEditing = () => {
+    window.clearTimeout(quietTimer.current);
+    onEditingRef.current?.(true);
+    quietTimer.current = window.setTimeout(stopEditing, TYPING_PAUSE_MS);
+  };
+
+  // Unmounted mid-typing (a board reload), no blur says so and the timer must not outlive it.
+  React.useEffect(() => stopEditing, [stopEditing]);
+
   const fromH = React.useRef<HTMLInputElement>(null);
   const fromM = React.useRef<HTMLInputElement>(null);
   const toH = React.useRef<HTMLInputElement>(null);
@@ -52,7 +78,15 @@ export default function TimeRangePicker({
   const setTo = (d: Date) => onChangeRef.current({ from, to: timeOfDate(d) });
 
   return (
-    <div className="tp-scope timerange-fields">
+    <div
+      className="tp-scope timerange-fields"
+      onInput={keepEditing}
+      onKeyDown={keepEditing}
+      // Moving between the four fields is still typing; leaving them all ends it at once.
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) stopEditing();
+      }}
+    >
       <div className="tp-group">
         <span className="tp-label">Start</span>
         <div className="tp-inputs">

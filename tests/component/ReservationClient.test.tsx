@@ -553,6 +553,18 @@ describe("the clock moving while the form is open", () => {
     expect(form.reserve().disabled).toBe(false);
   });
 
+  // The digit was typed over a time that has since moved, so it no longer means anything.
+  it("drops a half-typed digit when the clock moves the time under it", async () => {
+    const { user } = await open();
+    await user.click(document.getElementById("end-minutes")!);
+    await user.keyboard("3");
+    tick("12:06:00");
+    expect(form.pick()).toBe("12:10-13:10");
+    await user.click(form.note());
+    expect(form.pick()).toBe("12:10-13:10");
+    expect(form.alerts()).toEqual([]);
+  });
+
   it("books the times on screen after the move", async () => {
     const { user } = await open();
     await fillGuest(user);
@@ -594,6 +606,159 @@ describe("the clock moving while the form is open", () => {
     await ready();
     tick("12:31:00");
     expect(form.pick()).toBe("09:00-10:00");
+  });
+});
+
+describe("typing a new time", () => {
+  const field = (id: string) => document.getElementById(id) as HTMLInputElement;
+  /** The times Reserve would book, which a half-typed field must not have touched. */
+  const booking = () =>
+    document.querySelector(".reserve-summary")?.textContent ?? "";
+
+  it("raises nothing while the end hour is half typed, then takes both digits", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    await user.keyboard("1");
+    expect(field("end-hours").value).toBe("1");
+    expect(form.alerts()).toEqual([]);
+    expect(booking()).toContain("09:00 - 10:00");
+    expect(form.reserve().disabled).toBe(false);
+
+    await user.keyboard("1");
+    expect(form.pick()).toBe("09:00-11:00");
+    expect(booking()).toContain("09:00 - 11:00");
+    expect(document.activeElement).toBe(field("end-minutes"));
+    expect(form.alerts()).toEqual([]);
+  });
+
+  it("raises nothing while the minutes are half typed", async () => {
+    const { user } = await ready();
+    await user.click(field("end-minutes"));
+    await user.keyboard("3");
+    expect(form.alerts()).toEqual([]);
+    expect(booking()).toContain("09:00 - 10:00");
+    await user.keyboard("0");
+    expect(booking()).toContain("09:00 - 10:30");
+    expect(form.alerts()).toEqual([]);
+  });
+
+  // No second digit could follow a 7 in the minutes, so it is a whole entry at once.
+  it("takes a digit that can only stand alone, and judges it once the time fields are left", async () => {
+    const { user } = await ready();
+    await user.click(field("end-minutes"));
+    await user.keyboard("7");
+    // Taken as 10:07 without waiting for a second digit, which Reserve already refuses.
+    expect(form.reserve().disabled).toBe(true);
+    expect(form.alerts()).toEqual([]);
+    await user.click(form.note());
+    expect(form.alerts()).toEqual(["Please choose times in 5-minute steps."]);
+  });
+
+  // 09:00 to 09:45 is typed hour first, so for a moment the end is not after the start.
+  it("stays quiet between the hour and the minutes of one time", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    for (const key of ["0", "9", "4", "5"]) {
+      await user.keyboard(key);
+      expect(form.alerts()).toEqual([]);
+    }
+    expect(form.pick()).toBe("09:00-09:45");
+    await user.click(form.note());
+    expect(form.alerts()).toEqual([]);
+    expect(form.reserve().disabled).toBe(false);
+  });
+
+  it("says what is wrong at once when the caret leaves the time fields", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    await user.keyboard("08");
+    expect(document.activeElement).toBe(field("end-minutes"));
+    expect(form.alerts()).toEqual([]);
+    await user.click(form.note());
+    expect(form.alerts()).toEqual([
+      "The end time must be after the start time.",
+    ]);
+    // Back in a field it still stands, until a keystroke starts the fix.
+    await user.click(field("end-hours"));
+    expect(form.alerts()).toHaveLength(1);
+    await user.keyboard("1");
+    expect(form.alerts()).toEqual([]);
+  });
+
+  // Reserve is off for a wrong time, so the reason must come without leaving the field.
+  it("says what is wrong once the typing stops, the caret still in its field", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    await user.keyboard("08");
+    // Still typing: the bar keeps the times as typed, and nothing is said yet.
+    expect(form.alerts()).toEqual([]);
+    expect(booking()).toContain("09:00 - 08:00");
+    expect(form.reserve().disabled).toBe(true);
+
+    await waitFor(
+      () =>
+        expect(form.alerts()).toEqual([
+          "The end time must be after the start time.",
+        ]),
+      { timeout: 4000 },
+    );
+    expect(document.activeElement).toBe(field("end-minutes"));
+    expect(booking()).toBe("Pick a start and end time to reserve.");
+  });
+
+  // A new board replaces the fields mid-edit, and the form must not stay silent after it.
+  it("speaks again after the fields were replaced with the caret still inside", async () => {
+    const { user } = await ready();
+    await fillGuest(user);
+    await user.click(field("end-minutes"));
+    await user.keyboard("{ArrowUp}");
+    fireEvent.click(form.day(2));
+    await waitFor(() => expect(server.gets.at(-1)?.date).toBe(DAYS[1]));
+    await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+
+    server.replies.push({
+      status: 400,
+      body: { ok: false, error: "That time has already passed." },
+    });
+    server.earliest = "09:30";
+    server.taken = () => [
+      { start: "09:30", end: "11:00", label: "09:30 - 11:00" },
+    ];
+    fireEvent.click(form.reserve());
+    await waitFor(() =>
+      expect(form.alerts()).toEqual(["That time has already passed."]),
+    );
+  });
+
+  it("settles a lone digit when the field is left", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    await user.keyboard("1");
+    await user.click(form.note());
+    expect(form.pick()).toBe("09:00-01:00");
+    expect(form.alerts()).toEqual([
+      "The end time must be after the start time.",
+    ]);
+  });
+
+  it("changes nothing when a field is emptied and left", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    await user.keyboard("{Backspace}{Backspace}");
+    expect(field("end-hours").value).toBe("");
+    expect(form.alerts()).toEqual([]);
+    await user.click(form.note());
+    expect(form.pick()).toBe("09:00-10:00");
+    expect(form.alerts()).toEqual([]);
+  });
+
+  it("forgets a lone digit once an arrow key steps the value instead", async () => {
+    const { user } = await ready();
+    await user.click(field("end-hours"));
+    await user.keyboard("1{ArrowUp}");
+    expect(form.pick()).toBe("09:00-11:00");
+    await user.click(form.note());
+    expect(form.pick()).toBe("09:00-11:00");
   });
 });
 
