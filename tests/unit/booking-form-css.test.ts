@@ -71,11 +71,8 @@ describe("the repeat dropdown", () => {
 });
 
 describe("the my bookings page", () => {
-  // A class beats the field's own utilities, so the form's fields stay their size.
-  it("draws the end-time fields small, to sit level with Save", () => {
-    expect(css).toMatch(
-      /\.my-booking-end input \{\s*height: 32px;\s*width: 36px;\s*font-size: 14px;/,
-    );
+  it("keeps no style for the end-time fields Terminate now replaced", () => {
+    expect(css).not.toMatch(/\.my-booking-end/);
   });
 
   it("keeps the list to a reading column", () => {

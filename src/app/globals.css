@@ -381,14 +381,6 @@ button {
   margin: 0;
 }
 
-/* Sized to the Save button beside them; the booking form keeps its larger fields. */
-.my-booking-end input {
-  height: 32px;
-  width: 36px;
-  font-size: 14px;
-  border-radius: 8px;
-}
-
 .my-booking-ask {
   font-size: 13px;
   font-weight: 600;

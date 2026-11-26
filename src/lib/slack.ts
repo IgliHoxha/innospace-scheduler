@@ -22,7 +22,7 @@ const ICON_CHANGED = ":pencil2:";
 export type CancelledBy = "guest" | "admin";
 
 /** An approval lands on "confirmed" too, so status alone cannot say. */
-export type SlackEvent = EmailStatus | "approved" | "endChanged";
+export type SlackEvent = EmailStatus | "approved" | "endedEarly";
 
 // One place for icon and wording, so they cannot describe different events.
 function headline(
@@ -35,12 +35,12 @@ function headline(
       title: `Reservation cancelled by ${actor ?? "the guest"}`,
       lead: "Cancelled",
     };
-  // Only the booker can move their end, from the booking screen.
-  if (event === "endChanged")
+  // Only the booker can end their own booking early, from My bookings.
+  if (event === "endedEarly")
     return {
       icon: ICON_CHANGED,
-      title: `End time changed by ${actor ?? "the guest"}`,
-      lead: "End time changed",
+      title: `Reservation ended early by ${actor ?? "the guest"}`,
+      lead: "Ended early",
     };
   if (event === "pending")
     return {

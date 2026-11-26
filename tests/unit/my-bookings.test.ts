@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import nextConfig from "../../next.config.mjs";
-import {
-  canCancel,
-  canChangeEnd,
-  earliestEndMin,
-  longStayMessage,
-  phaseOf,
-} from "@/lib/my-bookings";
+import { canCancel, canEndNow, phaseOf } from "@/lib/my-bookings";
 
 const D = "2026-07-16";
 const at = (t: string) => `${D}T${t}`;
@@ -35,47 +29,21 @@ describe("phaseOf", () => {
 });
 
 describe("what a member may do", () => {
-  it("cancels an active booking until it is over, one under way included", () => {
+  it("cancels an active booking only before it starts", () => {
     expect(canCancel({ status: "confirmed", phase: "upcoming" })).toBe(true);
     expect(canCancel({ status: "pending", phase: "upcoming" })).toBe(true);
-    expect(canCancel({ status: "confirmed", phase: "ongoing" })).toBe(true);
-    expect(canCancel({ status: "pending", phase: "ongoing" })).toBe(true);
+    expect(canCancel({ status: "confirmed", phase: "ongoing" })).toBe(false);
+    expect(canCancel({ status: "pending", phase: "ongoing" })).toBe(false);
     expect(canCancel({ status: "cancelled", phase: "upcoming" })).toBe(false);
-    expect(canCancel({ status: "cancelled", phase: "ongoing" })).toBe(false);
     expect(canCancel({ status: "confirmed", phase: "past" })).toBe(false);
   });
 
-  it("moves the end only of an active booking under way", () => {
-    expect(canChangeEnd({ status: "confirmed", phase: "ongoing" })).toBe(true);
-    expect(canChangeEnd({ status: "pending", phase: "ongoing" })).toBe(true);
-    expect(canChangeEnd({ status: "cancelled", phase: "ongoing" })).toBe(false);
-    expect(canChangeEnd({ status: "confirmed", phase: "upcoming" })).toBe(
-      false,
-    );
-    expect(canChangeEnd({ status: "confirmed", phase: "past" })).toBe(false);
-  });
-});
-
-describe("earliestEndMin", () => {
-  it("is the next grid step after now", () => {
-    expect(earliestEndMin(600, 642, 5, 15)).toBe(645);
-  });
-
-  it("moves a whole step on when now sits on the grid", () => {
-    expect(earliestEndMin(600, 640, 5, 15)).toBe(645);
-  });
-
-  it("never leaves the booking shorter than the minimum", () => {
-    expect(earliestEndMin(600, 601, 5, 30)).toBe(630);
-  });
-});
-
-describe("longStayMessage", () => {
-  it("names what the longer stay would need", () => {
-    expect(longStayMessage(2, true)).toBe(
-      "A stay of 2 hours or more needs admin approval, so it can't be extended here. Reserve the extra time from the form instead.",
-    );
-    expect(longStayMessage(2, false)).toContain("needs a note");
+  it("ends early only an active booking under way", () => {
+    expect(canEndNow({ status: "confirmed", phase: "ongoing" })).toBe(true);
+    expect(canEndNow({ status: "pending", phase: "ongoing" })).toBe(true);
+    expect(canEndNow({ status: "cancelled", phase: "ongoing" })).toBe(false);
+    expect(canEndNow({ status: "confirmed", phase: "upcoming" })).toBe(false);
+    expect(canEndNow({ status: "confirmed", phase: "past" })).toBe(false);
   });
 });
 

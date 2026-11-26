@@ -109,8 +109,6 @@ describe("GET /api/me/reservations", () => {
     expect(body).toMatchObject({
       ok: true,
       now: at("12:02"),
-      stepMinutes: 5,
-      minMinutes: 15,
       page: 1,
       pageSize: 10,
       total: 3,
@@ -217,9 +215,9 @@ describe("DELETE /api/me/reservations/[id]", () => {
     expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
   });
 
-  it("emails nothing when the end time moves", async () => {
+  it("emails nothing when a booking is ended early", async () => {
     const r = await seed("11:30", "12:30");
-    await call("PATCH", r.id, ADA, { end: "13:00" });
+    await call("PATCH", r.id, ADA);
     expect(email.sendGuestCancellationEmail).not.toHaveBeenCalled();
   });
 
@@ -287,120 +285,108 @@ describe("DELETE /api/me/reservations/[id]", () => {
 });
 
 describe("PATCH /api/me/reservations/[id]", () => {
-  const move = (id: string, end: unknown, token = ADA) =>
-    call("PATCH", id, token, { end });
+  const endNow = (
+    id: string,
+    token: string | undefined = ADA,
+    body?: unknown,
+  ) => call("PATCH", id, token, body);
 
-  it("extends a booking under way and tells the channel", async () => {
+  it("ends a booking under way at the server's minute and tells the channel", async () => {
     const r = await seed("11:30", "12:30");
-    const res = await move(r.id, "13:00");
+    const res = await endNow(r.id);
     expect(res.status).toBe(200);
-    expect((await json(res)).reservation?.endsAt).toBe(at("13:00"));
-    expect(db.getReservation(r.id)?.endsAt).toBe(at("13:00"));
+    expect(await json(res)).toMatchObject({
+      ok: true,
+      reservation: { endsAt: at("12:02"), status: "confirmed" },
+    });
+    expect(db.getReservation(r.id)).toMatchObject({
+      startsAt: at("11:30"),
+      endsAt: at("12:02"),
+      status: "confirmed",
+    });
     expect(slack.postReservationToSlack).toHaveBeenCalledWith(
-      expect.objectContaining({ endsAt: at("13:00") }),
-      "endChanged",
+      expect.objectContaining({ endsAt: at("12:02") }),
+      "endedEarly",
       expect.any(Function),
       "guest",
     );
   });
 
-  it("shortens one, down to the next step after now", async () => {
+  it("moves it to the past and frees the rest of its time", async () => {
     const r = await seed("11:30", "12:30");
-    expect((await move(r.id, "12:05")).status).toBe(200);
-    expect(db.getReservation(r.id)?.endsAt).toBe(at("12:05"));
+    await endNow(r.id);
+    const body = await (await getList(ADA)).json();
+    expect(body.bookings).toEqual([
+      expect.objectContaining({
+        id: r.id,
+        phase: "past",
+        endsAt: at("12:02"),
+      }),
+    ]);
+    expect(db.reservedRanges("booth-1", D)).toEqual([
+      { startsAt: at("11:30"), endsAt: at("12:02") },
+    ]);
+    const next = await seed("12:05", "12:30", { email: "grace@example.com" });
+    expect(next.status).toBe("confirmed");
   });
 
-  it("refuses an end that is not later than now", async () => {
+  // The clock decides: a caller cannot pick an end, later or earlier.
+  it("ignores an end the caller sends", async () => {
     const r = await seed("11:30", "12:30");
-    const res = await move(r.id, "12:00");
+    expect((await endNow(r.id, ADA, { end: "13:00" })).status).toBe(200);
+    expect(db.getReservation(r.id)?.endsAt).toBe(at("12:02"));
+  });
+
+  it("ends a pending request the same way, leaving it pending", async () => {
+    const r = await seed("11:30", "14:30", { note: "workshop" }, "pending");
+    expect((await endNow(r.id)).status).toBe(200);
+    expect(db.getReservation(r.id)).toMatchObject({
+      endsAt: at("12:02"),
+      status: "pending",
+    });
+  });
+
+  it("has nothing left to end a second time", async () => {
+    const r = await seed("11:30", "12:30");
+    await endNow(r.id);
+    vi.mocked(slack.postReservationToSlack).mockClear();
+    const res = await endNow(r.id);
     expect(res.status).toBe(400);
     expect((await json(res)).error).toBe(
-      "The new end time must be later than now.",
+      "Only a booking that is under way can be ended early.",
     );
-  });
-
-  it("refuses an end off the grid, malformed or missing", async () => {
-    const r = await seed("11:30", "12:30");
-    for (const end of ["12:33", "1pm", "", 1300, undefined, "23:59"]) {
-      const res = await move(r.id, end);
-      expect(res.status).toBe(400);
-      expect((await json(res)).error).toBe(
-        "Please choose times in 5-minute steps.",
-      );
-    }
-    expect(db.getReservation(r.id)?.endsAt).toBe(at("12:30"));
-  });
-
-  it("refuses an end before the start or under the minimum length", async () => {
-    vi.setSystemTime(new Date(`${D}T11:31:00`));
-    const r = await seed("11:30", "12:30");
-    expect((await json(await move(r.id, "11:00"))).error).toBe(
-      "The end time must be after the start time.",
-    );
-    expect((await json(await move(r.id, "11:40"))).error).toBe(
-      "Reservations must be at least 15 minutes long.",
-    );
-  });
-
-  it("answers ok without a change when the end is the same", async () => {
-    const r = await seed("11:30", "12:30");
-    const res = await move(r.id, "12:30");
-    expect(res.status).toBe(200);
     expect(slack.postReservationToSlack).not.toHaveBeenCalled();
   });
 
-  it("answers 409 when the longer stay runs into the next booking", async () => {
+  // A booking cannot be zero minutes long, and one that used no time is a cancel.
+  it("cancels one ended in the very minute it began, with the cancel's receipt", async () => {
+    vi.setSystemTime(new Date(`${D}T11:30:40`));
     const r = await seed("11:30", "12:30");
-    await seed("13:00", "14:00", { email: "grace@example.com" });
-    const res = await move(r.id, "13:15");
-    expect(res.status).toBe(409);
-    expect((await json(res)).error).toBe(
-      "That time slot is no longer available.",
-    );
-    expect(db.getReservation(r.id)?.endsAt).toBe(at("12:30"));
-  });
-
-  it("answers 409 when it would overlap the member's own booking on another booth", async () => {
-    const r = await seed("11:30", "12:30");
-    await seed("12:45", "13:30", { boothId: "booth-2" });
-    expect((await move(r.id, "13:00")).status).toBe(409);
-  });
-
-  it("will not stretch a confirmed stay past the approval limit", async () => {
-    const r = await seed("11:30", "12:30", { note: "workshop" });
-    const res = await move(r.id, "13:45");
-    expect(res.status).toBe(400);
-    expect((await json(res)).error).toContain("needs admin approval");
-  });
-
-  it("counts a back-to-back booking towards that limit", async () => {
-    await seed("10:30", "11:30", { boothId: "booth-2", note: "prep" });
-    const r = await seed("11:30", "12:30", { note: "workshop" });
-    expect((await json(await move(r.id, "12:45"))).error).toContain(
-      "needs admin approval",
+    const res = await endNow(r.id);
+    expect(res.status).toBe(200);
+    expect((await json(res)).reservation?.status).toBe("cancelled");
+    expect(db.getReservation(r.id)).toMatchObject({
+      status: "cancelled",
+      endsAt: at("12:30"),
+    });
+    expect(db.reservedRanges("booth-1", D)).toEqual([]);
+    expect(email.sendGuestCancellationEmail).toHaveBeenCalledOnce();
+    expect(slack.postReservationToSlack).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "cancelled" }),
+      "cancelled",
+      expect.any(Function),
+      "guest",
     );
   });
 
-  it("will not reach the note limit for a booking with no note", async () => {
+  it("keeps a one-minute stay as a booking", async () => {
+    vi.setSystemTime(new Date(`${D}T11:31:00`));
     const r = await seed("11:30", "12:30");
-    const res = await move(r.id, "13:30");
-    expect(res.status).toBe(400);
-    expect((await json(res)).error).toContain("needs a note");
-  });
-
-  it("lets a booking with a note reach the limit exactly", async () => {
-    const r = await seed("11:30", "12:30", { note: "workshop" });
-    expect((await move(r.id, "13:30")).status).toBe(200);
-  });
-
-  it("lets a pending one, already waiting on the admin, run longer", async () => {
-    const r = await seed("11:30", "14:00", { note: "workshop" }, "pending");
-    expect((await move(r.id, "14:30")).status).toBe(200);
-  });
-
-  it("always lets a stay already past the limit shrink", async () => {
-    const r = await seed("09:00", "13:00", { note: "workshop" });
-    expect((await move(r.id, "12:30")).status).toBe(200);
+    expect((await endNow(r.id)).status).toBe(200);
+    expect(db.getReservation(r.id)).toMatchObject({
+      status: "confirmed",
+      endsAt: at("11:31"),
+    });
   });
 
   it("refuses a booking not under way", async () => {
@@ -409,26 +395,35 @@ describe("PATCH /api/me/reservations/[id]", () => {
       ["08:00", "09:00"],
     ]) {
       const r = await seed(s, e);
-      const res = await move(r.id, "16:30");
+      const res = await endNow(r.id);
       expect(res.status).toBe(400);
       expect((await json(res)).error).toBe(
-        "Only a booking that is under way can change its end time.",
+        "Only a booking that is under way can be ended early.",
       );
+      expect(db.getReservation(r.id)?.endsAt).toBe(at(e));
     }
+    expect(slack.postReservationToSlack).not.toHaveBeenCalled();
+  });
+
+  // Half-open: at its end minute it is already over.
+  it("refuses at the very minute it ends", async () => {
+    vi.setSystemTime(new Date(`${D}T12:30:00`));
+    const r = await seed("11:30", "12:30");
+    expect((await endNow(r.id)).status).toBe(400);
   });
 
   it("treats someone else's booking as missing, and refuses a guest", async () => {
     const r = await seed("11:30", "12:30");
-    expect((await move(r.id, "13:00", GRACE)).status).toBe(404);
-    expect(
-      (await call("PATCH", r.id, undefined, { end: "13:00" })).status,
-    ).toBe(401);
+    expect((await endNow(r.id, GRACE)).status).toBe(404);
+    expect((await call("PATCH", r.id)).status).toBe(401);
+    expect((await call("PATCH", r.id, adminToken())).status).toBe(401);
+    expect((await endNow("nope")).status).toBe(404);
     expect(db.getReservation(r.id)?.endsAt).toBe(at("12:30"));
   });
 
   it("answers 409 for a cancelled booking", async () => {
     const r = await seed("11:30", "12:30");
     db.updateReservationStatus(r.id, "cancelled");
-    expect((await move(r.id, "13:00")).status).toBe(409);
+    expect((await endNow(r.id)).status).toBe(409);
   });
 });

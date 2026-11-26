@@ -41,7 +41,7 @@ const bodyOf = (fetchMock: ReturnType<typeof vi.fn>) =>
 
 describe("the Slack message", () => {
   type Event =
-    "confirmed" | "pending" | "approved" | "cancelled" | "endChanged";
+    "confirmed" | "pending" | "approved" | "cancelled" | "endedEarly";
   const text = (r: Reservation, event: Event = "confirmed") =>
     slack.slackReservationText(r, event, boothName);
   const body = (
@@ -95,16 +95,16 @@ describe("the Slack message", () => {
     ).toContain("cancelled by the guest");
   });
 
-  // Only the booker moves their end, so the notice names them and shows the new range.
-  it("announces a moved end with its own icon, the booker, and the new times", () => {
-    const moved = { ...RESERVATION, endsAt: "2026-07-16T11:30" };
-    const t = body(moved, "endChanged", "guest").elements[0].text;
+  // Only the booker ends their own booking, so the notice names them and shows the new range.
+  it("announces an early end with its own icon, the booker, and the time it stopped", () => {
+    const ended = { ...RESERVATION, endsAt: "2026-07-16T10:07" };
+    const t = body(ended, "endedEarly", "guest").elements[0].text;
     expect(t).toMatch(
-      /^:pencil2: \*End time changed by Ada Lovelace \(guest\)\*/,
+      /^:pencil2: \*Reservation ended early by Ada Lovelace \(guest\)\*/,
     );
-    expect(t).toContain("09:30 - 11:30");
-    expect(text(moved, "endChanged")).toBe(
-      "End time changed: Booth 1 · Thursday, 16 July 2026 · 09:30 - 11:30 (Ada Lovelace)",
+    expect(t).toContain("09:30 - 10:07");
+    expect(text(ended, "endedEarly")).toBe(
+      "Ended early: Booth 1 · Thursday, 16 July 2026 · 09:30 - 10:07 (Ada Lovelace)",
     );
   });
 

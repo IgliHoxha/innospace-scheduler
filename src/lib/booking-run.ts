@@ -1,4 +1,4 @@
-// Server-only: the run rule reads the DB, so the booking and the edit route share it.
+// Server-only: the run rule reads the DB, so it stays out of the env-free rules it feeds.
 import { heldRangesForEmail } from "./db";
 import { minutesOfDay, shiftDate } from "./datetime";
 import { dayEndMinute, runTotalMinutes } from "./reservation-rules";

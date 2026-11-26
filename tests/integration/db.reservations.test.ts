@@ -941,6 +941,21 @@ describe("updateReservationEnd", () => {
     );
   });
 
+  // Ending early stores the clock's minute, which no step grid produced.
+  it("takes an end off the step grid and frees the booth from there", async () => {
+    const r = await reserve("10:00", "11:00");
+    expect(db.updateReservationEnd(r.id, at("10:07"))?.endsAt).toBe(
+      at("10:07"),
+    );
+    expect(db.reservedRanges("booth-1", D)).toEqual([
+      { startsAt: at("10:00"), endsAt: at("10:07") },
+    ]);
+    const next = await reserve("10:10", "11:00", {
+      email: "grace@example.com",
+    });
+    expect(next.status).toBe("confirmed");
+  });
+
   it("returns null for a cancelled or missing booking", async () => {
     const r = await reserve("10:00", "11:00");
     db.updateReservationStatus(r.id, "cancelled");

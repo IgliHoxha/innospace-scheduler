@@ -3,7 +3,6 @@ import { reservationsForEmail } from "./db";
 import { boothName } from "./booths";
 import { nowDateTime } from "./datetime";
 import { pageCount } from "./pagination";
-import { minReservationMinutes, stepMinutes } from "./schedule";
 import {
   MY_BOOKINGS_PAGE_SIZE,
   phaseOf,
@@ -27,8 +26,6 @@ export function loadMyBookings(
   }
   return {
     now,
-    stepMinutes: stepMinutes(),
-    minMinutes: minReservationMinutes(),
     page,
     pageSize,
     total: found.total,

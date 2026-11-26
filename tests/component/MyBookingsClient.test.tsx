@@ -34,8 +34,6 @@ const pageOf = (
   over: Partial<MyBookingsPage> = {},
 ): MyBookingsPage => ({
   now: at("12:02"),
-  stepMinutes: 5,
-  minMinutes: 15,
   page: 1,
   pageSize: 10,
   total: bookings.length,
@@ -164,12 +162,12 @@ describe("the my bookings page", () => {
     );
     expect(groups()).toEqual(["In progress", "Upcoming", "Past"]);
     expect(
-      within(row("Booth 1")).getByRole("button", { name: "Save" }),
+      within(row("Booth 1")).getByRole("button", { name: "Terminate now" }),
     ).toBeTruthy();
-    // Under way, it can still be dropped: the rest of its time frees up.
+    // Under way, it is ended, not cancelled: the time already used stays on record.
     expect(
-      within(row("Booth 1")).getByRole("button", { name: "Cancel" }),
-    ).toBeTruthy();
+      within(row("Booth 1")).queryByRole("button", { name: "Cancel" }),
+    ).toBeNull();
     expect(
       within(row("Booth 2")).getByRole("button", { name: "Cancel" }),
     ).toBeTruthy();
@@ -333,32 +331,19 @@ describe("cancelling an upcoming booking", () => {
     );
   });
 
-  it("cancels a booking under way the same way, below its end time", async () => {
-    const ongoing = booking({
-      phase: "ongoing",
-      startsAt: at("11:30"),
-      endsAt: at("12:30"),
-    });
-    const { user } = mount(pageOf([ongoing]));
-    const li = row("Booth 1");
-    // The end editor first, then the way to drop it.
-    const actions = [...li.querySelectorAll("button")].map(
-      (b) => b.textContent,
+  it("offers no cancel on a booking under way, only ending it", () => {
+    mount(
+      pageOf([
+        booking({
+          phase: "ongoing",
+          startsAt: at("11:30"),
+          endsAt: at("12:30"),
+        }),
+      ]),
     );
-    expect(actions).toEqual(["Save", "Cancel"]);
-    await user.click(within(li).getByRole("button", { name: "Cancel" }));
-    pages.set(1, pageOf([{ ...ongoing, status: "cancelled" }]));
-    await user.click(screen.getByRole("button", { name: "Yes, cancel" }));
-    await waitFor(() =>
-      expect(row("Booth 1").querySelector(".badge")?.textContent).toBe(
-        "Cancelled",
-      ),
-    );
-    expect(writes()).toEqual([
-      { url: "/api/me/reservations/r1", method: "DELETE", body: undefined },
-    ]);
-    // Cancelled, it is no longer under way: nothing left to edit.
-    expect(within(row("Booth 1")).queryAllByRole("button")).toEqual([]);
+    expect(
+      [...row("Booth 1").querySelectorAll("button")].map((b) => b.textContent),
+    ).toEqual(["Terminate now"]);
   });
 
   it("keeps the booking on 'Keep it'", async () => {
@@ -398,79 +383,120 @@ describe("cancelling an upcoming booking", () => {
   });
 });
 
-describe("moving the end of a booking under way", () => {
+describe("ending a booking under way", () => {
   const ongoing = () =>
     booking({ phase: "ongoing", startsAt: at("11:30"), endsAt: at("12:30") });
-  const field = (part: "hours" | "minutes") =>
-    document.getElementById(`end-r1-${part}`) as HTMLInputElement;
-  const save = () =>
-    screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+  const terminate = () => screen.getByRole("button", { name: "Terminate now" });
 
-  it("opens on the current end with Save off until it changes", () => {
+  it("offers no end-time fields, only the button", () => {
     mount(pageOf([ongoing()]));
-    // In the scope that gives the fields a solid border, and the small size.
-    expect(field("hours").closest(".tp-scope.my-booking-end")).not.toBeNull();
-    expect([field("hours").value, field("minutes").value]).toEqual([
-      "12",
-      "30",
-    ]);
-    expect(save().disabled).toBe(true);
+    expect(row("Booth 1").querySelectorAll("input")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(terminate()).toBeTruthy();
   });
 
-  it("sends the new end and reseeds from the saved booking", async () => {
-    const { user } = mount(pageOf([ongoing()]));
-    await user.click(field("hours"));
-    await user.keyboard("{ArrowUp}");
-    expect(save().disabled).toBe(false);
+  it("offers it on no booking that has not started or is over", () => {
+    mount(
+      pageOf([
+        booking({}),
+        booking({
+          id: "r2",
+          boothName: "Booth 2",
+          phase: "past",
+          startsAt: at("08:00"),
+          endsAt: at("09:00"),
+        }),
+      ]),
+    );
+    expect(screen.queryByRole("button", { name: "Terminate now" })).toBeNull();
+  });
 
-    pages.set(1, pageOf([{ ...ongoing(), endsAt: at("13:30") }]));
-    await user.click(save());
+  it("asks first, then sends no time of its own and shows the end the server stored", async () => {
+    const { user } = mount(pageOf([ongoing()]));
+    await user.click(terminate());
+    expect(row("Booth 1").textContent).toContain("End this booking now?");
+    // While it asks, only the two answers show.
+    expect(
+      [...row("Booth 1").querySelectorAll("button")].map((b) => b.textContent),
+    ).toEqual(["Keep it", "Yes, terminate"]);
+    expect(writes()).toEqual([]);
+
+    pages.set(
+      1,
+      pageOf([{ ...ongoing(), phase: "past", endsAt: at("12:02") }]),
+    );
+    await user.click(screen.getByRole("button", { name: "Yes, terminate" }));
     await waitFor(() =>
-      expect(row("Booth 1").textContent).toContain("11:30 - 13:30"),
+      expect(row("Booth 1").textContent).toContain("11:30 - 12:02"),
     );
     expect(writes()).toEqual([
-      {
-        url: "/api/me/reservations/r1",
-        method: "PATCH",
-        body: { end: "13:30" },
-      },
+      { url: "/api/me/reservations/r1", method: "PATCH", body: undefined },
     ]);
-    expect(save().disabled).toBe(true);
+    expect(reads()).toEqual(["/api/me/reservations?page=1"]);
+    expect(groups()).toEqual(["Past"]);
+    // Over now, it is read-only.
+    expect(within(row("Booth 1")).queryAllByRole("button")).toEqual([]);
   });
 
-  it("will not send an end at or before now, naming the earliest it takes", async () => {
+  // Ended in the minute it began, the server cancels it: the page shows what came back.
+  it("shows a booking the server cancelled instead, with nothing left to do", async () => {
     const { user } = mount(pageOf([ongoing()]));
-    await user.click(field("minutes"));
-    await user.keyboard("00");
-    expect(save().disabled).toBe(true);
-    expect(within(row("Booth 1")).getByRole("alert").textContent).toBe(
-      "Pick 12:05 or later.",
+    await user.click(terminate());
+    pages.set(1, pageOf([{ ...ongoing(), status: "cancelled" }]));
+    await user.click(screen.getByRole("button", { name: "Yes, terminate" }));
+    await waitFor(() =>
+      expect(row("Booth 1").querySelector(".badge")?.textContent).toBe(
+        "Cancelled",
+      ),
+    );
+    expect(within(row("Booth 1")).queryAllByRole("button")).toEqual([]);
+  });
+
+  it("tells the booking screen the board changed", async () => {
+    const { user } = mount(pageOf([ongoing()]));
+    await user.click(terminate());
+    await user.click(screen.getByRole("button", { name: "Yes, terminate" }));
+    await waitFor(() =>
+      expect(Number(localStorage.getItem("innospace.wroteAt"))).toBeGreaterThan(
+        0,
+      ),
     );
   });
 
-  it("will not send an end off the grid", async () => {
+  it("keeps the booking running on 'Keep it'", async () => {
     const { user } = mount(pageOf([ongoing()]));
-    await user.click(field("minutes"));
-    await user.keyboard("33");
-    expect(save().disabled).toBe(true);
-    expect(within(row("Booth 1")).getByRole("alert").textContent).toBe(
-      "Please choose times in 5-minute steps.",
-    );
+    await user.click(terminate());
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(writes()).toEqual([]);
+    expect(row("Booth 1").textContent).toContain("11:30 - 12:30");
+    expect(terminate()).toBeTruthy();
   });
 
-  it("shows a clash the server reports, keeping the typed end", async () => {
+  it("shows the server's refusal on the row and reloads nothing", async () => {
     replies.push({
-      status: 409,
-      body: { ok: false, error: "That time slot is no longer available." },
+      status: 400,
+      body: {
+        ok: false,
+        error: "Only a booking that is under way can be ended early.",
+      },
     });
     const { user } = mount(pageOf([ongoing()]));
-    await user.click(field("hours"));
-    await user.keyboard("{ArrowUp}");
-    await user.click(save());
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "That time slot is no longer available.",
+    await user.click(terminate());
+    await user.click(screen.getByRole("button", { name: "Yes, terminate" }));
+    expect((await within(row("Booth 1")).findByRole("alert")).textContent).toBe(
+      "Only a booking that is under way can be ended early.",
     );
-    expect(field("hours").value).toBe("13");
     expect(reads()).toEqual([]);
+    expect(localStorage.getItem("innospace.wroteAt")).toBeNull();
+  });
+
+  it("says so when the server cannot be reached", async () => {
+    replies.push("drop");
+    const { user } = mount(pageOf([ongoing()]));
+    await user.click(terminate());
+    await user.click(screen.getByRole("button", { name: "Yes, terminate" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Could not reach the server. Please try again.",
+    );
   });
 });

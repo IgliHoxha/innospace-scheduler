@@ -1,40 +1,20 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { memberFrom, type Member } from "@/lib/api-auth";
-import { jsonBody } from "@/lib/api-request";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import {
   getReservation,
-  SlotUnavailableError,
   updateReservationEnd,
   updateReservationStatus,
-  UserBusyError,
 } from "@/lib/db";
 import { canonicalEmail } from "@/lib/guest";
 import { boothName } from "@/lib/booths";
-import { runMinutesOn } from "@/lib/booking-run";
 import { postReservationToSlack } from "@/lib/slack";
 import { sendGuestCancellationEmail } from "@/lib/email";
-import { dateOf, minutesOfDay, nowDateTime, toDateTime } from "@/lib/datetime";
-import {
-  autoApproveMaxHours,
-  isValidTimeOfDay,
-  minReservationMinutes,
-  stepMinutes,
-} from "@/lib/schedule";
-import {
-  approvalRequiredFor,
-  END_BEFORE_START_MESSAGE,
-  meetsMinDuration,
-  noteRequiredFor,
-  offGridMessage,
-  tooShortMessage,
-} from "@/lib/reservation-rules";
+import { nowDateTime } from "@/lib/datetime";
 import {
   CANCEL_OVER_MESSAGE,
-  END_NOT_LATER_MESSAGE,
   END_ONLY_ONGOING_MESSAGE,
-  longStayMessage,
   NOT_ACTIVE_MESSAGE,
   NOT_FOUND_MESSAGE,
   phaseOf,
@@ -60,6 +40,19 @@ function ownBooking(member: Member, id: string): Reservation | null {
   return canonicalEmail(r.email) === canonicalEmail(member.email) ? r : null;
 }
 
+/** Cancels it, then sends the receipt and the notice once the member has their answer. */
+function cancelOwn(existing: Reservation): NextResponse {
+  const reservation = updateReservationStatus(existing.id, "cancelled");
+  if (!reservation) return jsonError(NOT_FOUND_MESSAGE, 404);
+
+  // A receipt that also takes it off their calendar, as with the emailed link.
+  after(async () => {
+    await sendGuestCancellationEmail([reservation]);
+    await postReservationToSlack(reservation, "cancelled", boothName, "guest");
+  });
+  return NextResponse.json({ ok: true, reservation });
+}
+
 /** Cancels a booking that is not over yet, one under way included. */
 export async function DELETE(req: NextRequest, { params }: Params) {
   const member = guard(req);
@@ -73,19 +66,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (phaseOf(existing.startsAt!, existing.endsAt!, nowDateTime()) === "past") {
     return jsonError(CANCEL_OVER_MESSAGE, 400);
   }
-
-  const reservation = updateReservationStatus(existing.id, "cancelled");
-  if (!reservation) return jsonError(NOT_FOUND_MESSAGE, 404);
-
-  // A receipt that also takes it off their calendar, as with the emailed link.
-  after(async () => {
-    await sendGuestCancellationEmail([reservation]);
-    await postReservationToSlack(reservation, "cancelled", boothName, "guest");
-  });
-  return NextResponse.json({ ok: true, reservation });
+  return cancelOwn(existing);
 }
 
-/** Moves the end of a booking under way; shortening is always fine, extending obeys the booking rules. */
+/** Ends a booking under way at this minute: the server's clock is the new end, the body is never read. */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const member = guard(req);
   if (member instanceof NextResponse) return member;
@@ -97,59 +81,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const now = nowDateTime();
-  const startsAt = existing.startsAt!;
-  const oldEndsAt = existing.endsAt!;
-  if (phaseOf(startsAt, oldEndsAt, now) !== "ongoing") {
+  if (phaseOf(existing.startsAt!, existing.endsAt!, now) !== "ongoing") {
     return jsonError(END_ONLY_ONGOING_MESSAGE, 400);
   }
+  // Ended in the minute it began, it used no time, and a booking cannot be zero long.
+  if (now === existing.startsAt) return cancelOwn(existing);
 
-  const { end } = await jsonBody(req);
-  const endsAt =
-    typeof end === "string" && /^\d{2}:\d{2}$/.test(end)
-      ? toDateTime(dateOf(startsAt), end)
-      : "";
-  const startMin = minutesOfDay(startsAt);
-  const endMin = endsAt ? minutesOfDay(endsAt) : NaN;
-  if (!endsAt || !isValidTimeOfDay(endMin)) {
-    return jsonError(offGridMessage(stepMinutes()), 400);
-  }
-  if (endMin <= startMin) return jsonError(END_BEFORE_START_MESSAGE, 400);
-  if (!meetsMinDuration(endMin - startMin, minReservationMinutes())) {
-    return jsonError(tooShortMessage(minReservationMinutes()), 400);
-  }
-  if (endsAt <= now) return jsonError(END_NOT_LATER_MESSAGE, 400);
-  if (endsAt === oldEndsAt) {
-    return NextResponse.json({ ok: true, reservation: existing });
-  }
-
-  // Only a longer stay can cross a limit; one already past it may still shrink.
-  if (endsAt > oldEndsAt) {
-    const hours = autoApproveMaxHours();
-    const [run] = runMinutesOn(
-      [dateOf(startsAt)],
-      existing.email!,
-      startMin,
-      endMin,
-    );
-    if (approvalRequiredFor(run, hours) && existing.status === "confirmed") {
-      return jsonError(longStayMessage(hours, true), 400);
-    }
-    if (noteRequiredFor(run, hours) && !existing.note?.trim()) {
-      return jsonError(longStayMessage(hours, false), 400);
-    }
-  }
-
-  try {
-    const reservation = updateReservationEnd(existing.id, endsAt);
-    if (!reservation) return jsonError(NOT_ACTIVE_MESSAGE, 409);
-    after(() =>
-      postReservationToSlack(reservation, "endChanged", boothName, "guest"),
-    );
-    return NextResponse.json({ ok: true, reservation });
-  } catch (err) {
-    if (err instanceof SlotUnavailableError || err instanceof UserBusyError) {
-      return jsonError(err.message, 409);
-    }
-    throw err;
-  }
+  const reservation = updateReservationEnd(existing.id, now);
+  if (!reservation) return jsonError(NOT_ACTIVE_MESSAGE, 409);
+  after(() =>
+    postReservationToSlack(reservation, "endedEarly", boothName, "guest"),
+  );
+  return NextResponse.json({ ok: true, reservation });
 }

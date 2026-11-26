@@ -4,29 +4,21 @@ import { useRef, useState } from "react";
 import { Pagination } from "@/components/Pagination";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Topbar } from "@/components/Topbar";
-import { TimePickerInput } from "@/components/ui/time-picker-input";
 import { noteBoardWrite } from "@/lib/availability-url";
 import {
   dateOf,
   formatDateLong,
   formatDateTime,
-  minutesOfDay,
-  minutesToTime,
   rangeLabel,
-  timeOf,
-  timeOfDate,
-  timeToMinutes,
 } from "@/lib/datetime";
 import {
   canCancel,
-  canChangeEnd,
-  earliestEndMin,
+  canEndNow,
   type BookingPhase,
   type MyBooking,
   type MyBookingsPage,
 } from "@/lib/my-bookings";
 import { pageCount } from "@/lib/pagination";
-import { dayEndMinute, offGridMessage } from "@/lib/reservation-rules";
 
 type Board = MyBookingsPage;
 
@@ -43,12 +35,6 @@ const GROUPS: { phase: BookingPhase; title: string }[] = [
 const FAILED = "Something went wrong. Please try again.";
 const OFFLINE = "Could not reach the server. Please try again.";
 
-function toDate(hhmm: string): Date {
-  const d = new Date(2000, 0, 1);
-  d.setHours(Number(hhmm.slice(0, 2)), Number(hhmm.slice(3, 5)), 0, 0);
-  return d;
-}
-
 function StatusBadge({ booking }: { booking: MyBooking }) {
   if (booking.status === "pending")
     return <span className="badge pending">Awaiting approval</span>;
@@ -57,14 +43,52 @@ function StatusBadge({ booking }: { booking: MyBooking }) {
   return null;
 }
 
-function CancelAction({ booking, send }: { booking: MyBooking; send: Send }) {
+/** One thing a member can do to a booking, asked about before it is sent. */
+interface RowAction {
+  label: string;
+  question: string;
+  yes: string;
+  busy: string;
+  method: "PATCH" | "DELETE";
+  /** The plain button's look; the confirming one is always the danger button. */
+  look: string;
+}
+
+// No end time is sent: the server's clock decides when "now" is.
+const END_NOW: RowAction = {
+  label: "Terminate now",
+  question: "End this booking now?",
+  yes: "Yes, terminate",
+  busy: "Terminating…",
+  method: "PATCH",
+  look: "btn sm",
+};
+
+const CANCEL: RowAction = {
+  label: "Cancel",
+  question: "Cancel this booking?",
+  yes: "Yes, cancel",
+  busy: "Cancelling…",
+  method: "DELETE",
+  look: "btn ghost sm",
+};
+
+function RowActions({ booking, send }: { booking: MyBooking; send: Send }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const cancel = async () => {
+  // One or the other: a booking that has started is ended, never cancelled, from here.
+  const action = canEndNow(booking)
+    ? END_NOW
+    : canCancel(booking)
+      ? CANCEL
+      : null;
+  if (!action) return null;
+
+  const confirm = async () => {
     setBusy(true);
-    setError(await send(booking.id, { method: "DELETE" }));
+    setError(await send(booking.id, { method: action.method }));
     setBusy(false);
     setAsking(false);
   };
@@ -73,7 +97,7 @@ function CancelAction({ booking, send }: { booking: MyBooking; send: Send }) {
     <div className="my-booking-actions">
       {asking ? (
         <>
-          <span className="my-booking-ask">Cancel this booking?</span>
+          <span className="my-booking-ask">{action.question}</span>
           <button
             type="button"
             className="btn ghost sm"
@@ -85,19 +109,22 @@ function CancelAction({ booking, send }: { booking: MyBooking; send: Send }) {
           <button
             type="button"
             className="btn danger sm"
-            onClick={cancel}
+            onClick={confirm}
             disabled={busy}
           >
-            {busy ? "Cancelling…" : "Yes, cancel"}
+            {busy ? action.busy : action.yes}
           </button>
         </>
       ) : (
         <button
           type="button"
-          className="btn ghost sm"
-          onClick={() => setAsking(true)}
+          className={action.look}
+          onClick={() => {
+            setError("");
+            setAsking(true);
+          }}
         >
-          Cancel
+          {action.label}
         </button>
       )}
       {error && (
@@ -109,110 +136,7 @@ function CancelAction({ booking, send }: { booking: MyBooking; send: Send }) {
   );
 }
 
-function EndEditor({
-  booking,
-  board,
-  send,
-}: {
-  booking: MyBooking;
-  board: Board;
-  send: Send;
-}) {
-  const current = timeOf(booking.endsAt);
-  const [end, setEnd] = useState(current);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const minutesRef = useRef<HTMLInputElement>(null);
-  const hoursRef = useRef<HTMLInputElement>(null);
-
-  const step = board.stepMinutes;
-  const earliest = earliestEndMin(
-    minutesOfDay(booking.startsAt),
-    minutesOfDay(board.now),
-    step,
-    board.minMinutes,
-  );
-  const latest = dayEndMinute(step);
-  const endMin = timeToMinutes(end);
-  // The server judges clashes and limits; these are the ones the dialog can see.
-  const problem =
-    endMin % step !== 0
-      ? offGridMessage(step)
-      : endMin < earliest
-        ? `Pick ${minutesToTime(earliest)} or later.`
-        : endMin > latest
-          ? `Pick ${minutesToTime(latest)} or earlier.`
-          : "";
-
-  const pick = (d: Date) => {
-    setEnd(timeOfDate(d));
-    setError("");
-  };
-
-  const save = async () => {
-    setBusy(true);
-    setError(
-      await send(booking.id, {
-        method: "PATCH",
-        body: JSON.stringify({ end }),
-      }),
-    );
-    setBusy(false);
-  };
-
-  const fieldId = `end-${booking.id}`;
-  return (
-    <div className="my-booking-actions">
-      <span className="my-booking-ask">Ends at</span>
-      <div className="tp-scope tp-inputs my-booking-end">
-        <TimePickerInput
-          picker="hours"
-          id={`${fieldId}-hours`}
-          name={`${fieldId}-hours`}
-          aria-label="New end hour"
-          date={toDate(end)}
-          setDate={pick}
-          ref={hoursRef}
-          onRightFocus={() => minutesRef.current?.focus()}
-        />
-        <span className="tp-colon">:</span>
-        <TimePickerInput
-          picker="minutes"
-          id={`${fieldId}-minutes`}
-          name={`${fieldId}-minutes`}
-          aria-label="New end minute"
-          date={toDate(end)}
-          setDate={pick}
-          ref={minutesRef}
-          onLeftFocus={() => hoursRef.current?.focus()}
-        />
-      </div>
-      <button
-        type="button"
-        className="btn sm"
-        onClick={save}
-        disabled={busy || end === current || !!problem}
-      >
-        {busy ? "Saving…" : "Save"}
-      </button>
-      {(error || (end !== current && problem)) && (
-        <p className="error" role="alert">
-          {error || problem}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function BookingRow({
-  booking,
-  board,
-  send,
-}: {
-  booking: MyBooking;
-  board: Board;
-  send: Send;
-}) {
+function BookingRow({ booking, send }: { booking: MyBooking; send: Send }) {
   return (
     <li className={`my-booking ${booking.phase}`}>
       <div className="my-booking-head">
@@ -233,22 +157,12 @@ function BookingRow({
           </>
         )}
       </dl>
-      {canChangeEnd(booking) && (
-        // Keyed on the end, so a saved change reseeds the fields.
-        <EndEditor
-          key={booking.endsAt}
-          booking={booking}
-          board={board}
-          send={send}
-        />
-      )}
-      {/* After the end editor, so a booking under way reads: move the end, or drop it. */}
-      {canCancel(booking) && <CancelAction booking={booking} send={send} />}
+      <RowActions booking={booking} send={send} />
     </li>
   );
 }
 
-/** A signed-in member's own bookings: cancel what is ahead, move the end of what is under way, read the rest. */
+/** A signed-in member's own bookings: cancel what is ahead, end what is under way, read the rest. */
 export default function MyBookingsClient({
   name,
   email,
@@ -304,7 +218,7 @@ export default function MyBookingsClient({
         error?: string;
       };
       if (!res.ok || !json.ok) return json.error || FAILED;
-      // A cancel or a new end changes the board "/" shows next.
+      // A cancel or an early end changes the board "/" shows next.
       noteBoardWrite();
       await load(board.page);
       return "";
@@ -331,8 +245,8 @@ export default function MyBookingsClient({
           </a>
           <h1 className="page-title">My bookings</h1>
           <p className="page-subtitle">
-            Cancel a booking that isn&apos;t over yet, change the end time of
-            one that&apos;s under way, and look back at the ones that are over.
+            Cancel a booking that hasn&apos;t started, end one that&apos;s under
+            way right now, and look back at the ones that are over.
           </p>
         </div>
 
@@ -363,12 +277,7 @@ export default function MyBookingsClient({
                   <h2>{title}</h2>
                   <ul>
                     {rows.map((b) => (
-                      <BookingRow
-                        key={b.id}
-                        booking={b}
-                        board={board}
-                        send={send}
-                      />
+                      <BookingRow key={b.id} booking={b} send={send} />
                     ))}
                   </ul>
                 </section>
