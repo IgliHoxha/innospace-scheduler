@@ -26,18 +26,23 @@ env:
   IMAGE_LABEL: sha-${{ github.sha }}
 
 jobs:
-  # The one job that runs the repository's dependencies, so it is handed no secret and no image to build.
+  # One runner for both: Fly's builder builds the image while this one's cores run the checks.
   check:
-    name: Lint, types and tests
+    name: Checks and image
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       actions: read # the last green run is read from this workflow's own history
+    outputs:
+      release: ${{ steps.live.outputs.release }}
+      backup: ${{ steps.live.outputs.backup }}
     steps:
+      # Whole history for the two diffs below, and no token left in the folder the checks are copied from.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # the diff below needs the last commit that passed
+          fetch-depth: 0
+          persist-credentials: false
       # Measured from the last commit that passed, so a red run is never skipped over.
       - name: Which checks does this change need?
         id: changed
@@ -45,6 +50,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: bash .github/scripts/changed-since-green.sh
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+        if: github.event_name != 'pull_request'
+      # Compared with what is live, so a failed or superseded run is never skipped over.
+      - name: Has anything that ships changed?
+        id: live
+        if: github.event_name != 'pull_request'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: bash .github/scripts/changed-since-live.sh
+      # Started before Node is set up, so the builder has its head start on the checks.
+      - name: Start the image build behind the checks
+        if: steps.live.outputs.release == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: bash .github/scripts/image-in-background.sh start
       # Only a plain "false" skips a step below: a missing answer runs the check.
       - uses: actions/setup-node@v7
         id: node
@@ -58,46 +78,27 @@ jobs:
         with:
           path: node_modules
           key: modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package.json', 'package-lock.json') }}
-      - run: npm ci
+      # Scripts off, as in the image: no package's own code runs as the user this job's token belongs to.
+      - run: npm ci --ignore-scripts
         if: steps.changed.outputs.any != 'false' && steps.modules.outputs.cache-hit != 'true'
-      # Side by side on the runner's cores, which keeps this job under a minute.
+      # The packages run as a user who cannot sudo, so Fly's token above stays out of their reach.
       - name: Format, lint, types, dead code and tests
         if: steps.changed.outputs.any != 'false'
         env:
           CODE: ${{ steps.changed.outputs.code }}
           APP: ${{ steps.changed.outputs.app }}
-        run: bash .github/scripts/checks.sh
-
-  # Runs beside the checks, not after them, so the gate adds no time to a deploy.
-  build:
-    name: Build image
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release: ${{ steps.live.outputs.release }}
-      backup: ${{ steps.live.outputs.backup }}
-    env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # the diff below needs the commit that is live
-      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
-      # Compared with what is live, so a failed or superseded run is never skipped over.
-      - name: Has anything that ships changed?
-        id: live
-        run: bash .github/scripts/changed-since-live.sh
-      # Only a dropped builder connection is retried; a real build error fails at once.
-      - name: Build and push
+          SANDBOX_ENV: CODE APP
+        run: bash .github/scripts/sandbox.sh checks.sh
+      # Last, so the job fails on a broken image as the build job used to.
+      - name: The image built
         if: steps.live.outputs.release == 'true'
-        run: bash .github/scripts/build-image.sh
+        run: bash .github/scripts/image-in-background.sh wait
 
   # Names the release too: a job of its own started a runner for twenty seconds of work.
   deploy:
     name: Release and name it
-    needs: [check, build]
-    if: needs.build.outputs.release == 'true'
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -112,7 +113,7 @@ jobs:
       # A schema change here means wiping the file, so a release that can touch the volume gets a way back.
       - name: Back up the database
         # Skipped, secrets unread, unless the volume can change; only a plain "false" skips it.
-        if: needs.build.outputs.backup != 'false'
+        if: needs.check.outputs.backup != 'false'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

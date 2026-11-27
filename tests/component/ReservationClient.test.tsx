@@ -715,6 +715,8 @@ describe("typing a new time", () => {
     fireEvent.click(form.day(2));
     await waitFor(() => expect(server.gets.at(-1)?.date).toBe(DAYS[1]));
     await waitFor(() => expect(form.pick()).toBe("09:00-10:00"));
+    // The fields show the new pick a render before the form holds it, and Reserve is off until then.
+    await waitFor(() => expect(form.reserve().disabled).toBe(false));
 
     server.replies.push({
       status: 400,

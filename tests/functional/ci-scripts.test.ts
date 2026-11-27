@@ -1,10 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -50,15 +52,36 @@ esac`,
 esac`,
   npm: `[ "$1" = run ] || exit 0
 echo "words of $2"
+if [ -n "$STUB_SLOW" ] && [ "$2" != test ]; then
+  mkdir "$STUB_DIR/one-at-a-time" 2>/dev/null || touch "$STUB_DIR/overlapped"
+  /bin/sleep 0.05
+  rmdir "$STUB_DIR/one-at-a-time" 2>/dev/null
+fi
 case " $STUB_NPM_FAILS " in *" $2 "*) exit 1 ;; esac`,
   copilot: `{ pwd; ls -A; } > "$STUB_DIR/copilot.cwd"
+env | cut -d= -f1 | sort > "$STUB_DIR/copilot.env"
 printf '%s' "$STUB_DRAFT"`,
   sleep: "exit 0",
+  // Stands in for root: runs what it is asked as this user, the stand-ins' own settings let through "env -i".
+  sudo: `case "$1" in
+  -u)
+    shift 2
+    if [ "$1" = env ] && [ "$2" = -i ]; then
+      shift 2
+      exec env -i "STUB_LOG=$STUB_LOG" "STUB_DIR=$STUB_DIR" "STUB_DRAFT=$STUB_DRAFT" "$@"
+    fi
+    exec "$@" ;;
+  pkill | useradd) exit 0 ;;
+  install) for last; do :; done; cat > "$last" ;;
+  *) exec "$@" ;;
+esac`,
+  chown: "exit 0",
 };
 
 interface Run {
   status: number | null;
   out: string;
+  stdout: string;
   calls: string[][];
   outputs: Record<string, string>;
   summary: string;
@@ -71,35 +94,58 @@ type Env = Record<string, string>;
 const text = (file: string): string =>
   existsSync(file) ? readFileSync(file, "utf8") : "";
 
+const callsIn = (io: string): string[][] =>
+  text(path.join(io, "calls"))
+    .split("\x1e")
+    .filter(Boolean)
+    .map((record) => record.split("\x1f").slice(0, -1));
+
+interface Extra {
+  args?: string[];
+  input?: string;
+}
+
 /** Runs one script as a step would, in `cwd`, with nothing of this process's own env but PATH. */
-function run(name: string, env: Env = {}, cwd: string = dir): Run {
+function run(
+  name: string,
+  env: Env = {},
+  cwd: string = dir,
+  { args = [], input }: Extra = {},
+): Run {
   const io = path.join(root, `io-${++made}`);
   mkdirSync(io);
-  const done = spawnSync("bash", [path.resolve(`.github/scripts/${name}.sh`)], {
-    cwd,
-    encoding: "utf8",
-    env: {
-      NODE_ENV: "test",
-      PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-      TMPDIR: dir,
-      RUNNER_TEMP: dir,
-      GITHUB_OUTPUT: path.join(io, "output"),
-      GITHUB_STEP_SUMMARY: path.join(io, "summary"),
-      GITHUB_REPOSITORY: "owner/scheduler",
-      GITHUB_REF_NAME: "main",
-      GITHUB_SHA: SHA,
-      STUB_LOG: path.join(io, "calls"),
-      STUB_DIR: io,
-      ...env,
+  const done = spawnSync(
+    "bash",
+    [path.resolve(`.github/scripts/${name}.sh`), ...args],
+    {
+      cwd,
+      input,
+      encoding: "utf8",
+      env: {
+        NODE_ENV: "test",
+        PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+        HOME: dir,
+        TMPDIR: dir,
+        RUNNER_TEMP: dir,
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKSPACE: path.join(dir, "workspace"),
+        SANDBOX_ROOT: path.join(dir, "sandbox"),
+        GITHUB_OUTPUT: path.join(io, "output"),
+        GITHUB_STEP_SUMMARY: path.join(io, "summary"),
+        GITHUB_REPOSITORY: "owner/scheduler",
+        GITHUB_REF_NAME: "main",
+        GITHUB_SHA: SHA,
+        STUB_LOG: path.join(io, "calls"),
+        STUB_DIR: io,
+        ...env,
+      },
     },
-  });
+  );
   return {
     status: done.status,
     out: done.stdout + done.stderr,
-    calls: text(path.join(io, "calls"))
-      .split("\x1e")
-      .filter(Boolean)
-      .map((record) => record.split("\x1f").slice(0, -1)),
+    stdout: done.stdout,
+    calls: callsIn(io),
     outputs: Object.fromEntries(
       text(path.join(io, "output"))
         .split("\n")
@@ -184,6 +230,10 @@ beforeAll(() => {
 beforeEach(() => {
   dir = path.join(root, `run-${++made}`);
   mkdirSync(dir);
+  // The checkout a step would run in: the sandbox copies it and runs its scripts from the copy.
+  cpSync(".github/scripts", path.join(dir, "workspace/.github/scripts"), {
+    recursive: true,
+  });
 });
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -411,7 +461,7 @@ describe("what a push changes of the live release", () => {
   });
 });
 
-describe("the checks, side by side", () => {
+describe("the checks of a change", () => {
   const ALWAYS = ["format:check", "knip", "test"];
   const ALL = [...ALWAYS, "lint", "typecheck", "typecheck:tests"].sort();
   const ran = (done: Run) =>
@@ -426,6 +476,23 @@ describe("the checks, side by side", () => {
       expect(done.status, JSON.stringify(env)).toBe(0);
       expect(ran(done)).toEqual(ALL);
     }
+  });
+
+  // All at once they took the cores from the suite's slowest file on GitHub and the step got no shorter.
+  it("run the static ones in turn beside the suite, which leaves them a core", () => {
+    const done = run("checks", { STUB_SLOW: "1" });
+    expect(done.status).toBe(0);
+    const calls = called(done, "npm");
+    expect(
+      calls.map(([, name]) => name).filter((name) => name !== "test"),
+    ).toEqual(["format:check", "knip", "lint", "typecheck:tests", "typecheck"]);
+    expect(existsSync(path.join(done.io, "overlapped"))).toBe(false);
+    expect(calls.find(([, name]) => name === "test")).toEqual([
+      "run",
+      "test",
+      "--",
+      expect.stringMatching(/^--maxWorkers=[1-9]\d*$/),
+    ]);
   });
 
   it("leave out the linter and both typechecks for a change that holds no code", () => {
@@ -471,6 +538,202 @@ describe("the checks, side by side", () => {
       "::error::npm run knip failed.",
       "::error::npm run typecheck failed.",
     ]);
+  });
+});
+
+describe("the sandbox", () => {
+  const script = (name: string, body: string) =>
+    writeFileSync(
+      path.join(dir, "workspace/.github/scripts", `${name}.sh`),
+      body,
+    );
+  const PROBE = `env | cut -d= -f1 | grep -v ^STUB_ | sort | tr '\\n' ' '
+echo
+pwd
+printf 'given<%s>\\n' "$GIVEN"
+cat
+exit "\${CODE:-0}"`;
+
+  it("runs the script in a copy of the checkout, from an empty environment plus what was named", () => {
+    script("probe", PROBE);
+    const done = run(
+      "sandbox",
+      { SANDBOX_ENV: "GIVEN", GIVEN: "kept", WITHHELD: "left" },
+      dir,
+      {
+        args: ["probe.sh"],
+      },
+    );
+    expect(done.status).toBe(0);
+    const [names, cwd] = done.stdout.split("\n");
+    expect(names.trim().split(" ")).toEqual(
+      expect.arrayContaining([
+        "CI",
+        "GITHUB_ACTIONS",
+        "GITHUB_WORKSPACE",
+        "GIVEN",
+        "HOME",
+        "PATH",
+        "RUNNER_TEMP",
+        "TMPDIR",
+      ]),
+    );
+    for (const name of [
+      "WITHHELD",
+      "GITHUB_OUTPUT",
+      "GITHUB_SHA",
+      "SANDBOX_ENV",
+    ])
+      expect(names.trim().split(" ")).not.toContain(name);
+    expect(realpathSync(cwd)).toBe(
+      realpathSync(path.join(dir, "sandbox/work")),
+    );
+  });
+
+  it("hands a value over whole, in a file and on no command line", () => {
+    script("probe", PROBE);
+    const GIVEN = `it's "quoted" $HOME \`tick\` and\na second line`;
+    const done = run("sandbox", { SANDBOX_ENV: "GIVEN", GIVEN }, dir, {
+      args: ["probe.sh"],
+    });
+    expect(done.stdout).toContain(`given<${GIVEN}>\n`);
+    expect(done.calls.flat().join(" ")).not.toContain("quoted");
+    expect(called(done, "sudo")).toContainEqual([
+      "install",
+      "-m",
+      "600",
+      "-o",
+      "sandbox",
+      "-g",
+      "sandbox",
+      "/dev/stdin",
+      path.join(dir, "sandbox/home/.env"),
+    ]);
+    expect(existsSync(path.join(dir, "sandbox/home/.env"))).toBe(false);
+  });
+
+  it("passes the script's input, output and exit code through, adding no word of its own", () => {
+    script("probe", PROBE);
+    const done = run("sandbox", { SANDBOX_ENV: "CODE", CODE: "7" }, dir, {
+      args: ["probe.sh"],
+      input: "what came in\n",
+    });
+    expect(done.status).toBe(7);
+    expect(done.stdout.split("\n").slice(2).join("\n")).toBe(
+      "given<>\nwhat came in\n",
+    );
+  });
+
+  it("keeps what the script writes out of the checkout, and the tools' caches out of the copy", () => {
+    script("scribble", "touch added && ls -A node_modules");
+    for (const made of [
+      "node_modules/.vite/results.json",
+      "node_modules/.bin/tool",
+      "node_modules/pkg/index.js",
+    ]) {
+      mkdirSync(path.dirname(path.join(dir, "workspace", made)), {
+        recursive: true,
+      });
+      writeFileSync(path.join(dir, "workspace", made), "x");
+    }
+    const done = run("sandbox", {}, dir, { args: ["scribble.sh"] });
+    expect(done.status).toBe(0);
+    expect(done.stdout.trim().split("\n").sort()).toEqual([".bin", "pkg"]);
+    expect(existsSync(path.join(dir, "sandbox/work/added"))).toBe(true);
+    expect(existsSync(path.join(dir, "workspace/added"))).toBe(false);
+    expect(existsSync(path.join(dir, "workspace/node_modules/.vite"))).toBe(
+      true,
+    );
+  });
+
+  it("ends whatever the user left running, before and after", () => {
+    script("probe", PROBE);
+    const sudo = called(
+      run("sandbox", {}, dir, { args: ["probe.sh"] }),
+      "sudo",
+    );
+    const kill = ["pkill", "-KILL", "-u", "sandbox"];
+    expect(sudo[0]).toEqual(kill);
+    expect(sudo.at(-1)).toEqual(kill);
+    expect(sudo.at(-2)?.slice(0, 4)).toEqual(["-u", "sandbox", "env", "-i"]);
+  });
+
+  it("takes the name of a script here, names of variables, and a runner, or does nothing", () => {
+    script("probe", PROBE);
+    const refused: [string[], Env][] = [
+      [[], {}],
+      [["../probe.sh"], {}],
+      [["probe"], {}],
+      [["probe.sh"], { SANDBOX_ENV: "GIVEN; rm -rf /" }],
+      [["probe.sh"], { GITHUB_ACTIONS: "" }],
+    ];
+    for (const [args, env] of refused) {
+      const done = run("sandbox", env, dir, { args });
+      expect(done.status, JSON.stringify([args, env])).not.toBe(0);
+      expect(called(done, "sudo")).toEqual([]);
+    }
+  });
+});
+
+describe("the image behind the checks", () => {
+  const env = { FLY_API_TOKEN: "token", IMAGE_LABEL: `sha-${SHA}` };
+  const behind = (extra: Env = {}) => {
+    const start = run("image-in-background", { ...env, ...extra }, dir, {
+      args: ["start"],
+    });
+    expect(start.status).toBe(0);
+    const wait = run("image-in-background", {}, dir, { args: ["wait"] });
+    return {
+      wait,
+      built: callsIn(start.io).filter(([tool]) => tool === "flyctl"),
+    };
+  };
+
+  it("is built while the job goes on, and the wait ends on its success with its log", () => {
+    const { wait, built } = behind();
+    expect(wait.status).toBe(0);
+    expect(built.map(([, verb]) => verb)).toEqual(["deploy"]);
+  });
+
+  it("returns at once from the start, saying where the result will be read", () => {
+    const start = run("image-in-background", env, dir, { args: ["start"] });
+    expect(start.status).toBe(0);
+    expect(start.out).toContain("building behind the checks");
+    expect(run("image-in-background", {}, dir, { args: ["wait"] }).status).toBe(
+      0,
+    );
+  });
+
+  it("fails the wait, with the builder's words, when the build failed", () => {
+    const { wait, built } = behind({
+      STUB_BUILD_FAILS: "1",
+      STUB_BUILD_ERROR: "Type error: Property 'x' does not exist",
+    });
+    expect(wait.status).toBe(1);
+    expect(wait.out).toContain("Type error: Property 'x' does not exist");
+    expect(built).toHaveLength(1);
+  });
+
+  it("fails the wait when the build is gone and left no result", () => {
+    writeFileSync(path.join(dir, "image.pid"), "99999999");
+    writeFileSync(path.join(dir, "image.log"), "the builder's last line\n");
+    const done = run("image-in-background", {}, dir, { args: ["wait"] });
+    expect(done.status).toBe(1);
+    expect(done.out).toContain("the builder's last line");
+    expect(done.out).toContain("::error::The image build stopped");
+  });
+
+  it("does not start without the token or the label, and takes start or wait alone", () => {
+    for (const missing of ["FLY_API_TOKEN", "IMAGE_LABEL"]) {
+      const done = run("image-in-background", { ...env, [missing]: "" }, dir, {
+        args: ["start"],
+      });
+      expect(done.status, missing).not.toBe(0);
+    }
+    expect(run("image-in-background", env).status).toBe(2);
+    expect(
+      run("image-in-background", env, dir, { args: ["stop"] }).status,
+    ).toBe(2);
   });
 });
 
@@ -641,6 +904,26 @@ describe("the release's description", () => {
   };
   const notes = () => path.join(dir, "notes.md");
 
+  // Its package is fetched fresh on each release, into a job that holds the keys to the machine.
+  it("is asked of Copilot as the sandbox's user, handed the token and the rules and none of the job's keys", () => {
+    const done = run("release-notes", {
+      ...env,
+      GH_TOKEN: "gh-secret-value",
+      FLY_API_TOKEN: "fly-secret-value",
+      R2_SECRET_ACCESS_KEY: "r2-secret-value",
+    });
+    expect(done.status).toBe(0);
+    const names = text(path.join(done.io, "copilot.env")).split("\n");
+    expect(names).toEqual(
+      expect.arrayContaining(["GH_TOKEN", "RULES", "COPILOT_CLI", "HOME"]),
+    );
+    for (const name of ["FLY_API_TOKEN", "R2_SECRET_ACCESS_KEY", "TAG"])
+      expect(names).not.toContain(name);
+    expect(called(done, "sudo").map(([verb]) => verb)).toContain("-u");
+    // Every user can list a command line, so the token is on none.
+    expect(done.calls.flat().join(" ")).not.toContain("gh-secret-value");
+  });
+
   it("is Copilot's wording of the commits since the last release, kept for the release and the summary", () => {
     const done = run("release-notes", env);
     expect(done.status).toBe(0);
@@ -672,7 +955,7 @@ describe("the release's description", () => {
       .split("\n")
       .filter(Boolean);
     expect(files).toEqual([]);
-    expect(cwd).not.toBe(dir);
+    expect(cwd).toContain(path.join("sandbox", "tmp"));
   });
 
   it("is worded from the last commits when no release came before", () => {

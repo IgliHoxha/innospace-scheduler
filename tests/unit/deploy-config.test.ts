@@ -23,7 +23,7 @@ const excluded = (text: string) =>
 describe("deciding which checks a change needs", () => {
   const job = workflow.slice(
     workflow.indexOf("  check:\n"),
-    workflow.indexOf("  build:\n"),
+    workflow.indexOf("  deploy:\n"),
   );
   const decide = script("changed-since-green");
   const skips = (answer: string) =>
@@ -53,7 +53,7 @@ describe("deciding which checks a change needs", () => {
     expect(decide).toContain(
       'if [ -n "$BASE" ] && git diff --quiet "$BASE" HEAD -- . "$@"; then echo false; else echo true; fi',
     );
-    expect(job).not.toContain("== 'true'");
+    expect(job).not.toMatch(/steps\.changed\.outputs\.\w+ == 'true'/);
   });
 
   it("skips every check only for files none of them reads", () => {
@@ -79,23 +79,52 @@ describe("deciding which checks a change needs", () => {
   it("runs each check on the answer for the files it reads", () => {
     const checks = script("checks");
     expect(job).toMatch(
-      /if: steps\.changed\.outputs\.any != 'false'\n\s+env:\n\s+CODE: \$\{\{ steps\.changed\.outputs\.code \}\}\n\s+APP: \$\{\{ steps\.changed\.outputs\.app \}\}\n\s+run: bash \.github\/scripts\/checks\.sh\n/,
+      /if: steps\.changed\.outputs\.any != 'false'\n\s+env:\n\s+CODE: \$\{\{ steps\.changed\.outputs\.code \}\}\n\s+APP: \$\{\{ steps\.changed\.outputs\.app \}\}\n\s+SANDBOX_ENV: CODE APP\n\s+run: bash \.github\/scripts\/sandbox\.sh checks\.sh\n/,
     );
-    expect(checks).toMatch(/^start format:check\nstart knip$/m);
+    expect(checks).toMatch(/^static="format:check knip"$/m);
     expect(checks).toContain(
-      'if needed "${CODE:-}"; then start lint; start typecheck:tests; fi',
+      'if needed "${CODE:-}"; then static="$static lint typecheck:tests"; fi',
     );
-    expect(checks).toContain('if needed "${APP:-}"; then start typecheck; fi');
-    expect(checks).toMatch(/^npm run test \|\| failed=1$/m);
+    expect(checks).toContain(
+      'if needed "${APP:-}"; then static="$static typecheck"; fi',
+    );
+    expect(checks).toMatch(
+      /^npm run test -- --maxWorkers=[^\n]+ \|\| failed=1$/m,
+    );
     // Only a plain "false" skips one, so an answer that went missing still runs it.
     expect(checks).toContain('needed() { [ "${1:-}" != false ]; }');
   });
 
-  // Its dependencies are hundreds of packages nobody here wrote, and Fly's token reaches the database.
-  it("is handed no secret, and so builds no image", () => {
-    expect(job).not.toContain("secrets.");
-    expect(job).not.toContain("flyctl");
+  // Fly's token reaches the database, and this job's packages are hundreds nobody here wrote.
+  it("runs no package as the user Fly's token belongs to", () => {
+    const runs = [...job.matchAll(/\n\s+(?:- )?run: ([^\n]+)/g)].map(
+      (m) => m[1],
+    );
+    const asRunner = runs.filter((run) => !run.includes("sandbox.sh "));
+    for (const run of asRunner)
+      expect(run).not.toMatch(/\bnpx\b|npm run|node /);
+    expect(runs).toContain("npm ci --ignore-scripts");
+    expect(runs).toContain("bash .github/scripts/sandbox.sh checks.sh");
+    expect(job).toMatch(/fetch-depth: 0\n\s+persist-credentials: false/);
     expect(job).toMatch(/permissions:\n\s+contents: read\n\s+actions: read/);
+  });
+
+  it("holds Fly's token alone, and only in the steps that ask Fly or build", () => {
+    const secrets = [...job.matchAll(/secrets\.(\w+)/g)].map((m) => m[1]);
+    expect(secrets).toEqual(["FLY_API_TOKEN", "FLY_API_TOKEN"]);
+    for (const name of [
+      "changed-since-live.sh",
+      "image-in-background.sh start",
+    ])
+      expect(job).toMatch(
+        new RegExp(
+          `env:\\n\\s+FLY_API_TOKEN: \\$\\{\\{ secrets\\.FLY_API_TOKEN \\}\\}\\n\\s+run: bash \\.github/scripts/${name}\\n`,
+        ),
+      );
+    // A pull request builds nothing: its two Fly steps are skipped, and the image's follow from them.
+    expect(job.match(/if: github\.event_name != 'pull_request'/g)).toHaveLength(
+      2,
+    );
   });
 
   // A manifest that drifted from its lockfile has to reach npm ci, which refuses it.
@@ -104,7 +133,7 @@ describe("deciding which checks a change needs", () => {
     expect(job).toContain(
       "${{ steps.node.outputs.node-version }}-${{ hashFiles('package.json', 'package-lock.json') }}",
     );
-    expect(gate("npm ci")).toBe(
+    expect(gate("npm ci --ignore-scripts")).toBe(
       "steps.changed.outputs.any != 'false' && steps.modules.outputs.cache-hit != 'true'",
     );
   });
@@ -165,7 +194,7 @@ describe("deciding whether a push needs a release", () => {
     expect(decide).toMatch(/flyctl image show [^\n]*\.\[0\]\.Tag/);
     expect(decide).toContain('git diff --quiet "$live" HEAD');
     expect(workflow).toMatch(
-      /id: live\n\s+run: bash \.github\/scripts\/changed-since-live\.sh/,
+      /id: live\n[^-]+run: bash \.github\/scripts\/changed-since-live\.sh/,
     );
   });
 });
@@ -173,22 +202,34 @@ describe("deciding whether a push needs a release", () => {
 describe("building the image", () => {
   const step = script("build-image");
 
-  it("is built only for a push that releases, by the script", () => {
-    expect(workflow).toMatch(
-      /- name: Build and push\n\s+if: steps\.live\.outputs\.release == 'true'\n\s+run: bash \.github\/scripts\/build-image\.sh\n/,
-    );
+  // Fly's builder does the building, so this runner's cores are free for the checks meanwhile.
+  it("is built behind the checks, only for a push that releases", () => {
+    const behind = script("image-in-background");
+    const start = workflow.indexOf("image-in-background.sh start");
+    const wait = workflow.indexOf("image-in-background.sh wait");
+    for (const at of [start, wait])
+      expect(workflow.slice(0, at)).toMatch(
+        /if: steps\.live\.outputs\.release == 'true'\n[^-]*run: bash \.github\/scripts\/$/,
+      );
+    expect(start).toBeLessThan(workflow.indexOf("actions/setup-node"));
+    expect(wait).toBeGreaterThan(workflow.indexOf("sandbox.sh checks.sh"));
+    expect(behind).toContain('bash "$0/build-image.sh"; echo $? > "$1.tmp"');
+    expect(behind).toContain('exit "$(cat "$result")"');
+    expect(workflow).not.toMatch(/\n {2}build:\n/);
   });
 
   // Without pipefail, tee's success would hide a failed build.
   it("reads flyctl's own exit status through the log it tees", () => {
     expect(step).toMatch(/^set -euo pipefail$/m);
-    expect(step).toMatch(/flyctl deploy --build-only [^\n]*\| tee build\.log/);
+    expect(step).toMatch(/flyctl deploy --build-only [^\n]*\| tee "\$log"/);
+    // Outside the checkout, which is the build's context and what the checks are copied from.
+    expect(step).toMatch(/^log="\$RUNNER_TEMP\/build\.log"$/m);
   });
 
   it("retries only a dropped builder connection, at most three times", () => {
     expect(step).toContain("for attempt in 1 2 3; do");
     expect(step).toContain(
-      "grep -qE 'rpc error: code = Unavailable|error reading from server: EOF' build.log || exit 1",
+      `grep -qE 'rpc error: code = Unavailable|error reading from server: EOF' "$log" || exit 1`,
     );
   });
 });
@@ -211,7 +252,7 @@ describe("the restore point before a release", () => {
     expect(decide).toContain('git diff --quiet "$live" HEAD -- $TOUCHES; then');
     expect(workflow).toContain("backup: ${{ steps.live.outputs.backup }}");
     // A step-level skip, so a release that cannot touch the volume never loads the backup secrets.
-    expect(step).toContain("if: needs.build.outputs.backup != 'false'");
+    expect(step).toContain("if: needs.check.outputs.backup != 'false'");
     expect(step).not.toContain("NEEDED:");
   });
 
@@ -232,7 +273,7 @@ describe("the restore point before a release", () => {
     );
     expect(decide).toMatch(/else\n\s+echo "backup=true" >> "\$GITHUB_OUTPUT"/);
     // Only a plain "false" skips it, so an empty or missing answer still takes the backup.
-    expect(step).toContain("if: needs.build.outputs.backup != 'false'");
+    expect(step).toContain("if: needs.check.outputs.backup != 'false'");
   });
 
   it("comes before the release, and shows as skipped when none was needed", () => {
@@ -242,7 +283,7 @@ describe("the restore point before a release", () => {
     expect(workflow.indexOf("- name: Back up the database")).toBeLessThan(
       workflow.indexOf("- run: flyctl deploy --image"),
     );
-    expect(step.indexOf("if: needs.build.outputs.backup")).toBeLessThan(
+    expect(step.indexOf("if: needs.check.outputs.backup")).toBeLessThan(
       step.indexOf("backup-db.sh"),
     );
   });
@@ -373,7 +414,7 @@ describe("the release job", () => {
 
   it("waits for the checks and the image", () => {
     expect(workflow).toMatch(
-      /deploy:\s+name: Release and name it\s+needs: \[check, build\]\s+if: needs\.build\.outputs\.release == 'true'/,
+      /deploy:\s+name: Release and name it\s+needs: check\s+if: needs\.check\.outputs\.release == 'true'/,
     );
   });
 
@@ -520,6 +561,7 @@ describe("the release's description", () => {
     job.indexOf("- name: Create the tag and the GitHub release"),
   );
   const notes = script("release-notes");
+  const draft = script("copilot-draft");
 
   it("is worded by Copilot, which only the release job may ask", () => {
     expect(job).toContain("copilot-requests: write");
@@ -527,7 +569,7 @@ describe("the release's description", () => {
     expect(step).toContain("GH_TOKEN: ${{ github.token }}");
     expect(step).toMatch(/COPILOT_CLI: "\d+\.\d+\.\d+"/);
     expect(step).toContain("run: bash .github/scripts/release-notes.sh");
-    expect(notes).toContain('"@github/copilot@$COPILOT_CLI"');
+    expect(draft).toContain('"@github/copilot@$COPILOT_CLI"');
   });
 
   // The words must come from what was released, not from what the model can go and find.
@@ -536,13 +578,24 @@ describe("the release's description", () => {
     expect(notes).toContain(
       '"repos/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_SHA"',
     );
-    expect(notes).toContain("--available-tools=");
-    // The checkout put the scripts in the workspace, so Copilot is run from an empty folder.
-    expect(notes.indexOf('cd "$(mktemp -d)"')).toBeGreaterThan(-1);
-    expect(notes.indexOf('cd "$(mktemp -d)"')).toBeLessThan(
-      notes.indexOf("copilot -p"),
+    expect(draft).toContain("--available-tools=");
+    // Copilot is handed its words and no files: it runs from an empty folder.
+    expect(draft.indexOf('cd "$(mktemp -d ')).toBeGreaterThan(-1);
+    expect(draft.indexOf('cd "$(mktemp -d ')).toBeLessThan(
+      draft.indexOf("copilot -p"),
     );
     expect(step).toContain("never invent a change");
+  });
+
+  // Its package is fetched fresh on each release, into a job that holds Fly's, R2's and Cloudflare's keys.
+  it("runs Copilot as a user who cannot reach the job's keys, handed three variables", () => {
+    expect(notes).toContain(
+      'SANDBOX_ENV="GH_TOKEN RULES COPILOT_CLI" bash "$here/sandbox.sh" copilot-draft.sh',
+    );
+    expect(notes).not.toMatch(/npm install|copilot -p/);
+    expect(notes).toMatch(
+      /< "\$RUNNER_TEMP\/changes\.txt" > "\$RUNNER_TEMP\/draft\.md"/,
+    );
   });
 
   it("describes nothing for a release that exists or a commit with nothing new", () => {
@@ -583,9 +636,20 @@ describe("the scripts the workflows run", () => {
       expect(text, file).not.toMatch(/run: [|>]/);
   });
 
+  // A workflow names a script as a step, hands one to the sandbox, or runs one that runs another.
   it("all exist, and none is left unrun", () => {
-    const named = workflows.flatMap(({ text }) => ran(text));
-    expect([...new Set(named)].sort()).toEqual([...scripts].sort());
+    const texts = [
+      ...workflows.map(({ text }) => text),
+      ...scripts.map((file) =>
+        readFileSync(file, "utf8").replaceAll(posix.basename(file), ""),
+      ),
+    ];
+    const named = texts.flatMap((text) =>
+      [...text.matchAll(/[\w-]+\.sh\b/g)].map((m) => `.github/scripts/${m[0]}`),
+    );
+    for (const file of scripts) expect(named, file).toContain(file);
+    for (const { text } of workflows)
+      for (const path of ran(text)) expect(scripts).toContain(path);
   });
 
   // bash <file> gets none of the -e the runner's shell gave a typed block.
@@ -607,5 +671,36 @@ describe("the scripts the workflows run", () => {
         expect(checkout, file).toBeLessThan(job.indexOf("run: bash .github/"));
       }
     }
+  });
+});
+
+describe("the sandbox the packages run in", () => {
+  const sandbox = script("sandbox");
+
+  it("is a user of its own, started from an empty environment in a copy of the checkout", () => {
+    expect(sandbox).toContain("sudo useradd --system");
+    expect(sandbox).toMatch(
+      /sudo -u sandbox env -i "PATH=\$PATH" "HOME=\$ROOT\/home"/,
+    );
+    expect(sandbox).toContain('sudo cp -al "$GITHUB_WORKSPACE" "$ROOT/work"');
+    expect(sandbox).toContain('chmod o-rwx "$HOME"');
+  });
+
+  // Every user can list a command line, so a value on one is a value handed to the packages' neighbours.
+  it("hands a variable over in a file only that user can read, never on a command line", () => {
+    expect(sandbox).toContain(
+      'sudo install -m 600 -o sandbox -g sandbox /dev/stdin "$ROOT/home/.env"',
+    );
+    expect(sandbox).toContain(`printf 'export %s=%q\\n' "$name" "\${!name-}"`);
+    expect(sandbox).toContain('rm -f "$HOME/.env"');
+    expect(sandbox).not.toMatch(/--preserve-env|sudo -E/);
+  });
+
+  it("leaves nothing running for the steps after it, and runs nowhere but on a runner", () => {
+    const run = sandbox.indexOf("sudo -u sandbox env -i");
+    expect(sandbox.indexOf("sudo pkill -KILL -u sandbox", run)).toBeGreaterThan(
+      run,
+    );
+    expect(sandbox).toContain('[ "${GITHUB_ACTIONS:-}" = true ] ||');
   });
 });

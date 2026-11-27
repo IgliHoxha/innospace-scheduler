@@ -3,6 +3,8 @@
 set -euo pipefail
 : "${GH_TOKEN:?}" "${RULES:?}" "${COPILOT_CLI:?}"
 
+here=$(cd "$(dirname "$0")" && pwd)
+
 # Nothing to describe without a tag, and an existing release keeps the text it has.
 [ -n "${TAG:-}" ] || exit 0
 if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then exit 0; fi
@@ -19,11 +21,9 @@ else
 fi
 # A commit released twice has nothing new to describe, and Copilot would say so in the release.
 grep -q '^- ' "$RUNNER_TEMP/changes.txt" || exit 0
-npm install --global --silent --no-audit --no-fund "@github/copilot@$COPILOT_CLI"
-# An empty folder, as before the scripts were checked out: Copilot is handed its words, no files.
-cd "$(mktemp -d)"
-# No tools, so it can only word what it is handed; capped so a large release still fits one prompt.
-copilot -p "$RULES"$'\n\n'"$(head -c 20000 "$RUNNER_TEMP/changes.txt")" -s --available-tools= > "$RUNNER_TEMP/draft.md"
+# Its package is fetched fresh on every release, so it runs where this job's keys are out of reach.
+SANDBOX_ENV="GH_TOKEN RULES COPILOT_CLI" bash "$here/sandbox.sh" copilot-draft.sh \
+  < "$RUNNER_TEMP/changes.txt" > "$RUNNER_TEMP/draft.md"
 [ -s "$RUNNER_TEMP/draft.md" ] || { echo "::warning::Copilot wrote nothing, so the release keeps GitHub's own notes."; exit 1; }
 mv "$RUNNER_TEMP/draft.md" "$RUNNER_TEMP/notes.md"
 cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
