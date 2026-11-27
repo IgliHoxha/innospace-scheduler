@@ -8,6 +8,7 @@ const read = (...path: string[]) =>
   readFileSync(join(process.cwd(), ...path), "utf8");
 
 const workflow = read(".github", "workflows", "fly-deploy.yml");
+const script = (name: string) => read(".github", "scripts", `${name}.sh`);
 const dockerfile = read("Dockerfile");
 const ignored = read(".dockerignore").split("\n");
 const sources = (dir: string): string[] =>
@@ -24,16 +25,13 @@ describe("deciding which checks a change needs", () => {
     workflow.indexOf("  check:\n"),
     workflow.indexOf("  build:\n"),
   );
-  const decide = job.slice(
-    job.indexOf("- name: Which checks does this change need?"),
-    job.indexOf("- uses: actions/setup-node"),
-  );
+  const decide = script("changed-since-green");
   const skips = (answer: string) =>
     excluded(
       decide.split("\n").find((l) => l.includes(`echo "${answer}=`)) ?? "",
     );
-  const gate = (script: string) =>
-    new RegExp(`- run: ${script}\\n\\s+if: ([^\\n]+)`).exec(job)?.[1];
+  const gate = (command: string) =>
+    new RegExp(`- run: ${command}\\n\\s+if: ([^\\n]+)`).exec(job)?.[1];
 
   // The push before may have failed, so only a run that passed proves the files it held.
   it("measures main from this workflow's last green run", () => {
@@ -45,7 +43,8 @@ describe("deciding which checks a change needs", () => {
   });
 
   it("measures a pull request from its base", () => {
-    expect(decide).toContain("BASE: ${{ github.event.pull_request.base.sha }}");
+    expect(job).toContain("BASE: ${{ github.event.pull_request.base.sha }}");
+    expect(job).toContain("run: bash .github/scripts/changed-since-green.sh");
     expect(decide).toContain('if [ "$GITHUB_EVENT_NAME" = push ]; then');
   });
 
@@ -78,13 +77,25 @@ describe("deciding which checks a change needs", () => {
   });
 
   it("runs each check on the answer for the files it reads", () => {
-    const on = (answer: string) => `steps.changed.outputs.${answer} != 'false'`;
-    expect(gate("npm run format:check")).toBe(on("any"));
-    expect(gate("npm run lint")).toBe(on("code"));
-    expect(gate("npm run typecheck")).toBe(on("app"));
-    expect(gate("npm run typecheck:tests")).toBe(on("code"));
-    expect(gate("npm run knip")).toBe(on("any"));
-    expect(gate("npm run test")).toBe(on("any"));
+    const checks = script("checks");
+    expect(job).toMatch(
+      /if: steps\.changed\.outputs\.any != 'false'\n\s+env:\n\s+CODE: \$\{\{ steps\.changed\.outputs\.code \}\}\n\s+APP: \$\{\{ steps\.changed\.outputs\.app \}\}\n\s+run: bash \.github\/scripts\/checks\.sh\n/,
+    );
+    expect(checks).toMatch(/^start format:check\nstart knip$/m);
+    expect(checks).toContain(
+      'if needed "${CODE:-}"; then start lint; start typecheck:tests; fi',
+    );
+    expect(checks).toContain('if needed "${APP:-}"; then start typecheck; fi');
+    expect(checks).toMatch(/^npm run test \|\| failed=1$/m);
+    // Only a plain "false" skips one, so an answer that went missing still runs it.
+    expect(checks).toContain('needed() { [ "${1:-}" != false ]; }');
+  });
+
+  // Its dependencies are hundreds of packages nobody here wrote, and Fly's token reaches the database.
+  it("is handed no secret, and so builds no image", () => {
+    expect(job).not.toContain("secrets.");
+    expect(job).not.toContain("flyctl");
+    expect(job).toMatch(/permissions:\n\s+contents: read\n\s+actions: read/);
   });
 
   // A manifest that drifted from its lockfile has to reach npm ci, which refuses it.
@@ -100,12 +111,8 @@ describe("deciding which checks a change needs", () => {
 });
 
 describe("deciding whether a push needs a release", () => {
-  const skipped = excluded(
-    workflow.slice(
-      workflow.indexOf("- name: Has anything that ships changed?"),
-      workflow.indexOf("- name: Build and push"),
-    ),
-  );
+  const decide = script("changed-since-live");
+  const skipped = excluded(decide);
 
   it("leaves out every file the image never carries: tests, docs, the workflow and tool configs", () => {
     expect(skipped).toEqual([
@@ -155,20 +162,26 @@ describe("deciding whether a push needs a release", () => {
 
   it("compares with the commit that is live, read from the image tag", () => {
     expect(workflow).toContain("IMAGE_LABEL: sha-${{ github.sha }}");
-    expect(workflow).toMatch(/flyctl image show [^\n]*\.\[0\]\.Tag/);
-    expect(workflow).toContain('git diff --quiet "$live" HEAD');
+    expect(decide).toMatch(/flyctl image show [^\n]*\.\[0\]\.Tag/);
+    expect(decide).toContain('git diff --quiet "$live" HEAD');
+    expect(workflow).toMatch(
+      /id: live\n\s+run: bash \.github\/scripts\/changed-since-live\.sh/,
+    );
   });
 });
 
 describe("building the image", () => {
-  const step = workflow.slice(
-    workflow.indexOf("- name: Build and push"),
-    workflow.indexOf("deploy:\n"),
-  );
+  const step = script("build-image");
+
+  it("is built only for a push that releases, by the script", () => {
+    expect(workflow).toMatch(
+      /- name: Build and push\n\s+if: steps\.live\.outputs\.release == 'true'\n\s+run: bash \.github\/scripts\/build-image\.sh\n/,
+    );
+  });
 
   // Without pipefail, tee's success would hide a failed build.
   it("reads flyctl's own exit status through the log it tees", () => {
-    expect(step).toContain("set -o pipefail");
+    expect(step).toMatch(/^set -euo pipefail$/m);
     expect(step).toMatch(/flyctl deploy --build-only [^\n]*\| tee build\.log/);
   });
 
@@ -181,15 +194,12 @@ describe("building the image", () => {
 });
 
 describe("the restore point before a release", () => {
-  const decide = workflow.slice(
-    workflow.indexOf("- name: Has anything that ships changed?"),
-    workflow.indexOf("- name: Build and push"),
-  );
+  const decide = script("changed-since-live");
   const step = workflow.slice(
     workflow.indexOf("- name: Back up the database"),
     workflow.indexOf("- run: flyctl deploy --image"),
   );
-  const touches = /TOUCHES: (.+)\n/.exec(decide)?.[1].split(" ") ?? [];
+  const touches = /^TOUCHES="(.+)"$/m.exec(decide)?.[1].split(" ") ?? [];
 
   it("is taken only when what changed since the live commit can touch the volume", () => {
     expect(touches).toEqual([
@@ -239,7 +249,7 @@ describe("the restore point before a release", () => {
 
   it("is the nightly backup's own script, named after the commit", () => {
     expect(step).toContain(
-      'bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"',
+      'run: bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"',
     );
     for (const name of [
       "FLY_API_TOKEN",
@@ -251,12 +261,10 @@ describe("the restore point before a release", () => {
   });
 
   it("stops the release when the backup fails, inside the job's time limit", () => {
-    expect(step).toContain("set -euo pipefail");
-    expect(read(".github", "scripts", "backup-db.sh")).toMatch(
-      /^set -euo pipefail$/m,
-    );
+    expect(step).toMatch(/\n\s+run: bash \.github\/scripts\/backup-db\.sh /);
+    expect(script("backup-db")).toMatch(/^set -euo pipefail$/m);
     expect(workflow).toMatch(
-      /deploy:\s+name: Release[\s\S]*?timeout-minutes: 15/,
+      /deploy:\s+name: Release and name it[\s\S]*?timeout-minutes: 15/,
     );
   });
 
@@ -267,63 +275,63 @@ describe("the restore point before a release", () => {
 });
 
 describe("the database backup", () => {
-  const script = read(".github", "scripts", "backup-db.sh");
+  const backup = script("backup-db");
   const nightly = read(".github", "workflows", "backup.yml");
 
   it("copies the file the app writes, on the volume the app mounts", () => {
-    expect(script).toContain("/app/data/scheduler.db");
+    expect(backup).toContain("/app/data/scheduler.db");
     expect(read("fly.toml.example")).toContain("destination = '/app/data'");
   });
 
   it("takes one consistent copy while the app serves, never opening the file to write", () => {
-    expect(script).toContain("VACUUM INTO ?");
-    expect(script).toContain("readonly:true,fileMustExist:true");
+    expect(backup).toContain("VACUUM INTO ?");
+    expect(backup).toContain("readonly:true,fileMustExist:true");
   });
 
   // ssh does not wake a suspended machine, and this one sleeps most of the day.
   it("starts the machine before reaching into it", () => {
-    expect(script.indexOf("flyctl machine start")).toBeGreaterThan(-1);
-    expect(script.indexOf("flyctl machine start")).toBeLessThan(
-      script.indexOf("flyctl ssh console"),
+    expect(backup.indexOf("flyctl machine start")).toBeGreaterThan(-1);
+    expect(backup.indexOf("flyctl machine start")).toBeLessThan(
+      backup.indexOf("flyctl ssh console"),
     );
   });
 
   it("keeps a copy only once it opens and holds the reservations", () => {
-    const upload = script.indexOf("--aws-sigv4");
-    expect(script).toContain('[ "$check" = ok ] ||');
-    expect(script.indexOf("PRAGMA integrity_check")).toBeLessThan(upload);
-    expect(script.indexOf("SELECT count(*) FROM reservations")).toBeLessThan(
+    const upload = backup.indexOf("--aws-sigv4");
+    expect(backup).toContain('[ "$check" = ok ] ||');
+    expect(backup.indexOf("PRAGMA integrity_check")).toBeLessThan(upload);
+    expect(backup.indexOf("SELECT count(*) FROM reservations")).toBeLessThan(
       upload,
     );
   });
 
   it("stores it gzipped in the bucket, and fails when the upload is refused", () => {
-    expect(script).toContain("gzip -9 /tmp/scheduler-backup.db");
-    expect(script).toContain(
+    expect(backup).toContain("gzip -9 /tmp/scheduler-backup.db");
+    expect(backup).toContain(
       "https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com/$BUCKET/$key",
     );
-    expect(script).toContain("curl --fail-with-body");
-    expect(script).toContain(
+    expect(backup).toContain("curl --fail-with-body");
+    expect(backup).toContain(
       'key="scheduler-$(date -u +%Y-%m-%dT%H%MZ)-$LABEL.db.gz"',
     );
   });
 
   // An argument is visible to every process on the runner; a file in the job's own folder is not.
   it("hands curl the bucket's keys in a file, never as an argument", () => {
-    expect(script).toContain('-K "$work/r2.curl"');
-    expect(script).toMatch(/umask 077 && printf [^\n]*> "\$work\/r2\.curl"/);
-    expect(script).not.toMatch(/--user|-u "/);
+    expect(backup).toContain('-K "$work/r2.curl"');
+    expect(backup).toMatch(/umask 077 && printf [^\n]*> "\$work\/r2\.curl"/);
+    expect(backup).not.toMatch(/--user|-u "/);
   });
 
   it("leaves no copy behind in the machine", () => {
     expect(
-      script.indexOf('-C "rm -f /tmp/scheduler-backup.db.gz"'),
-    ).toBeGreaterThan(script.indexOf("flyctl ssh sftp get"));
+      backup.indexOf('-C "rm -f /tmp/scheduler-backup.db.gz"'),
+    ).toBeGreaterThan(backup.indexOf("flyctl ssh sftp get"));
   });
 
   // The repository is public and the file holds bookers' names and emails.
   it("shows nothing of the file but a count, and uploads it nowhere on GitHub", () => {
-    const queries = [...script.matchAll(/sqlite3 "[^"]+" "([^"]+)"/g)].map(
+    const queries = [...backup.matchAll(/sqlite3 "[^"]+" "([^"]+)"/g)].map(
       (m) => m[1],
     );
     expect(queries).toEqual([
@@ -349,9 +357,23 @@ describe("the release job", () => {
     expect(workflow).not.toMatch(/- master\b/);
   });
 
+  // Neither skip list reads them, so a push of notes alone has no job to start.
+  it("starts nothing for a push of notes or the docs' pictures alone", () => {
+    const ignored =
+      /\n {4}paths-ignore:\n {6}- "\*\*\.md"\n {6}- "docs\/\*\*"\n/g;
+    expect(workflow.match(ignored)).toHaveLength(2);
+    expect(workflow).toMatch(/\n {6}- main\n {4}#[^\n]*\n {4}paths-ignore:/);
+    expect(workflow).toMatch(/\n {2}pull_request:\n {4}paths-ignore:/);
+    expect(workflow).not.toMatch(/\n {4}paths:/);
+    for (const list of ["changed-since-green", "changed-since-live"])
+      expect(excluded(script(list))).toEqual(
+        expect.arrayContaining(["*.md", "docs"]),
+      );
+  });
+
   it("waits for the checks and the image", () => {
     expect(workflow).toMatch(
-      /deploy:\s+name: Release\s+needs: \[check, build\]/,
+      /deploy:\s+name: Release and name it\s+needs: \[check, build\]\s+if: needs\.build\.outputs\.release == 'true'/,
     );
   });
 
@@ -364,17 +386,50 @@ describe("the release job", () => {
   it("asks the origin for the booking page before purging the edge", () => {
     const smoke = workflow.indexOf("https://innospace-scheduler.fly.dev/");
     expect(smoke).toBeGreaterThan(-1);
-    expect(smoke).toBeLessThan(workflow.indexOf("purge_cache"));
+    expect(smoke).toBeLessThan(workflow.indexOf("purge-cache.sh"));
+  });
+
+  // The zone is shared with the marketing site, so only the booking page is purged.
+  it("purges the booking page alone, and passes when Cloudflare's keys are not set", () => {
+    const purge = script("purge-cache");
+    expect(workflow).toContain("CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}");
+    expect(workflow).toContain(
+      "CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}",
+    );
+    expect(purge).toContain(
+      `--data '{"files":["https://scheduler.innospacetirana.com/"]}'`,
+    );
+    expect(purge).not.toContain("purge_everything");
+    expect(purge).toMatch(/skipping purge\."\n\s+exit 0/);
   });
 });
 
 describe("naming the release", () => {
-  const job = workflow.slice(workflow.indexOf("  release:\n"));
+  const job = workflow.slice(workflow.indexOf("  deploy:\n"));
+  const name = script("release-name");
+  const create = script("release-create");
 
   // A tag has to mark a build visitors received, so a failed or skipped release gets none.
-  it("runs only after the release job", () => {
-    expect(workflow).toMatch(
-      /release:\s+name: Name the release\s+needs: deploy\s/,
+  it("is the end of the release job, after the smoke test and the purge", () => {
+    const at = (line: string) => job.indexOf(line);
+    expect(workflow).not.toMatch(/\n {2}release:\n/);
+    expect(at("- name: Purge Cloudflare cache")).toBeGreaterThan(
+      at("- name: Smoke test the new release"),
+    );
+    expect(at("- name: Ask couch-gag")).toBeGreaterThan(
+      at("- name: Purge Cloudflare cache"),
+    );
+    expect(at("- name: Create the tag")).toBeGreaterThan(
+      at("- name: Ask Copilot"),
+    );
+    // No step of the job runs when one before it failed, so a failed release is never named.
+    expect(job).not.toMatch(/if: [^\n]*(always|failure|cancelled)\(\)/);
+  });
+
+  // This job's token can write, so none is left in the folder Copilot is run beside.
+  it("leaves no token in the folder it checks out", () => {
+    expect(job).toMatch(
+      /- uses: actions\/checkout@v\d+\n\s+with:\n\s+persist-credentials: false\n/,
     );
   });
 
@@ -387,30 +442,33 @@ describe("naming the release", () => {
   it("asks couch-gag for this repo and commit, with the key from the secret", () => {
     expect(job).toContain("COUCH_GAG_URL: ${{ vars.COUCH_GAG_URL }}");
     expect(job).toContain("COUCH_GAG_KEY: ${{ secrets.COUCH_GAG_KEY }}");
-    expect(job).toContain(
+    expect(job).toContain("run: bash .github/scripts/release-name.sh");
+    expect(name).toContain(
       '--arg repo "$GITHUB_REPOSITORY" --arg ref "$GITHUB_SHA"',
     );
-    expect(job).toContain('"$COUCH_GAG_URL/v1/releases"');
+    expect(name).toContain('"$COUCH_GAG_URL/v1/releases"');
   });
 
   // The same shape as the website's tags: r16-treehouse-of-horror.
   it("builds the tag from the sequence and the slug, and refuses anything else", () => {
-    expect(job).toContain(String.raw`'"r\(.sequence)-\(.slug)"'`);
-    expect(job).toContain("^r[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$");
-    expect(job).toContain("is not a release");
+    expect(name).toContain(String.raw`'"r\(.sequence)-\(.slug)"'`);
+    expect(name).toContain("^r[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$");
+    expect(name).toContain("is not a release");
   });
 
   it("titles the GitHub release with the episode, on the released commit", () => {
-    expect(job).toContain('echo "title=$(jq -r \'.name\' <<<"$release")"');
-    expect(job).toContain('gh release create "$TAG"');
-    expect(job).toContain('--target "$GITHUB_SHA"');
-    expect(job).toContain('--title "$TITLE" --generate-notes');
+    expect(name).toContain('echo "title=$(jq -r \'.name\' <<<"$release")"');
+    expect(job).toContain("TITLE: ${{ steps.episode.outputs.title }}");
+    expect(job).toContain("run: bash .github/scripts/release-create.sh");
+    expect(create).toContain('gh release create "$TAG"');
+    expect(create).toContain('--target "$GITHUB_SHA"');
+    expect(create).toContain('--title "$TITLE" --generate-notes');
   });
 
   // A re-run claims the same episode, so the release it finds must not fail the job.
   it("leaves an existing release alone", () => {
-    expect(job).toContain('gh release view "$TAG"');
-    expect(job).toContain("already exists");
+    expect(create).toContain('gh release view "$TAG"');
+    expect(create).toContain("already exists");
   });
 });
 
@@ -456,34 +514,41 @@ describe("what goes into the image", () => {
 });
 
 describe("the release's description", () => {
-  const job = workflow.slice(workflow.indexOf("  release:\n"));
+  const job = workflow.slice(workflow.indexOf("  deploy:\n"));
   const step = job.slice(
     job.indexOf("- name: Ask Copilot for the description"),
     job.indexOf("- name: Create the tag and the GitHub release"),
   );
+  const notes = script("release-notes");
 
   it("is worded by Copilot, which only the release job may ask", () => {
     expect(job).toContain("copilot-requests: write");
     expect(workflow.match(/copilot-requests: write/g)).toHaveLength(1);
     expect(step).toContain("GH_TOKEN: ${{ github.token }}");
     expect(step).toMatch(/COPILOT_CLI: "\d+\.\d+\.\d+"/);
-    expect(step).toContain('"@github/copilot@$COPILOT_CLI"');
+    expect(step).toContain("run: bash .github/scripts/release-notes.sh");
+    expect(notes).toContain('"@github/copilot@$COPILOT_CLI"');
   });
 
   // The words must come from what was released, not from what the model can go and find.
   it("hands Copilot the commits since the last release and no tools", () => {
-    expect(step).toContain('"repos/$GITHUB_REPOSITORY/releases/latest"');
-    expect(step).toContain(
+    expect(notes).toContain('"repos/$GITHUB_REPOSITORY/releases/latest"');
+    expect(notes).toContain(
       '"repos/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_SHA"',
     );
-    expect(step).toContain("--available-tools=");
+    expect(notes).toContain("--available-tools=");
+    // The checkout put the scripts in the workspace, so Copilot is run from an empty folder.
+    expect(notes.indexOf('cd "$(mktemp -d)"')).toBeGreaterThan(-1);
+    expect(notes.indexOf('cd "$(mktemp -d)"')).toBeLessThan(
+      notes.indexOf("copilot -p"),
+    );
     expect(step).toContain("never invent a change");
   });
 
   it("describes nothing for a release that exists or a commit with nothing new", () => {
-    expect(step).toContain('[ -n "$TAG" ] || exit 0');
-    expect(step).toMatch(/gh release view "\$TAG"[^\n]+then exit 0; fi/);
-    expect(step).toContain(
+    expect(notes).toContain('[ -n "${TAG:-}" ] || exit 0');
+    expect(notes).toMatch(/gh release view "\$TAG"[^\n]+then exit 0; fi/);
+    expect(notes).toContain(
       `grep -q '^- ' "$RUNNER_TEMP/changes.txt" || exit 0`,
     );
   });
@@ -492,10 +557,55 @@ describe("the release's description", () => {
   it("never stops the release: a failure leaves GitHub's own notes", () => {
     expect(step).toContain("continue-on-error: true");
     expect(step).toContain("timeout-minutes: 3");
-    expect(step).toContain(
+    expect(notes).toContain(
       'mv "$RUNNER_TEMP/draft.md" "$RUNNER_TEMP/notes.md"',
     );
-    expect(job).toContain('if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(');
-    expect(job).toContain('--generate-notes "${notes[@]}"');
+    const create = script("release-create");
+    expect(create).toContain('if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(');
+    expect(create).toContain('--generate-notes ${notes[@]+"${notes[@]}"}');
+  });
+});
+
+describe("the scripts the workflows run", () => {
+  const workflows = sources(".github/workflows").map((file) => ({
+    file,
+    text: readFileSync(file, "utf8"),
+  }));
+  const scripts = sources(".github/scripts");
+  const ran = (text: string) =>
+    [...text.matchAll(/run: bash (\.github\/scripts\/[\w-]+\.sh)/g)].map(
+      (m) => m[1],
+    );
+
+  // A typed block runs nowhere but on GitHub; a file runs here, under a test.
+  it("are files: no workflow types a block of shell of its own", () => {
+    for (const { file, text } of workflows)
+      expect(text, file).not.toMatch(/run: [|>]/);
+  });
+
+  it("all exist, and none is left unrun", () => {
+    const named = workflows.flatMap(({ text }) => ran(text));
+    expect([...new Set(named)].sort()).toEqual([...scripts].sort());
+  });
+
+  // bash <file> gets none of the -e the runner's shell gave a typed block.
+  it("each stop at the first failure, unset variable or broken pipe", () => {
+    for (const file of scripts)
+      expect(readFileSync(file, "utf8"), file).toMatch(/^set -euo pipefail$/m);
+  });
+
+  it("are checked out before the first of them runs, in every job", () => {
+    for (const { file, text } of workflows) {
+      const jobs = text
+        .slice(text.indexOf("\njobs:\n"))
+        .split(/\n(?= {2}[\w-]+:\n)/)
+        .filter((job) => ran(job).length > 0);
+      expect(jobs.length, file).toBeGreaterThan(0);
+      for (const job of jobs) {
+        const checkout = job.indexOf("- uses: actions/checkout@");
+        expect(checkout, file).toBeGreaterThan(-1);
+        expect(checkout, file).toBeLessThan(job.indexOf("run: bash .github/"));
+      }
+    }
   });
 });

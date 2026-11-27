@@ -3,7 +3,14 @@ on:
   push:
     branches:
       - main
+    # Notes and the docs' pictures: no check reads them and the image never carries them.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch: # allow manual deploys from the Actions tab
 
 permissions:
@@ -19,6 +26,7 @@ env:
   IMAGE_LABEL: sha-${{ github.sha }}
 
 jobs:
+  # The one job that runs the repository's dependencies, so it is handed no secret and no image to build.
   check:
     name: Lint, types and tests
     runs-on: ubuntu-latest
@@ -36,20 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          # A pull request is measured from its base and main from its last green run; a manual run has neither.
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            BASE=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fly-deploy.yml/runs?branch=$GITHUB_REF_NAME&event=push&status=success&per_page=1" \
-              --jq '.workflow_runs[0].head_sha // empty') || BASE=
-          fi
-          echo "Measured from ${BASE:-nothing, so every check runs}."
-          # A base git cannot find fails the diff too, so whatever is unsure gets checked.
-          changed() { if [ -n "$BASE" ] && git diff --quiet "$BASE" HEAD -- . "$@"; then echo false; else echo true; fi; }
-          {
-            echo "any=$(changed ':!*.md' ':!docs')"
-            echo "code=$(changed ':!*.md' ':!docs' ':!.github')"
-            echo "app=$(changed ':!*.md' ':!docs' ':!.github' ':!tests' ':!vitest.config.mts')"
-          } | tee -a "$GITHUB_OUTPUT"
+        run: bash .github/scripts/changed-since-green.sh
       # Only a plain "false" skips a step below: a missing answer runs the check.
       - uses: actions/setup-node@v7
         id: node
@@ -65,18 +60,13 @@ jobs:
           key: modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package.json', 'package-lock.json') }}
       - run: npm ci
         if: steps.changed.outputs.any != 'false' && steps.modules.outputs.cache-hit != 'true'
-      - run: npm run format:check
+      # Side by side on the runner's cores, which keeps this job under a minute.
+      - name: Format, lint, types, dead code and tests
         if: steps.changed.outputs.any != 'false'
-      - run: npm run lint
-        if: steps.changed.outputs.code != 'false'
-      - run: npm run typecheck
-        if: steps.changed.outputs.app != 'false'
-      - run: npm run typecheck:tests
-        if: steps.changed.outputs.code != 'false'
-      - run: npm run knip
-        if: steps.changed.outputs.any != 'false'
-      - run: npm run test
-        if: steps.changed.outputs.any != 'false'
+        env:
+          CODE: ${{ steps.changed.outputs.code }}
+          APP: ${{ steps.changed.outputs.app }}
+        run: bash .github/scripts/checks.sh
 
   # Runs beside the checks, not after them, so the gate adds no time to a deploy.
   build:
@@ -97,49 +87,27 @@ jobs:
       # Compared with what is live, so a failed or superseded run is never skipped over.
       - name: Has anything that ships changed?
         id: live
-        env:
-          # What opens or lays out the volume: the one SQL module, the image's boot and the mount.
-          TOUCHES: src/lib/db.ts Dockerfile docker-entrypoint.sh fly.toml.example
-        run: |
-          live=$(flyctl image show --config fly.toml.example --json | jq -r '.[0].Tag // empty' | sed -n 's/^sha-//p')
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] &&
-            git diff --quiet "$live" HEAD -- . ':!tests' ':!docs' ':!.github' ':!*.md' ':!vitest.config.mts' \
-              ':!Makefile' ':!docker-compose.yml' ':!.env*' ':!.gitignore' ':!.prettierrc.json' ':!.prettierignore' \
-              ':!knip.json' ':!.gitguardian.yaml' ':!LICENSE' ':!NOTICE'; then
-            echo "::notice::Nothing in the image changed since $live, so there is nothing to release."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          fi
-          # A manual run or an image no commit names takes the backup anyway.
-          # shellcheck disable=SC2086
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] && git diff --quiet "$live" HEAD -- $TOUCHES; then
-            echo "backup=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "backup=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .github/scripts/changed-since-live.sh
       # Only a dropped builder connection is retried; a real build error fails at once.
       - name: Build and push
         if: steps.live.outputs.release == 'true'
-        shell: bash
-        run: |
-          set -o pipefail
-          for attempt in 1 2 3; do
-            flyctl deploy --build-only --push --remote-only --image-label "$IMAGE_LABEL" --config fly.toml.example 2>&1 | tee build.log && exit 0
-            grep -qE 'rpc error: code = Unavailable|error reading from server: EOF' build.log || exit 1
-            echo "::warning::The builder dropped the connection (attempt $attempt of 3), retrying."
-            sleep 20
-          done
-          exit 1
+        run: bash .github/scripts/build-image.sh
 
+  # Names the release too: a job of its own started a runner for twenty seconds of work.
   deploy:
-    name: Release
+    name: Release and name it
     needs: [check, build]
     if: needs.build.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write # the tag and the GitHub release; the default token is read-only
+      copilot-requests: write # Copilot words the description, billed to the owner's seat
     steps:
+      # No token is left in the folder: this job's can write to the repository.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
       # A schema change here means wiping the file, so a release that can touch the volume gets a way back.
       - name: Back up the database
@@ -150,63 +118,30 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: |
-          set -euo pipefail
-          # The script stops the job on any failure, so nothing is released without a copy that opens.
-          bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"
+        # The script stops the job on any failure, so nothing is released without a copy that opens.
+        run: bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"
       - run: flyctl deploy --image "registry.fly.io/innospace-scheduler:$IMAGE_LABEL" --ha=false --config fly.toml.example
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       # Straight to the origin: the edge would answer with its copy of the old build.
       - name: Smoke test the new release
-        run: |
-          curl --fail -sS -o /dev/null --retry 5 --retry-delay 3 --retry-all-errors --max-time 30 \
-            -w 'origin answered %{http_code} in %{time_total}s\n' https://innospace-scheduler.fly.dev/
+        run: curl --fail -sS -o /dev/null --retry 5 --retry-delay 3 --retry-all-errors --max-time 30 -w 'origin answered %{http_code} in %{time_total}s\n' https://innospace-scheduler.fly.dev/
 
-      # One URL, not the zone: innospacetirana.com is shared with the marketing site.
+      # The edge's copy of the booking page would otherwise outlive the release by minutes.
       - name: Purge Cloudflare cache
         env:
           CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -z "$CF_ZONE_ID" ] || [ -z "$CF_API_TOKEN" ]; then
-            echo "CLOUDFLARE_ZONE_ID / CLOUDFLARE_API_TOKEN not set, skipping purge."
-            exit 0
-          fi
-          curl --fail-with-body -sS -X POST \
-            "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/purge_cache" \
-            -H "Authorization: Bearer $CF_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data '{"files":["https://scheduler.innospacetirana.com/"]}'
+        run: bash .github/scripts/purge-cache.sh
 
-  # Only after a release passed its smoke test and purge, so a tag marks a live build.
-  release:
-    name: Name the release
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write # the default token is read-only
-      copilot-requests: write # Copilot words the description, billed to the owner's seat
-    steps:
-      # couch-gag gives the same episode for the same commit, so a re-run uses no new one.
+      # After the smoke test and the purge, so a tag marks a live build; a re-run claims the same episode.
       - name: Ask couch-gag for this release's episode
         id: episode
         env:
           COUCH_GAG_URL: ${{ vars.COUCH_GAG_URL }}
           COUCH_GAG_KEY: ${{ secrets.COUCH_GAG_KEY }}
-        run: |
-          body=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg ref "$GITHUB_SHA" '{repo: $repo, ref: $ref}')
-          release=$(curl --fail-with-body -sS --retry 4 --retry-all-errors --max-time 20 \
-            -H "Authorization: Bearer $COUCH_GAG_KEY" -H "Content-Type: application/json" \
-            -d "$body" "$COUCH_GAG_URL/v1/releases")
-          tag=$(jq -r '"r\(.sequence)-\(.slug)"' <<<"$release")
-          if ! [[ "$tag" =~ ^r[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-            echo "::error::couch-gag answered something that is not a release: $release"; exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "title=$(jq -r '.name' <<<"$release")" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/release-name.sh
 
       # Copilot words the description from the commits since the last release, on the owner's seat.
       - name: Ask Copilot for the description
@@ -227,43 +162,11 @@ jobs:
             Describe only what the commits and files show and never invent a change.
             Use plain hyphens, never an em dash or an en dash.
             Do not use tools: everything you need is below. Keep it under 200 words.
-        run: |
-          set -euo pipefail
-          # Nothing to describe without a tag, and an existing release keeps the text it has.
-          [ -n "$TAG" ] || exit 0
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then exit 0; fi
-          previous=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null) || previous=
-          subjects='"- " + (.commit.message | split("\n") | map(select(length > 0)) | join("\n  "))'
-          if [ -n "$previous" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_SHA" --jq \
-              "\"Commits:\n\" + ([.commits[] | $subjects] | join(\"\n\")) + \"\n\nFiles changed:\n\" + ([.files[] | \"\(.status) \(.filename) (+\(.additions) -\(.deletions))\"] | join(\"\n\"))" \
-              > "$RUNNER_TEMP/changes.txt"
-          else
-            # A first release has nothing to compare with, so its last commits stand in.
-            gh api "repos/$GITHUB_REPOSITORY/commits?sha=$GITHUB_SHA&per_page=20" --jq \
-              "\"Commits:\n\" + ([.[] | $subjects] | join(\"\n\"))" > "$RUNNER_TEMP/changes.txt"
-          fi
-          # A commit released twice has nothing new to describe, and Copilot would say so in the release.
-          grep -q '^- ' "$RUNNER_TEMP/changes.txt" || exit 0
-          npm install --global --silent --no-audit --no-fund "@github/copilot@$COPILOT_CLI"
-          # No tools, so it can only word what it is handed; capped so a large release still fits one prompt.
-          copilot -p "$RULES"$'\n\n'"$(head -c 20000 "$RUNNER_TEMP/changes.txt")" -s --available-tools= > "$RUNNER_TEMP/draft.md"
-          [ -s "$RUNNER_TEMP/draft.md" ] || { echo "::warning::Copilot wrote nothing, so the release keeps GitHub's own notes."; exit 1; }
-          mv "$RUNNER_TEMP/draft.md" "$RUNNER_TEMP/notes.md"
-          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/release-notes.sh
 
       - name: Create the tag and the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.episode.outputs.tag }}
           TITLE: ${{ steps.episode.outputs.title }}
-        run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists."
-          else
-            # Copilot's words go above GitHub's own list; without them the list stands alone.
-            notes=()
-            if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(--notes "$(cat "$RUNNER_TEMP/notes.md")"); fi
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "$TITLE" --generate-notes "${notes[@]}"
-          fi
+        run: bash .github/scripts/release-create.sh
